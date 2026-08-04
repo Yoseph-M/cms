@@ -1,0 +1,104 @@
+openapi: 3.0.0
+info:
+  title: POS System API
+  version: 1.0.0
+  description: API documentation for the Point of Sale system.
+servers:
+  - url: http://localhost:5001
+    description: Local development server
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      description: Returns the health status of the API.
+      security: []
+      responses:
+        '200':
+          description: OK
+  /api/auth/pin-login:
+    post:
+      summary: PIN Login
+      description: Login using User ID and PIN.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                pinCode:
+                  type: string
+      responses:
+        '200':
+          description: Successful login
+        '401':
+          description: Invalid credentials
+        '429':
+          description: Account locked or rate limited
+  /api/auth/login:
+    post:
+      summary: Password Login
+      description: Login using Email and Password.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identifier:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Successful login
+        '401':
+          description: Invalid credentials
+  /api/menu:
+    get:
+      summary: Get Menu
+      description: Retrieve all available menu items.
+      responses:
+        '200':
+          description: List of menu items
+    post:
+      summary: Create Menu Item
+      description: Add a new item to the menu (Manager/Owner only).
+      responses:
+        '201':
+          description: Created
+  /api/orders:
+    get:
+      summary: Get Orders
+      description: List all active orders.
+      responses:
+        '200':
+          description: List of orders
+    post:
+      summary: Create Order
+      description: Submit a new order.
+      responses:
+        '201':
+          description: Order created
+  /api/payroll/run:
+    post:
+      summary: Run Payroll
+      description: Process payroll for a specific month and year.
+      responses:
+        '201':
+          description: Payroll processed
+        '409':
+          description: Payroll already processed for period
