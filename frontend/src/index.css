@@ -1,0 +1,239 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 24 15% 8%;
+    --foreground: 30 25% 92%;
+
+    --card: 24 15% 12%;
+    --card-foreground: 30 25% 92%;
+
+    --popover: 24 15% 12%;
+    --popover-foreground: 30 25% 92%;
+
+    --primary: 22 68% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 24 15% 15%;
+    --secondary-foreground: 30 25% 92%;
+
+    --muted: 25 12% 60%;
+    --muted-foreground: 25 12% 60%;
+
+    --accent: 38 68% 68%;
+    --accent-foreground: 30 25% 92%;
+
+    --destructive: 8 65% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 130 15% 58%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 36 90% 60%;
+    --warning-foreground: 24 15% 8%;
+
+    --border: 24 12% 20%;
+    --input: 24 12% 20%;
+    --ring: 22 68% 58%;
+
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Better default focus visibility */
+  :where(button, [role='button'], a, input, select, textarea):focus-visible {
+    @apply outline-none ring-2 ring-ring/70 ring-offset-2 ring-offset-background;
+  }
+
+  /* Reusable thin divider on the dark surface */
+  .hairline {
+    background-image: linear-gradient(
+      to right,
+      transparent,
+      hsl(var(--border) / 0.7),
+      transparent
+    );
+    height: 1px;
+  }
+}
+
+@layer components {
+  /* Subtle ambient gradient for hero/login backgrounds */
+  .bg-surface-gradient {
+    background:
+      radial-gradient(
+        ellipse 60% 50% at 20% 0%,
+        hsl(var(--primary) / 0.12),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 80% 100%,
+        hsl(var(--accent) / 0.08),
+        transparent 60%
+      ),
+      hsl(var(--background));
+  }
+
+  /* Subtle noise/grain for premium dark surfaces (very low cost, CSS-only) */
+  .bg-grain::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(
+      hsl(var(--foreground) / 0.04) 1px,
+      transparent 1px
+    );
+    background-size: 3px 3px;
+    opacity: 0.5;
+    mix-blend-mode: overlay;
+    border-radius: inherit;
+  }
+
+  /* Faint vertical accent line used in headers / section dividers */
+  .accent-rule {
+    width: 2px;
+    border-radius: 9999px;
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--primary)),
+      hsl(var(--accent))
+    );
+  }
+
+  /* Card hover lift used by analytics tiles */
+  .card-lift {
+    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg;
+  }
+
+  /* Pulsing dot used by LivePulse */
+  .pulse-dot {
+    @apply relative inline-flex h-2 w-2 rounded-full;
+  }
+  .pulse-dot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: inherit;
+    opacity: 0.6;
+    animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+    80%,
+    100% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+  }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--secondary) / 0.6) 0%,
+      hsl(var(--secondary) / 0.9) 50%,
+      hsl(var(--secondary) / 0.6) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+    border-radius: 0.5rem;
+  }
+  @keyframes skeleton-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+}
+
+/* Refined scrollbar tuned for the warm dark surface */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border) / 0.7);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--primary) / 0.55);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border) / 0.7) transparent;
+}
+
+/* Selection */
+::selection {
+  background: hsl(var(--primary) / 0.4);
+  color: hsl(var(--foreground));
+}
+
+/*
+ * Signature element: Ticket tear.
+ *
+ * Implemented as a mask (radial cutouts) rather than a hand-rolled polygon
+ * so it scales with any card width. The card content should reserve a few
+ * pixels of bottom padding so the tear is visible.
+ */
+.ticket-tear {
+  position: relative;
+  /* The bottom edge gets a row of half-circle cutouts that mimic a torn receipt. */
+  -webkit-mask-image: radial-gradient(
+    circle at 7px 100%,
+    transparent 4px,
+    #000 4.5px
+  );
+  mask-image: radial-gradient(circle at 7px 100%, transparent 4px, #000 4.5px);
+  -webkit-mask-size: 14px 8px;
+  mask-size: 14px 8px;
+  -webkit-mask-repeat: repeat-x;
+  mask-repeat: repeat-x;
+  -webkit-mask-position: bottom;
+  mask-position: bottom;
+}
+
+/* A subtle dashed receipt divider that pairs well with the tear */
+.receipt-divider {
+  background-image: linear-gradient(
+    to right,
+    hsl(var(--border)) 50%,
+    transparent 0%
+  );
+  background-size: 6px 1px;
+  background-repeat: repeat-x;
+  background-position: 0 50%;
+  height: 1px;
+}
