@@ -1,6 +1,6 @@
-# MERN Point of Sale (POS) System
+# CMS
 
-A robust, full-stack POS system designed for restaurants. Built with MongoDB, Express, React (Vite), and Node.js.
+A robust, full-stack CMS designed for cafes and restaurants. Built with MongoDB, Express, React (Vite), and Node.js.
 
 ## Features
 
@@ -24,12 +24,6 @@ A robust, full-stack POS system designed for restaurants. Built with MongoDB, Ex
 4. Access the frontend at `http://localhost`.
 5. Access the API documentation at `http://localhost:5001/api/docs`.
 
-## Initial Setup
-
-Upon the first startup, the backend automatically seeds initial staff accounts and menu items if the database is empty:
-- **Owner**: `owner@pos.com` (PIN: 1111, Password: password123)
-- **Manager**: `manager@pos.com` (PIN: 2222, Password: password123)
-- **Cashier**: `cashier@pos.com` (PIN: 3333, Password: password123)
 
 
 ## Documentation
