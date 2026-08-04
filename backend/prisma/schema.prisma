@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("mongodb+srv://nulvobet_db_user:KF8SmoDKKNlhuZjt@cluster0.bvzgdrx.mongodb.net/cafeflow?retryWrites=true&w=majority&appName=Cluster0")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  OWNER
+  MANAGER
+  CASHIER
+  WAITER
+  COOKER
+  BARISTA
+}
+
+enum MenuCategory {
+  FOOD
+  DRINK
+  DESSERT
+  OTHER
+}
+
+enum OrderStatus {
+  SUBMITTED
+  IN_KITCHEN
+  SERVED
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  MOBILE
+  NONE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  HOLIDAY
+  HALF_DAY
+}
+
+// ---------- Models ----------
+
+model User {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  role         Role
+  email        String?  @unique
+  phone        String
+  passwordHash String?
+  pinCodeHash  String?
+  pinSalt      String?
+  salaryAmount Float    @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations (reverse side, no FK column on this model)
+  ordersAsWaiter    Order[]        @relation("WaiterOrders")
+  ordersAsCashier   Order[]        @relation("CashierOrders")
+  ordersCancelled   Order[]        @relation("CancelledByUser")
+  attendanceRecords Attendance[]
+  paymentsReceived  UserPayment[]  @relation("PaymentRecipient")
+  payrollsProcessed UserPayment[]  @relation("PayrollProcessor")
+  loginAttempt      LoginAttempt?
+  refreshTokens     RefreshToken[]
+  auditLogs         AuditLog[]
+  adjustmentsProcessed PayrollAdjustment[] @relation("AdjustmentProcessor")
+
+  @@map("users")
+}
+
+model MenuItem {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  category    MenuCategory
+  price       Float
+  isAvailable Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("menu_items")
+}
+
+// Composite (embedded) type — mirrors the original embedded orderItemSchema
+type OrderItem {
+  menuItemId String @db.ObjectId
+  name       String // snapshot at sale time — never re-read from MenuItem later
+  unitPrice  Float // snapshot at sale time
+  quantity   Int
+  notes      String @default("")
+}
+
+model Order {
+  id                 String        @id @default(auto()) @map("_id") @db.ObjectId
+  clientOrderId      String        @unique
+  tableNumber        String
+  waiterId           String        @db.ObjectId
+  waiter             User          @relation("WaiterOrders", fields: [waiterId], references: [id])
+  cashierId          String?       @db.ObjectId
+  cashier            User?         @relation("CashierOrders", fields: [cashierId], references: [id])
+  items              OrderItem[]
+  totalAmount        Float
+  status             OrderStatus   @default(SUBMITTED)
+  isPaid             Boolean       @default(false)
+  paymentMethod      PaymentMethod @default(NONE)
+  cancellationReason String        @default("")
+  cancelledById      String?       @db.ObjectId
+  cancelledBy        User?         @relation("CancelledByUser", fields: [cancelledById], references: [id])
+  paidAt             DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([status, createdAt])
+  @@map("orders")
+}
+
+model Attendance {
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String           @db.ObjectId
+  user      User             @relation(fields: [userId], references: [id])
+  date      String // "YYYY-MM-DD", business-local
+  status    AttendanceStatus
+  note      String           @default("")
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([userId, date])
+  @@map("attendance")
+}
+
+model UserPayment {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String   @db.ObjectId
+  user          User     @relation("PaymentRecipient", fields: [userId], references: [id])
+  paymentDate   DateTime @default(now())
+  periodMonth   Int // 1–12, validate in application layer
+  periodYear    Int
+  baseSalary    Float
+  paidAmount    Float
+  processedById String   @db.ObjectId
+  processedBy   User     @relation("PayrollProcessor", fields: [processedById], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, periodMonth, periodYear])
+  @@map("user_payments")
+}
+
+model LoginAttempt {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @unique @db.ObjectId
+  user        User     @relation(fields: [userId], references: [id])
+  failedCount Int      @default(0)
+  lockedUntil Float    @default(0) // timestamp
+  updatedAt   DateTime @updatedAt
+
+  @@map("login_attempts")
+}
+
+model RefreshToken {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  tokenHash String   @unique // Store hash of refresh token
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  timestamp  DateTime @default(now())
+  actorId    String   @db.ObjectId
+  actor      User     @relation(fields: [actorId], references: [id])
+  actionType String
+  targetType String
+  targetId   String?  // Can be an order ID, user ID, etc.
+  details    Json?    // Structured context
+
+  @@index([timestamp])
+  @@index([actorId])
+  @@index([actionType])
+  @@map("audit_logs")
+}
+
+model PayrollAdjustment {
+  id               String      @id @default(auto()) @map("_id") @db.ObjectId
+  originalPaymentId String      @db.ObjectId
+  originalPayment   UserPayment @relation(fields: [originalPaymentId], references: [id])
+  adjustmentAmount Float
+  reason           String
+  processedById    String      @db.ObjectId
+  processedBy      User        @relation("AdjustmentProcessor", fields: [processedById], references: [id])
+  createdAt        DateTime    @default(now())
+
+  @@map("payroll_adjustments")
+}
