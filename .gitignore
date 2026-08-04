@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+
+# Prisma generated
+backend/prisma/generated/
+
+# Playwright
+e2e/test-results/
+e2e/playwright-report/
+
+# Docker volumes
+mongo-data/
