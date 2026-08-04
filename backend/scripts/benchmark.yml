@@ -1,0 +1,33 @@
+config:
+  target: 'http://localhost:5001'
+  phases:
+    - duration: 30
+      arrivalRate: 10
+      name: "Warm up"
+    - duration: 60
+      arrivalRate: 50
+      name: "Dinner Rush Load"
+  environments:
+    dev:
+      target: 'http://localhost:5001'
+
+scenarios:
+  - name: "Owner Analytics Polling"
+    weight: 2
+    flow:
+      - get:
+          url: "/api/analytics/sales/daily"
+      - get:
+          url: "/api/analytics/sales/trend"
+
+  - name: "Menu Catalog Fetch"
+    weight: 5
+    flow:
+      - get:
+          url: "/api/menu"
+
+  - name: "Cashier Order History"
+    weight: 5
+    flow:
+      - get:
+          url: "/api/orders"
