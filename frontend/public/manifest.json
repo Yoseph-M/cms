@@ -1,0 +1,10 @@
+{
+  "short_name": "CMS",
+  "name": "CMS",
+  "icons": [],
+  "start_url": "/",
+  "background_color": "#17130f",
+  "theme_color": "#17130f",
+  "display": "standalone",
+  "orientation": "landscape"
+}
