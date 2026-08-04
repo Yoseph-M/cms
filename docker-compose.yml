@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: mern_pos_mongo
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: pos_db
+    volumes:
+      - mongo_data:/data/db
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mern_pos_api
+    restart: always
+    ports:
+      - "5001:5001"
+    environment:
+      PORT: 5001
+      NODE_ENV: production
+      DATABASE_URL: "mongodb://mongo:27017/pos_db?authSource=admin"
+      JWT_SECRET: "super_secret_jwt_access_key_2026"
+      JWT_REFRESH_SECRET: "super_secret_jwt_refresh_key_2026"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      - mongo
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mern_pos_web
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  mongo_data:
