@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "mongodb"
-  url      = env("mongodb+srv://nulvobet_db_user:KF8SmoDKKNlhuZjt@cluster0.bvzgdrx.mongodb.net/cafeflow?retryWrites=true&w=majority&appName=Cluster0")
+  url      = env("DATABASE_URL")
 }
 
 // ---------- Enums ----------
@@ -149,6 +149,7 @@ model UserPayment {
   paidAmount    Float
   processedById String   @db.ObjectId
   processedBy   User     @relation("PayrollProcessor", fields: [processedById], references: [id])
+  adjustments   PayrollAdjustment[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
