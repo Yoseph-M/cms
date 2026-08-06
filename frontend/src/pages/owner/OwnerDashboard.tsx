@@ -16,6 +16,7 @@ import { LoadingState } from '../../components/common/LoadingState';
 import { LivePulse } from '../../components/common/LivePulse';
 import { useToastStore } from '../../store/toastStore';
 import { cn } from '../../lib/utils';
+import { formatCurrency } from '../../utils/currency';
 
 type StatTone = 'primary' | 'accent' | 'success' | 'muted';
 
@@ -170,14 +171,14 @@ export const OwnerDashboard: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatTile
           label="Today's Revenue"
-          value={`$${(dailySales?.totalRevenue ?? 0).toFixed(2)}`}
+          value={formatCurrency(dailySales?.totalRevenue ?? 0)}
           hint={`${dailySales?.orderCount ?? 0} orders settled`}
           icon={<DollarSign className="w-4 h-4" />}
           tone="primary"
         />
         <StatTile
           label="Average Ticket"
-          value={`$${(dailySales?.avgTicket ?? 0).toFixed(2)}`}
+          value={formatCurrency(dailySales?.avgTicket ?? 0)}
           hint="per table"
           icon={<TrendingUp className="w-4 h-4" />}
           tone="accent"
@@ -257,7 +258,7 @@ export const OwnerDashboard: React.FC = () => {
                         style={{ height: `${heightPercent}%` }}
                       />
                       <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-popover border border-border text-xs px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 whitespace-nowrap z-10 shadow-xl pointer-events-none transition-opacity">
-                        <p className="font-semibold tabular-nums">${t.revenue.toFixed(2)}</p>
+                        <p className="font-semibold tabular-nums">{formatCurrency(t.revenue)}</p>
                         <p className="text-[10px] text-muted-foreground font-mono">{t.date}</p>
                       </div>
                     </div>
