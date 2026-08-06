@@ -9,4 +9,11 @@ export const config = {
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'dev_jwt_refresh_secret_2026',
   jwtAccessExpiresIn: '15m',
   jwtRefreshExpiresIn: '7d',
+  /** Frontend origin for CORS in production */
+  webAppUrl: process.env.WEB_APP_URL || 'http://localhost:5173',
+  /** Extra origins (comma-separated), e.g. external ordering app */
+  extraCorsOrigins: (process.env.CORS_EXTRA_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
 };
