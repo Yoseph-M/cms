@@ -108,7 +108,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
         await axiosClient.patch(`/attendance/${popover.existing.id}`, { status: popStatus, note: popNote });
         setAttendance(prev => prev.map(r => r.id === popover.existing!.id ? { ...r, status: popStatus, note: popNote } : r));
       } else {
-        const res = await axiosClient.post('/attendance/log', {
+        const res = await axiosClient.post('/attendance', {
           userId: popover.staffId,
           date: popover.date,
           status: popStatus,
