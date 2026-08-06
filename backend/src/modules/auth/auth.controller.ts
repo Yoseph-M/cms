@@ -55,8 +55,6 @@ export async function getUsersByRole(req: Request, res: Response) {
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body;
 
-  const now = Date.now();
-
   const user = await prisma.user.findUnique({
     where: { email },
   });
@@ -72,58 +70,11 @@ export async function login(req: Request, res: Response) {
     return res.status(403).json({ error: 'Waiters must use PIN login on the mobile app.' });
   }
 
-  const lockoutState = await prisma.loginAttempt.findUnique({
-    where: { userId: user.id },
-  });
-
-  if (lockoutState) {
-    if (lockoutState.lockedUntil > now) {
-      const remainingMinutes = Math.ceil((lockoutState.lockedUntil - now) / 60000);
-      return res.status(429).json({
-        error: `Account locked due to too many failed login attempts. Try again in ${remainingMinutes} minutes.`,
-        lockedUntil: lockoutState.lockedUntil,
-        remainingMinutes,
-      });
-    } else if (lockoutState.lockedUntil !== 0) {
-      await prisma.loginAttempt.delete({ where: { userId: user.id } });
-    }
-  }
-
   const isPasswordValid = user.passwordHash ? await comparePassword(password, user.passwordHash) : false;
   logger.info({ email, isPasswordValid, passwordHashLength: user.passwordHash?.length }, 'Password comparison result');
-  
+
   if (!isPasswordValid) {
-    const currentLockout = await prisma.loginAttempt.findUnique({ where: { userId: user.id } });
-    const attempts = currentLockout ? currentLockout.failedCount + 1 : 1;
-    let lockedUntil = 0;
-
-    if (attempts >= 5) {
-      lockedUntil = now + 15 * 60 * 1000; // 15 mins
-    }
-
-    await prisma.loginAttempt.upsert({
-      where: { userId: user.id },
-      update: { failedCount: attempts, lockedUntil },
-      create: { userId: user.id, failedCount: attempts, lockedUntil },
-    });
-
-    if (attempts >= 5) {
-      return res.status(429).json({
-        error: 'Account locked due to too many failed login attempts. Try again in 15 minutes.',
-        lockedUntil,
-        remainingMinutes: 15,
-      });
-    } else {
-      return res.status(401).json({
-        error: `Invalid email or password. ${5 - attempts} attempts remaining.`,
-        attemptsRemaining: 5 - attempts,
-      });
-    }
-  }
-
-  // Clear lockout on success
-  if (lockoutState) {
-    await prisma.loginAttempt.delete({ where: { userId: user.id } });
+    return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
   const tokenPayload = {
@@ -334,6 +285,25 @@ export async function refreshToken(req: Request, res: Response) {
 }
 
 export async function logout(req: Request, res: Response) {
-  // Client discards JWT tokens
-  return res.json({ message: 'Logged out successfully.' });
+  const { refreshToken } = req.body || {};
+
+  if (refreshToken && typeof refreshToken === 'string') {
+    const tHash = hashToken(refreshToken);
+
+    const stored = await prisma.refreshToken.findUnique({ where: { tokenHash: tHash } });
+    if (stored && !stored.revoked) {
+      // Revoke this token and the rest of the user's refresh family (full session kill)
+      await prisma.refreshToken.updateMany({
+        where: { userId: stored.userId, revoked: false },
+        data: { revoked: true },
+      });
+    } else if (stored) {
+      await prisma.refreshToken.update({
+        where: { id: stored.id },
+        data: { revoked: true },
+      });
+    }
+  }
+
+  return res.status(200).json({ message: 'Logged out successfully.' });
 }
