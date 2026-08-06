@@ -15,7 +15,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   connect: () => {
     if (get().socket) return;
 
-    const socketInstance = io('/', {
+    const socketInstance = io('/live', {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       autoConnect: true,
