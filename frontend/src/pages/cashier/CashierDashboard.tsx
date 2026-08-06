@@ -12,6 +12,7 @@ import { Card } from '../../components/ui/Card';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
+import { formatCurrency } from '../../utils/currency';
 
 /* ─── Elapsed-time hook ─── */
 function useElapsedTime(createdAt: string) {
@@ -94,7 +95,7 @@ function OrderCard({
             {order.items.reduce((acc, i) => acc + i.quantity, 0)} items
           </p>
           <p className="font-mono font-bold text-foreground text-lg tabular-nums">
-            ${order.totalAmount.toFixed(2)}
+            {formatCurrency(order.totalAmount)}
           </p>
         </div>
       </div>
@@ -231,7 +232,7 @@ export const CashierDashboard: React.FC = () => {
           </div>
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 text-primary font-mono font-semibold tabular-nums">
             <span className="text-[10px] uppercase tracking-wider text-primary/70">Today</span>
-            ${todayRevenue.toFixed(2)}
+            {formatCurrency(todayRevenue)}
           </div>
         </div>
       </header>
@@ -305,7 +306,7 @@ export const CashierDashboard: React.FC = () => {
                           {item.notes && <p className="text-muted-foreground italic text-xs mt-0.5">{item.notes}</p>}
                         </div>
                       </div>
-                      <span className="font-mono text-muted-foreground">${(item.unitPrice * item.quantity).toFixed(2)}</span>
+                      <span className="font-mono text-muted-foreground">{formatCurrency(item.unitPrice * item.quantity)}</span>
                     </div>
                   ))}
                 </div>
@@ -314,7 +315,7 @@ export const CashierDashboard: React.FC = () => {
                   <div className="flex justify-between items-center text-lg">
                     <span className="font-medium text-muted-foreground">Total</span>
                     <span className="font-display font-semibold text-2xl font-mono text-foreground">
-                      ${selectedOrder.totalAmount.toFixed(2)}
+                      {formatCurrency(selectedOrder.totalAmount)}
                     </span>
                   </div>
 
@@ -402,7 +403,7 @@ export const CashierDashboard: React.FC = () => {
                 animate={{ opacity: 1 }}
                 className="flex-1 flex items-center justify-center text-muted-foreground p-6 text-center"
               >
-                Select an order from the queue to view details and process payment.
+                Select an order from the queue to view details and collect payment.
               </motion.div>
             )}
           </AnimatePresence>
