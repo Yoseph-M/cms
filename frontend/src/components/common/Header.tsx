@@ -10,7 +10,14 @@ import {
   User as UserIcon,
   Shield,
   ChevronDown,
+  CalendarDays,
 } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
+import {
+  getCalendarPreference,
+  setCalendarPreference,
+  type CalendarSystem,
+} from '../../utils/calendar';
 
 export const Header: React.FC = () => {
   const { user, logout } = useAuthStore();
@@ -18,6 +25,7 @@ export const Header: React.FC = () => {
   const { isOnline, pendingCount, processSyncQueue, isSyncing } = useOfflineSyncStore();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [calendar, setCalendar] = useState<CalendarSystem>(() => getCalendarPreference());
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,17 +39,35 @@ export const Header: React.FC = () => {
     return () => document.removeEventListener('mousedown', onClick);
   }, [menuOpen]);
 
+  useEffect(() => {
+    const onCal = (e: Event) => {
+      const detail = (e as CustomEvent<CalendarSystem>).detail;
+      if (detail) setCalendar(detail);
+    };
+    window.addEventListener('cafeflow:calendar-changed', onCal);
+    return () => window.removeEventListener('cafeflow:calendar-changed', onCal);
+  }, []);
+
+  const toggleCalendar = () => {
+    const next: CalendarSystem = calendar === 'gregorian' ? 'ethiopian' : 'gregorian';
+    setCalendarPreference(next);
+    setCalendar(next);
+  };
+
   return (
     <header className="h-16 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between">
       {/* Brand & Connection Status */}
       <div className="flex items-center gap-4 min-w-0">
-        <div className="min-w-0">
-          <h1 className="text-base font-display font-semibold text-foreground leading-tight truncate">
-            CMS
-          </h1>
-          <p className="text-[10px] text-muted-foreground font-mono tracking-wider truncate">
-            Management System · v1.0
-          </p>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="hidden sm:block w-0.5 h-8 rounded-full bg-gradient-to-b from-primary via-accent to-primary/30" />
+          <div className="min-w-0">
+            <h1 className="text-base font-display font-semibold text-foreground leading-tight truncate">
+              CMS
+            </h1>
+            <p className="text-[10px] text-muted-foreground font-mono tracking-wider truncate">
+              Management System · v1.0
+            </p>
+          </div>
         </div>
 
         <div className="hidden sm:block h-8 w-px bg-border mx-1" aria-hidden />
@@ -74,6 +100,19 @@ export const Header: React.FC = () => {
 
       {/* User menu */}
       <div className="flex items-center gap-2">
+        {(user?.role === 'OWNER' || user?.role === 'MANAGER') && (
+          <button
+            onClick={toggleCalendar}
+            title={calendar === 'gregorian' ? 'Switch to Ethiopian calendar' : 'Switch to Gregorian calendar'}
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            {calendar === 'gregorian' ? 'Gregorian' : 'Ethiopian'}
+          </button>
+        )}
+
+        {(user?.role === 'OWNER' || user?.role === 'MANAGER') && <NotificationBell />}
+
         {user && (
           <div className="relative" ref={menuRef}>
             <button
