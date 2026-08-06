@@ -93,12 +93,12 @@ paths:
       responses:
         '201':
           description: Order created
-  /api/payroll/run:
+  /api/payroll/entries:
     post:
-      summary: Run Payroll
-      description: Process payroll for a specific month and year.
+      summary: Record Payroll Entry
+      description: Manually record that a payroll payment was made outside the system.
       responses:
         '201':
-          description: Payroll processed
+          description: Payroll entry recorded
         '409':
-          description: Payroll already processed for period
+          description: Entry already recorded for this staff member and period
