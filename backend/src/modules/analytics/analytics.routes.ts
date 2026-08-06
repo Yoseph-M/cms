@@ -19,5 +19,6 @@ router.get('/payment-methods', AnalyticsController.getPaymentMethods);
 router.get('/cancellations', AnalyticsController.getCancellations);
 router.get('/staff-performance', AnalyticsController.getStaffPerformance);
 router.get('/audit-logs', AnalyticsController.getAuditLogs);
+router.get('/profit-loss', AnalyticsController.getProfitLoss);
 
 export default router;
