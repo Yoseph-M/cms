@@ -47,7 +47,8 @@ export function generateAccessToken(payload: TokenPayload): string {
 }
 
 export function generateRefreshToken(payload: TokenPayload): string {
-  return jwt.sign(payload, config.jwtRefreshSecret, { expiresIn: '7d' });
+  // jti ensures tokens issued in the same second are always unique (rotation)
+  return jwt.sign({ ...payload, jti: crypto.randomUUID() }, config.jwtRefreshSecret, { expiresIn: '7d' });
 }
 
 export function verifyAccessToken(token: string): TokenPayload {
