@@ -1,5 +1,6 @@
 import React from 'react';
 import { Order } from '../../types';
+import { formatCurrency } from '../../utils/currency';
 import { Printer, X, CheckCircle, Clock } from 'lucide-react';
 
 interface ReceiptModalProps {
@@ -95,7 +96,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
                     )}
                   </div>
                   <span className="font-semibold tabular-nums">
-                    ${(item.unitPrice * item.quantity).toFixed(2)}
+                    {formatCurrency(item.unitPrice * item.quantity)}
                   </span>
                 </div>
               ))}
@@ -106,7 +107,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
             <div className="flex justify-between font-extrabold text-base pt-1">
               <span className="uppercase tracking-wider">Total</span>
               <span className="text-emerald-700 tabular-nums">
-                ${order.totalAmount.toFixed(2)}
+                {formatCurrency(order.totalAmount)}
               </span>
             </div>
           </div>
