@@ -1,11 +1,16 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
+import { recordAudit } from '../../services/audit.service';
+import { createNotification } from '../../services/notification.service';
+import { Role } from '@prisma/client';
+
+const MANAGER_SCOPED_ROLES: Role[] = [Role.CASHIER, Role.WAITER, Role.COOKER, Role.BARISTA];
 
 export async function getPayrollHistory(req: AuthenticatedRequest, res: Response) {
-  const { periodMonth, periodYear, userId } = req.query;
+  const { periodMonth, periodYear, userId, scope } = req.query;
 
-  const whereClause: any = {};
+  const whereClause: Record<string, unknown> = {};
   if (periodMonth) whereClause.periodMonth = parseInt(periodMonth as string, 10);
   if (periodYear) whereClause.periodYear = parseInt(periodYear as string, 10);
   if (userId) whereClause.userId = userId as string;
@@ -15,121 +20,144 @@ export async function getPayrollHistory(req: AuthenticatedRequest, res: Response
     include: {
       user: { select: { id: true, name: true, role: true, salaryAmount: true } },
       processedBy: { select: { id: true, name: true } },
+      adjustments: {
+        include: { processedBy: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
 
-  return res.json(payments);
-}
+  let result = payments;
 
-export async function previewPayroll(req: AuthenticatedRequest, res: Response) {
-  const { userId, month, year } = req.params;
-  const pMonth = parseInt(month, 10);
-  const pYear = parseInt(year, 10);
-
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
-    return res.status(404).json({ error: 'User not found.' });
+  if (scope === 'manager' || req.user!.role === Role.MANAGER) {
+    result = payments.filter((p) => MANAGER_SCOPED_ROLES.includes(p.user.role));
   }
 
-  // Check if already paid for this period
-  const existingPayment = await prisma.userPayment.findUnique({
-    where: {
-      userId_periodMonth_periodYear: {
-        userId,
-        periodMonth: pMonth,
-        periodYear: pYear,
-      },
-    },
-  });
-
-  // Calculate attendance multiplier for the month
-  const startDate = `${pYear}-${String(pMonth).padStart(2, '0')}-01`;
-  const endDate = `${pYear}-${String(pMonth).padStart(2, '0')}-31`;
-
-  const attendanceRecords = await prisma.attendance.findMany({
-    where: {
-      userId,
-      date: { gte: startDate, lte: endDate },
-    },
-  });
-
-  let presentDays = 0;
-  let halfDays = 0;
-  let absentDays = 0;
-
-  for (const record of attendanceRecords) {
-    if (record.status === 'PRESENT' || record.status === 'HOLIDAY' || record.status === 'LEAVE') presentDays++;
-    else if (record.status === 'HALF_DAY') halfDays++;
-    else if (record.status === 'ABSENT') absentDays++;
-  }
-
-  const effectiveDays = presentDays + halfDays * 0.5;
-  const totalDays = 30; // standard month basis
-  const proRatedSalary = Math.round(((user.salaryAmount * Math.min(effectiveDays, totalDays)) / totalDays) * 100) / 100;
-
-  return res.json({
-    user: { id: user.id, name: user.name, role: user.role, baseSalary: user.salaryAmount },
-    periodMonth: pMonth,
-    periodYear: pYear,
-    alreadyPaid: !!existingPayment,
-    existingPayment,
-    attendanceSummary: { presentDays, halfDays, absentDays, totalLogged: attendanceRecords.length },
-    computedPayout: proRatedSalary > 0 ? proRatedSalary : user.salaryAmount,
-  });
-}
-
-export async function runPayroll(req: AuthenticatedRequest, res: Response) {
-  const { periodMonth, periodYear, userIds } = req.body;
-  const processedById = req.user!.userId;
-
-  // Fetch users to include
-  const usersToPay = await prisma.user.findMany({
-    where: userIds && userIds.length > 0 ? { id: { in: userIds }, isActive: true } : { isActive: true },
-  });
-
-  const createdPayments = [];
-  const errors = [];
-
-  for (const user of usersToPay) {
-    try {
-      const payment = await prisma.userPayment.create({
-        data: {
-          userId: user.id,
-          periodMonth,
-          periodYear,
-          baseSalary: user.salaryAmount,
-          paidAmount: user.salaryAmount, // Standard payout
-          processedById,
-        },
-        include: {
-          user: { select: { id: true, name: true, role: true } },
-        },
-      });
-      createdPayments.push(payment);
-    } catch (err: any) {
-      // Catch duplicate compound index [userId, periodMonth, periodYear]
-      errors.push({
-        userId: user.id,
-        userName: user.name,
-        error: `Payroll for ${user.name} for period ${periodMonth}/${periodYear} has already been processed and paid.`,
+  const ledger: Array<Record<string, unknown>> = [];
+  for (const payment of result) {
+    ledger.push({ ...payment, recordType: 'payment' });
+    for (const adj of payment.adjustments) {
+      ledger.push({
+        id: adj.id,
+        recordType: 'adjustment',
+        originalPaymentId: payment.id,
+        user: payment.user,
+        periodMonth: payment.periodMonth,
+        periodYear: payment.periodYear,
+        baseSalary: payment.baseSalary,
+        paidAmount: adj.adjustmentAmount,
+        reason: adj.reason,
+        note: payment.note,
+        processedBy: adj.processedBy,
+        createdAt: adj.createdAt,
       });
     }
   }
 
-  if (createdPayments.length === 0 && errors.length > 0) {
-    return res.status(400).json({
-      error: 'Payroll execution failed.',
-      details: errors,
+  return res.json(ledger);
+}
+
+/**
+ * GET /payroll/staff-ref/:userId — reference salaryAmount for the record form default.
+ */
+export async function getStaffPayrollRef(req: AuthenticatedRequest, res: Response) {
+  const { userId } = req.params;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, role: true, salaryAmount: true, isActive: true },
+  });
+  if (!user) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+  return res.json(user);
+}
+
+/**
+ * POST /payroll/entries — manually record that a payroll payment happened outside the system.
+ */
+export async function recordPayrollEntry(req: AuthenticatedRequest, res: Response) {
+  const { userId, periodMonth, periodYear, paidAmount, note } = req.body;
+  const processedById = req.user!.userId;
+  const callerRole = req.user!.role as Role;
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive) {
+    return res.status(404).json({ error: 'Staff member not found or inactive.' });
+  }
+
+  if (callerRole === Role.MANAGER && !MANAGER_SCOPED_ROLES.includes(user.role)) {
+    return res.status(403).json({ error: 'Managers can only record payroll for operational staff.' });
+  }
+
+  const amount = parseFloat(paidAmount);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return res.status(400).json({ error: 'paidAmount must be a non-negative number.' });
+  }
+
+  const existing = await prisma.userPayment.findUnique({
+    where: {
+      userId_periodMonth_periodYear: { userId, periodMonth, periodYear },
+    },
+  });
+  if (existing) {
+    return res.status(409).json({
+      error: 'Payroll recording failed.',
+      details: [
+        {
+          userId: user.id,
+          userName: user.name,
+          error: `A payroll entry for ${user.name} for period ${periodMonth}/${periodYear} has already been recorded.`,
+        },
+      ],
     });
   }
 
-  return res.status(201).json({
-    message: `Payroll run completed for ${createdPayments.length} staff member(s).`,
-    processedCount: createdPayments.length,
-    payments: createdPayments,
-    skippedOrErrors: errors,
-  });
+  try {
+    const payment = await prisma.userPayment.create({
+      data: {
+        userId,
+        periodMonth,
+        periodYear,
+        baseSalary: user.salaryAmount,
+        paidAmount: amount,
+        note: note || '',
+        processedById,
+      },
+      include: {
+        user: { select: { id: true, name: true, role: true } },
+        processedBy: { select: { id: true, name: true } },
+      },
+    });
+
+    await recordAudit({
+      actorId: processedById,
+      actionType: 'PAYROLL_RECORDED',
+      targetType: 'UserPayment',
+      targetId: payment.id,
+      details: {
+        userId: user.id,
+        userName: user.name,
+        periodMonth,
+        periodYear,
+        paidAmount: payment.paidAmount,
+        note: note || '',
+      },
+    });
+
+    return res.status(201).json(payment);
+  } catch {
+    return res.status(409).json({
+      error: 'Payroll recording failed.',
+      details: [
+        {
+          userId: user.id,
+          userName: user.name,
+          error: `A payroll entry for ${user.name} for period ${periodMonth}/${periodYear} has already been recorded.`,
+        },
+      ],
+    });
+  }
 }
 
 export async function createAdjustment(req: AuthenticatedRequest, res: Response) {
@@ -140,7 +168,6 @@ export async function createAdjustment(req: AuthenticatedRequest, res: Response)
     return res.status(400).json({ error: 'originalPaymentId, reason, and adjustmentAmount are required.' });
   }
 
-  // Ensure original payment exists
   const payment = await prisma.userPayment.findUnique({
     where: { id: originalPaymentId },
   });
@@ -149,7 +176,7 @@ export async function createAdjustment(req: AuthenticatedRequest, res: Response)
     return res.status(404).json({ error: 'Original payment not found.' });
   }
 
-  const adjustment = await (prisma as any).payrollAdjustment.create({
+  const adjustment = await prisma.payrollAdjustment.create({
     data: {
       originalPaymentId,
       reason,
@@ -158,7 +185,26 @@ export async function createAdjustment(req: AuthenticatedRequest, res: Response)
     },
     include: {
       processedBy: { select: { id: true, name: true, role: true } },
-    }
+    },
+  });
+
+  await recordAudit({
+    actorId: processedById,
+    actionType: 'PAYROLL_ADJUSTMENT',
+    targetType: 'PayrollAdjustment',
+    targetId: adjustment.id,
+    details: {
+      originalPaymentId,
+      adjustmentAmount: adjustment.adjustmentAmount,
+      reason,
+    },
+  });
+
+  await createNotification({
+    type: 'SYSTEM_OVERRIDE',
+    severity: 'info',
+    message: `Payroll adjustment of ${adjustment.adjustmentAmount} recorded for period ${payment.periodMonth}/${payment.periodYear}: ${reason}`,
+    relatedId: adjustment.id,
   });
 
   return res.status(201).json(adjustment);
