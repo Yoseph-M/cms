@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
-import { useAuthStore } from '../../store/authStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
-import { motion } from 'framer-motion';
+import { Sheet } from '../../components/ui/Sheet';
 import {
-  DollarSign, Plus, ChevronRight, Download
+  DollarSign, Plus
 } from 'lucide-react';
+import { formatCurrency } from '../../utils/currency';
+
+interface StaffUser {
+  id: string;
+  name: string;
+  role: string;
+  isActive: boolean;
+}
 
 interface PayrollRecord {
   id: string;
@@ -24,110 +31,183 @@ interface PayrollRecord {
 }
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const YEARS = [2024, 2025, 2026, 2027];
 const SCOPED_ROLES = ['CASHIER', 'WAITER', 'COOKER', 'BARISTA'];
 
 export const ManagerPayroll: React.FC = () => {
   const { addToast } = useToastStore();
-  const { user } = useAuthStore();
 
-  const [recentRuns, setRecentRuns] = useState<PayrollRecord[]>([]);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizMonth, setWizMonth] = useState(() => new Date().getMonth() + 1);
-  const [wizYear, setWizYear] = useState(() => new Date().getFullYear());
-  const [preview, setPreview] = useState<any[]>([]);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isLoadingRecent, setIsLoadingRecent] = useState(true);
+  const [ledger, setLedger] = useState<PayrollRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const fetchRecent = useCallback(async () => {
-    setIsLoadingRecent(true);
+  const [staff, setStaff] = useState<StaffUser[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [periodMonth, setPeriodMonth] = useState(() => new Date().getMonth() + 1);
+  const [periodYear, setPeriodYear] = useState(() => new Date().getFullYear());
+  const [paidAmount, setPaidAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [refSalary, setRefSalary] = useState<number | null>(null);
+  const [isLoadingRef, setIsLoadingRef] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchLedger = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const res = await axiosClient.get('/payroll');
-      // Filter to last 5 runs for scoped staff only
-      const scoped = res.data
-        .filter((r: PayrollRecord) => SCOPED_ROLES.includes(r.user?.role))
-        .slice(0, 5);
-      setRecentRuns(scoped);
+      const res = await axiosClient.get('/payroll?scope=manager');
+      setLedger(
+        res.data.filter((r: PayrollRecord) => SCOPED_ROLES.includes(r.user?.role))
+      );
     } catch {
-      // silent
+      setLedger([]);
     } finally {
-      setIsLoadingRecent(false);
+      setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchRecent(); }, [fetchRecent]);
-
-  const fetchPreview = async () => {
-    setIsLoadingPreview(true);
-    setPreview([]);
+  const fetchStaff = useCallback(async () => {
     try {
       const res = await axiosClient.get('/users');
-      const staff = res.data.filter((u: any) => u.isActive && SCOPED_ROLES.includes(u.role));
-      const previews = await Promise.all(
-        staff.map((s: any) =>
-          axiosClient.get(`/payroll/preview/${s.id}/${wizMonth}/${wizYear}`).then(r => r.data)
+      setStaff(
+        res.data.filter(
+          (u: StaffUser) => u.isActive && SCOPED_ROLES.includes(u.role)
         )
       );
-      setPreview(previews);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => { fetchLedger(); }, [fetchLedger]);
+
+  const resetForm = () => {
+    setUserId('');
+    setPeriodMonth(new Date().getMonth() + 1);
+    setPeriodYear(new Date().getFullYear());
+    setPaidAmount('');
+    setNote('');
+    setRefSalary(null);
+  };
+
+  const openForm = () => {
+    resetForm();
+    fetchStaff();
+    setFormOpen(true);
+  };
+
+  const handleStaffChange = async (id: string) => {
+    setUserId(id);
+    setRefSalary(null);
+    setPaidAmount('');
+    if (!id) return;
+    setIsLoadingRef(true);
+    try {
+      const res = await axiosClient.get(`/payroll/staff-ref/${id}`);
+      const salary = Number(res.data.salaryAmount) || 0;
+      setRefSalary(salary);
+      setPaidAmount(String(salary));
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Preview failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Could not load salary reference', message: err.response?.data?.error });
     } finally {
-      setIsLoadingPreview(false);
+      setIsLoadingRef(false);
     }
   };
 
-  const handleRunPayroll = async () => {
-    setIsRunning(true);
+  const handleRecordEntry = async () => {
+    if (!userId || !paidAmount) {
+      addToast({ type: 'error', title: 'Staff and paid amount are required.' });
+      return;
+    }
+    const amount = parseFloat(paidAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      addToast({ type: 'error', title: 'Paid amount must be a non-negative number.' });
+      return;
+    }
+    setIsSubmitting(true);
     try {
-      const res = await axiosClient.post('/payroll/run', { periodMonth: wizMonth, periodYear: wizYear });
-      addToast({ type: 'success', title: `Payroll run: ${res.data.processedCount} paid` });
-      setWizardOpen(false);
-      fetchRecent();
+      await axiosClient.post('/payroll/entries', {
+        userId,
+        periodMonth,
+        periodYear,
+        paidAmount: amount,
+        note: note.trim() || undefined,
+      });
+      addToast({ type: 'success', title: 'Payroll entry recorded' });
+      setFormOpen(false);
+      resetForm();
+      fetchLedger();
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Payroll run failed', message: err.response?.data?.error });
+      const detail = err.response?.data?.details?.[0]?.error;
+      addToast({
+        type: 'error',
+        title: 'Could not record entry',
+        message: detail || err.response?.data?.error,
+      });
     } finally {
-      setIsRunning(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Run Wizard Trigger */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-base font-bold">Run Payroll</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">Process monthly payroll for your staff roster.</p>
+              <CardTitle className="text-base font-bold">Record Payroll Entry</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Log what was actually paid for your staff roster.
+              </p>
             </div>
-            <Button id="manager-run-payroll-btn" onClick={() => { setWizardOpen(true); fetchPreview(); }}>
-              <Plus className="w-4 h-4 mr-2" />Run Payroll
+            <Button id="manager-record-payroll-btn" onClick={openForm}>
+              <Plus className="w-4 h-4 mr-2" />New Entry
             </Button>
           </div>
         </CardHeader>
       </Card>
 
-      {/* Recent Runs */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold">Recent Payroll Runs</CardTitle>
+          <CardTitle className="text-base font-bold">Payroll Ledger</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {isLoadingRecent ? (
+          {isLoading ? (
             <div className="p-4 space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-12 rounded-lg bg-secondary/40 animate-pulse" />)}
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-12 rounded-lg bg-secondary/40 animate-pulse" />
+              ))}
             </div>
-          ) : recentRuns.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground text-sm">No recent payroll runs.</div>
+          ) : ledger.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              <DollarSign className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              No payroll entries recorded yet.
+            </div>
           ) : (
             <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
+                  <th className="px-4 py-3 text-left font-semibold">Staff</th>
+                  <th className="px-4 py-3 text-left font-semibold">Period</th>
+                  <th className="px-4 py-3 text-right font-semibold">Paid</th>
+                  <th className="px-4 py-3 text-right font-semibold">Date</th>
+                </tr>
+              </thead>
               <tbody>
-                {recentRuns.map(row => (
-                  <tr key={row.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors">
+                {ledger.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors"
+                  >
                     <td className="px-4 py-3 font-medium">{row.user?.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">{MONTHS[row.periodMonth - 1]} {row.periodYear}</td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-primary">${row.paidAmount.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right text-xs text-muted-foreground">{new Date(row.createdAt).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {MONTHS[row.periodMonth - 1]} {row.periodYear}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-primary">
+                      {formatCurrency(row.paidAmount)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                      {new Date(row.createdAt).toLocaleDateString()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -136,48 +216,111 @@ export const ManagerPayroll: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Wizard Modal */}
-      {wizardOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm flex items-start justify-center p-4 pt-16">
-          <div className="bg-card border border-border rounded-xl shadow-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-            <h2 className="text-lg font-bold mb-4">Run Payroll</h2>
-            <div className="flex gap-3 mb-6">
-              <Select value={String(wizMonth)} onChange={e => setWizMonth(Number(e.target.value))} className="flex-1">
-                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </Select>
-              <Select value={String(wizYear)} onChange={e => setWizYear(Number(e.target.value))} className="w-28">
-                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-              </Select>
-              <Button variant="outline" onClick={fetchPreview} disabled={isLoadingPreview}>
-                {isLoadingPreview ? 'Loading...' : 'Preview'}
-              </Button>
-            </div>
-            {preview.length > 0 && (
-              <div className="space-y-2 mb-6">
-                {preview.map(p => (
-                  <div key={p.user?.id} className={`flex items-center justify-between p-3 rounded-lg border ${p.alreadyPaid ? 'border-amber-500/40 bg-amber-500/10' : 'border-border bg-secondary/20'}`}>
-                    <div>
-                      <p className="font-medium text-sm">{p.user?.name}</p>
-                      <p className="text-xs text-muted-foreground">{p.user?.role}</p>
-                    </div>
-                    {p.alreadyPaid ? (
-                      <Badge variant="warning">Already Paid</Badge>
-                    ) : (
-                      <span className="font-mono font-bold text-primary">${p.computedPayout?.toFixed(2)}</span>
-                    )}
-                  </div>
+      <Sheet
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title="Record Payroll Entry"
+        description="Log what was actually paid for a staff member and period."
+        footer={
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setFormOpen(false)} className="flex-1">Cancel</Button>
+            <Button
+              onClick={handleRecordEntry}
+              disabled={isSubmitting || !userId || !paidAmount}
+              className="flex-1"
+            >
+              {isSubmitting ? 'Saving...' : 'Record Entry'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-5">
+          <div>
+            <label htmlFor="mgr-payroll-staff" className="text-sm font-medium text-foreground block mb-1.5">
+              Staff <span className="text-destructive">*</span>
+            </label>
+            <Select
+              id="mgr-payroll-staff"
+              value={userId}
+              onChange={(e) => handleStaffChange(e.target.value)}
+            >
+              <option value="">Select staff member</option>
+              {staff.map((s) => (
+                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label htmlFor="mgr-payroll-month" className="text-sm font-medium text-foreground block mb-1.5">
+                Period Month
+              </label>
+              <Select
+                id="mgr-payroll-month"
+                value={String(periodMonth)}
+                onChange={(e) => setPeriodMonth(Number(e.target.value))}
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={m} value={i + 1}>{m}</option>
                 ))}
-              </div>
-            )}
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setWizardOpen(false)} className="flex-1">Cancel</Button>
-              <Button onClick={handleRunPayroll} disabled={isRunning} className="flex-1">
-                {isRunning ? 'Processing...' : 'Confirm & Run'}
-              </Button>
+              </Select>
+            </div>
+            <div className="w-28">
+              <label htmlFor="mgr-payroll-year" className="text-sm font-medium text-foreground block mb-1.5">
+                Year
+              </label>
+              <Select
+                id="mgr-payroll-year"
+                value={String(periodYear)}
+                onChange={(e) => setPeriodYear(Number(e.target.value))}
+              >
+                {YEARS.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </Select>
             </div>
           </div>
+
+          <div>
+            <label htmlFor="mgr-payroll-amount" className="text-sm font-medium text-foreground block mb-1.5">
+              Paid Amount (ETB) <span className="text-destructive">*</span>
+            </label>
+            {userId && (
+              <p className="text-xs text-muted-foreground mb-1.5">
+                {isLoadingRef
+                  ? 'Loading reference salary…'
+                  : refSalary !== null
+                    ? `Suggested reference salary — edit to what you actually paid (${formatCurrency(refSalary)})`
+                    : 'Suggested reference salary — edit to what you actually paid'}
+              </p>
+            )}
+            <Input
+              id="mgr-payroll-amount"
+              type="number"
+              step="0.01"
+              min="0"
+              value={paidAmount}
+              onChange={(e) => setPaidAmount(e.target.value)}
+              placeholder="0.00"
+              className="font-mono"
+              disabled={isLoadingRef}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="mgr-payroll-note" className="text-sm font-medium text-foreground block mb-1.5">
+              Note <span className="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            <Input
+              id="mgr-payroll-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g. Paid in cash on the 28th"
+            />
+          </div>
         </div>
-      )}
+      </Sheet>
     </div>
   );
 };
