@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useAuthStore } from '../../store/authStore';
@@ -13,6 +13,7 @@ import {
   Users, Plus, Search, Pencil, ShieldOff, ShieldCheck,
   KeyRound, Copy, X, Eye, EyeOff, AlertTriangle
 } from 'lucide-react';
+import { formatCurrency } from '../../utils/currency';
 
 interface User {
   id: string;
@@ -75,13 +76,19 @@ export const OwnerStaff: React.FC = () => {
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
-  const filteredUsers = users.filter(u => {
-    const matchRole = roleFilter === 'All' || u.role === roleFilter;
-    const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? u.isActive : !u.isActive);
-    const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) ||
-      (u.email || '').toLowerCase().includes(search.toLowerCase());
-    return matchRole && matchStatus && matchSearch;
-  });
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((u) => {
+        const matchRole = roleFilter === 'All' || u.role === roleFilter;
+        const matchStatus =
+          statusFilter === 'all' || (statusFilter === 'active' ? u.isActive : !u.isActive);
+        const matchSearch =
+          u.name.toLowerCase().includes(search.toLowerCase()) ||
+          (u.email || '').toLowerCase().includes(search.toLowerCase());
+        return matchRole && matchStatus && matchSearch;
+      }),
+    [users, roleFilter, statusFilter, search]
+  );
 
   const openAdd = () => {
     setEditingUser(null);
@@ -243,7 +250,7 @@ export const OwnerStaff: React.FC = () => {
                     <div>{user.phone}</div>
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell text-right font-mono text-sm">
-                    ${user.salaryAmount.toLocaleString()}
+                    {formatCurrency(user.salaryAmount)}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${user.isActive ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/40' : 'bg-secondary text-muted-foreground border-border'}`}>
@@ -297,7 +304,7 @@ export const OwnerStaff: React.FC = () => {
                   { id: 'sf-name', label: 'Full Name', key: 'name', placeholder: 'e.g. Alice Johnson', required: true },
                   { id: 'sf-phone', label: 'Phone', key: 'phone', placeholder: '+1 555 0001', required: true },
                   { id: 'sf-email', label: 'Email', key: 'email', placeholder: 'staff@cafe.com' },
-                  { id: 'sf-salary', label: 'Monthly Salary ($)', key: 'salaryAmount', placeholder: '2500' },
+                  { id: 'sf-salary', label: 'Monthly Salary (ETB)', key: 'salaryAmount', placeholder: '2500' },
                 ].map(field => (
                   <div key={field.key}>
                     <label htmlFor={field.id} className="text-sm font-medium text-foreground block mb-1.5">
