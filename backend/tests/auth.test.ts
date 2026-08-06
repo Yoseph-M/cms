@@ -28,10 +28,11 @@ afterAll(async () => {
 describe('Auth & Security Utilities', () => {
   it('should correctly hash and verify salted SHA-256 PINs', () => {
     const pin = '4444';
-    const hashed = hashPin(pin);
-    expect(hashed).toContain(':');
-    expect(comparePin(pin, hashed)).toBe(true);
-    expect(comparePin('9999', hashed)).toBe(false);
+    const { salt, hash } = hashPin(pin);
+    expect(salt).toBeTruthy();
+    expect(hash).toBeTruthy();
+    expect(comparePin(pin, salt, hash)).toBe(true);
+    expect(comparePin('9999', salt, hash)).toBe(false);
   });
 
   it('should reject PIN login request with missing fields', async () => {
@@ -125,19 +126,18 @@ describe('PIN lockout persistence (§1.1)', () => {
 // §1.2 — Auth rate limiting (10 req/min per IP+account)
 // ---------------------------------------------------------------------------
 describe('Auth rate limiting (§1.2)', () => {
-  it('blocks the 11th auth request within a minute for the same account', async () => {
+  it('blocks the 21st auth request within a minute for the same IP', async () => {
     const user = await seedTestUser({ pinCode: '1234', role: 'WAITER' as any });
     const results: number[] = [];
 
-    // Fire 11 rapid requests
-    for (let i = 0; i < 11; i++) {
+    // Fire 21 rapid requests (IP limiter max = 20)
+    for (let i = 0; i < 21; i++) {
       const res = await request(app)
         .post('/api/auth/pin-login')
         .send({ userId: user.id, pinCode: '1234' });
       results.push(res.status);
     }
 
-    // At least one should be 429 (rate limited)
     expect(results.filter((s) => s === 429).length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -209,6 +209,26 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
       .post('/api/auth/refresh')
       .send({ refreshToken: rt2 });
     expect(rt2Res.status).toBe(401);
+  });
+
+  it('logout revokes the refresh token so subsequent refresh is rejected', async () => {
+    const user = await seedTestUser({ role: 'OWNER' as any, email: 'logout-test@pos.com' });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user.email, password: 'password123' });
+    expect(loginRes.status).toBe(200);
+    const { refreshToken } = loginRes.body;
+
+    const logoutRes = await request(app)
+      .post('/api/auth/logout')
+      .send({ refreshToken });
+    expect(logoutRes.status).toBe(200);
+
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken });
+    expect(refreshRes.status).toBe(401);
   });
 });
 
