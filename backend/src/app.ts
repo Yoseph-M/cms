@@ -1,6 +1,8 @@
+import { config } from './config';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
@@ -10,11 +12,15 @@ import attendanceRoutes from './modules/attendance/attendance.routes';
 import payrollRoutes from './modules/payroll/payroll.routes';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 import printersRoutes from './modules/printers/printers.routes';
+import auditRoutes from './modules/audit/audit.routes';
+import expensesRoutes from './modules/expenses/expenses.routes';
+import notificationsRoutes from './modules/notifications/notifications.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { prisma } from './services/prisma.service';
 import { hashPin, hashPassword } from './utils/security';
 import { Role, MenuCategory } from '@prisma/client';
 import { logger, requestContext } from './utils/logger';
+import { ensureDefaultPrinters } from './services/printer.service';
 import crypto from 'crypto';
 import * as Sentry from '@sentry/node';
 import client from 'prom-client';
@@ -34,8 +40,31 @@ Sentry.init({
 const collectDefaultMetrics = client.collectDefaultMetrics;
 collectDefaultMetrics({ register: client.register });
 
+const allowedOrigins =
+  config.nodeEnv === 'production'
+    ? [config.webAppUrl, ...config.extraCorsOrigins].filter(Boolean)
+    : [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        config.webAppUrl,
+        ...config.extraCorsOrigins,
+      ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i);
+
 app.use(helmet());
-app.use(cors({ origin: '*', credentials: true }));
+app.use(compression());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow non-browser clients (curl, server-to-server) with no Origin header
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Request ID & Context Threading
@@ -65,6 +94,9 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings/printers', printersRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/expenses', expensesRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
@@ -97,11 +129,11 @@ export async function seedInitialData() {
           name: 'Alice Owner',
           role: Role.OWNER,
           email: 'owner@pos.com',
-          phone: '+15550001',
+          phone: '+251911000001',
           passwordHash: defaultPasswordHash,
           pinCodeHash: ownerPin.hash,
           pinSalt: ownerPin.salt,
-          salaryAmount: 5000,
+          salaryAmount: 45000,
         },
       });
 
@@ -111,11 +143,11 @@ export async function seedInitialData() {
           name: 'Bob Manager',
           role: Role.MANAGER,
           email: 'manager@pos.com',
-          phone: '+15550002',
+          phone: '+251911000002',
           passwordHash: defaultPasswordHash,
           pinCodeHash: managerPin.hash,
           pinSalt: managerPin.salt,
-          salaryAmount: 3500,
+          salaryAmount: 30000,
         },
       });
 
@@ -125,11 +157,11 @@ export async function seedInitialData() {
           name: 'Charlie Cashier',
           role: Role.CASHIER,
           email: 'cashier@pos.com',
-          phone: '+15550003',
+          phone: '+251911000003',
           passwordHash: defaultPasswordHash,
           pinCodeHash: cashierPin.hash,
           pinSalt: cashierPin.salt,
-          salaryAmount: 2500,
+          salaryAmount: 18000,
         },
       });
 
@@ -139,52 +171,38 @@ export async function seedInitialData() {
           name: 'David Waiter',
           role: Role.WAITER,
           email: 'waiter@pos.com',
-          phone: '+15550004',
+          phone: '+251911000004',
           pinCodeHash: waiterPin.hash,
           pinSalt: waiterPin.salt,
-          salaryAmount: 2000,
+          salaryAmount: 12000,
         },
       });
 
       logger.info({ owner: owner.email, manager: manager.email, cashier: cashier.email, waiter: waiter.email }, 'Seeded default staff accounts.');
     }
 
-    // Backfill passwordHash for existing web-role users who are missing it
-    const allWebRoles = await prisma.user.findMany({
-      where: {
-        role: { in: [Role.OWNER, Role.MANAGER, Role.CASHIER] },
-      },
-    });
-    const webRolesWithoutPassword = allWebRoles.filter(u => !u.passwordHash);
-    if (webRolesWithoutPassword.length > 0) {
-      const backfillHash = await hashPassword('password123');
-      for (const user of webRolesWithoutPassword) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { passwordHash: backfillHash },
-        });
-        logger.info({ name: user.name, role: user.role }, 'Backfilled passwordHash for user.');
-      }
-      logger.info(`Backfilled passwordHash for ${webRolesWithoutPassword.length} user(s). Default password: password123`);
-    }
+    // Intentionally no password backfill here — never auto-set password123 on existing accounts.
+    // Demo users above are created with passwords only on a fresh empty database.
 
     const menuCount = await prisma.menuItem.count();
     if (menuCount === 0) {
       logger.info('Seeding initial menu items...');
       await prisma.menuItem.createMany({
         data: [
-          { name: 'Wagyu Gourmet Burger', category: MenuCategory.FOOD, price: 18.50, isAvailable: true },
-          { name: 'Truffle Fries & Aioli', category: MenuCategory.FOOD, price: 9.00, isAvailable: true },
-          { name: 'Woodfired Margherita Pizza', category: MenuCategory.FOOD, price: 16.00, isAvailable: true },
-          { name: 'Artisanal Iced Matcha Latte', category: MenuCategory.DRINK, price: 6.50, isAvailable: true },
-          { name: 'Fresh Sparkling Lemonade', category: MenuCategory.DRINK, price: 4.50, isAvailable: true },
-          { name: 'Espresso Double Shot', category: MenuCategory.DRINK, price: 3.80, isAvailable: true },
-          { name: 'Molten Chocolate Lava Cake', category: MenuCategory.DESSERT, price: 8.50, isAvailable: true },
-          { name: 'Classic Tiramisu', category: MenuCategory.DESSERT, price: 7.50, isAvailable: true },
+          { name: 'Wagyu Gourmet Burger', category: MenuCategory.FOOD, price: 185.0, isAvailable: true },
+          { name: 'Truffle Fries & Aioli', category: MenuCategory.FOOD, price: 95.0, isAvailable: true },
+          { name: 'Woodfired Margherita Pizza', category: MenuCategory.FOOD, price: 160.0, isAvailable: true },
+          { name: 'Artisanal Iced Matcha Latte', category: MenuCategory.DRINK, price: 65.0, isAvailable: true },
+          { name: 'Fresh Sparkling Lemonade', category: MenuCategory.DRINK, price: 45.0, isAvailable: true },
+          { name: 'Espresso Double Shot', category: MenuCategory.DRINK, price: 38.0, isAvailable: true },
+          { name: 'Molten Chocolate Lava Cake', category: MenuCategory.DESSERT, price: 85.0, isAvailable: true },
+          { name: 'Classic Tiramisu', category: MenuCategory.DESSERT, price: 75.0, isAvailable: true },
         ],
       });
       logger.info('Seeded default menu items.');
     }
+
+    await ensureDefaultPrinters();
   } catch (err) {
     logger.warn({ err }, 'Seed check warning (DB might be connecting or uninitialized).');
   }
