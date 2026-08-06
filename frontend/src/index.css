@@ -56,6 +56,18 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    background-image:
+      radial-gradient(
+        ellipse 80% 50% at 50% -10%,
+        hsl(var(--primary) / 0.06),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 100% 100%,
+        hsl(var(--accent) / 0.04),
+        transparent 60%
+      );
+    background-attachment: fixed;
   }
 
   /* Better default focus visibility */
