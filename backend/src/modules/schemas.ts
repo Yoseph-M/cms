@@ -99,8 +99,13 @@ export const bulkAttendanceSchema = z.object({
 });
 
 // ---------- Payroll Schemas ----------
-export const payrollRunSchema = z.object({
+export const payrollEntrySchema = z.object({
+  userId: z.string().min(1, 'userId is required'),
   periodMonth: z.number().int().min(1, 'Month must be between 1 and 12').max(12),
   periodYear: z.number().int().min(2000).max(2100),
-  userIds: z.array(z.string()).optional(),
+  paidAmount: z.number().min(0, 'paidAmount must be non-negative'),
+  note: z.string().optional(),
 });
+
+/** @deprecated Use payrollEntrySchema — kept alias for any leftover imports */
+export const payrollRunSchema = payrollEntrySchema;
