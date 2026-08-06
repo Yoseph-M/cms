@@ -12,7 +12,9 @@
 import request from 'supertest';
 import { Role } from '@prisma/client';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
-import { v4 as uuid } from 'uuid';
+import crypto from 'crypto';
+
+const uuid = () => crypto.randomUUID();
 
 const app = getTestApp();
 
@@ -133,7 +135,7 @@ const ROUTE_SPECS: RouteSpec[] = [
   {
     method: 'POST',
     path: '/api/orders',
-    allowedRoles: [Role.WAITER, Role.CASHIER, Role.MANAGER, Role.OWNER],
+    allowedRoles: [Role.WAITER],
     body: () => ({
       clientOrderId: uuid(),
       tableNumber: 'T1',
@@ -224,16 +226,39 @@ const ROUTE_SPECS: RouteSpec[] = [
   },
   {
     method: 'GET',
-    path: `/api/payroll/preview/${fakeId}/1/2026`,
+    path: `/api/payroll/staff-ref/${fakeId}`,
     allowedRoles: [Role.OWNER, Role.MANAGER],
-    description: 'Preview payroll',
+    description: 'Staff payroll reference',
   },
   {
     method: 'POST',
-    path: '/api/payroll/run',
+    path: '/api/payroll/entries',
     allowedRoles: [Role.OWNER, Role.MANAGER],
-    body: { periodMonth: 1, periodYear: 2026 },
-    description: 'Run payroll',
+    body: { userId: fakeId, periodMonth: 1, periodYear: 2026, paidAmount: 1000 },
+    description: 'Record payroll entry',
+  },
+
+  // --- Expenses ---
+  {
+    method: 'GET',
+    path: '/api/expenses',
+    allowedRoles: [Role.OWNER, Role.MANAGER],
+    description: 'List expenses',
+  },
+  {
+    method: 'POST',
+    path: '/api/expenses',
+    allowedRoles: [Role.OWNER, Role.MANAGER],
+    body: { category: 'RENT', amount: 5000, description: 'Monthly rent', date: '2026-01-01' },
+    description: 'Create expense',
+  },
+
+  // --- Notifications ---
+  {
+    method: 'GET',
+    path: '/api/notifications',
+    allowedRoles: [Role.OWNER, Role.MANAGER],
+    description: 'List notifications',
   },
 
   // --- Analytics ---
@@ -254,6 +279,12 @@ const ROUTE_SPECS: RouteSpec[] = [
     path: '/api/analytics/top-items',
     allowedRoles: [Role.OWNER, Role.MANAGER],
     description: 'Top items',
+  },
+  {
+    method: 'GET',
+    path: '/api/analytics/profit-loss',
+    allowedRoles: [Role.OWNER, Role.MANAGER],
+    description: 'Profit and loss',
   },
   {
     method: 'GET',
