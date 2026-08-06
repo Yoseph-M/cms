@@ -1,14 +1,21 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { z } from 'zod';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
+import { useSocketStore } from '../../store/socketStore';
 import { Card, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Switch } from '../ui/Switch';
 import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
+import { Sheet } from '../ui/Sheet';
+import { AlertDialog } from '../ui/AlertDialog';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, UtensilsCrossed, Search, X, Upload, ImageIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, ImageIcon } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { formatCurrency } from '../../utils/currency';
+import { useMenuQuery } from '../../hooks/useCachedQueries';
 
 interface MenuItem {
   id: string;
@@ -21,29 +28,46 @@ interface MenuItem {
 
 const CATEGORIES = ['All', 'FOOD', 'DRINK', 'DESSERT', 'OTHER'] as const;
 
-const CATEGORY_COLORS: Record<string, any> = {
+const CATEGORY_COLORS: Record<string, 'success' | 'default' | 'warning' | 'neutral'> = {
   FOOD: 'success',
   DRINK: 'default',
   DESSERT: 'warning',
   OTHER: 'neutral',
 };
 
-const EMPTY_FORM = { name: '', category: 'FOOD' as const, price: '', imageUrl: '' };
+const menuFormSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required.'),
+  category: z.enum(['FOOD', 'DRINK', 'DESSERT', 'OTHER'], { message: 'Category is required.' }),
+  price: z.coerce.number().positive('Price must be a positive number.'),
+});
+
+const EMPTY_FORM = {
+  name: '',
+  category: 'FOOD' as MenuItem['category'],
+  price: '',
+  imageUrl: '',
+  isAvailable: true,
+};
 
 interface MenuCatalogProps {
-  canEdit?: boolean; // false for read-only manager view override (currently all can edit)
+  canEdit?: boolean;
 }
 
 export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
   const { addToast } = useToastStore();
+  const queryClient = useQueryClient();
 
-  const [items, setItems] = useState<MenuItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const menuQuery = useMenuQuery();
+  const items: MenuItem[] = menuQuery.data ?? [];
+  const isLoading = menuQuery.isLoading;
+  const error = menuQuery.error
+    ? ((menuQuery.error as { response?: { data?: { error?: string } } }).response?.data?.error ||
+        'Failed to load menu.')
+    : null;
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
-  const searchDebounce = useRef<NodeJS.Timeout>();
+  const searchDebounce = useRef<ReturnType<typeof setTimeout>>();
 
   const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
@@ -57,22 +81,21 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchItems = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await axiosClient.get('/menu');
-      setItems(res.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load menu items.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const invalidateMenu = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  }, [queryClient]);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  const { socket } = useSocketStore();
+  useEffect(() => {
+    if (!socket) return;
+    const onAvailability = () => invalidateMenu();
+    socket.on('menu:availabilityChanged', onAvailability);
+    return () => {
+      socket.off('menu:availabilityChanged', onAvailability);
+    };
+  }, [socket, invalidateMenu]);
 
-  const filteredItems = items.filter(item => {
+  const filteredItems = items.filter((item) => {
     const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
     const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
     return matchesCategory && matchesSearch;
@@ -84,14 +107,21 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
   };
 
   const validateForm = () => {
-    const errors: Record<string, string> = {};
-    if (!form.name.trim()) errors.name = 'Name is required.';
-    if (!form.category) errors.category = 'Category is required.';
-    const price = parseFloat(form.price as string);
-    if (isNaN(price) || price <= 0) errors.price = 'Price must be a positive number.';
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+    const result = menuFormSchema.safeParse(form);
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      result.error.issues.forEach((issue) => {
+        const key = issue.path[0]?.toString();
+        if (key) errors[key] = issue.message;
+      });
+      setFormErrors(errors);
+      return false;
+    }
+    setFormErrors({});
+    return true;
   };
+
+  const isFormValid = menuFormSchema.safeParse(form).success;
 
   const openAdd = () => {
     setEditingItem(null);
@@ -103,7 +133,13 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
 
   const openEdit = (item: MenuItem) => {
     setEditingItem(item);
-    setForm({ name: item.name, category: item.category, price: String(item.price), imageUrl: item.imageUrl || '' });
+    setForm({
+      name: item.name,
+      category: item.category,
+      price: String(item.price),
+      imageUrl: item.imageUrl || '',
+      isAvailable: item.isAvailable,
+    });
     setFormErrors({});
     setImagePreview(item.imageUrl || null);
     setSlideOverOpen(true);
@@ -113,25 +149,26 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     if (!validateForm()) return;
     setIsSaving(true);
     try {
+      const parsed = menuFormSchema.parse(form);
       const payload = {
-        name: form.name.trim(),
-        category: form.category,
-        price: parseFloat(form.price as string),
+        name: parsed.name,
+        category: parsed.category,
+        price: parsed.price,
         imageUrl: form.imageUrl || undefined,
-        isAvailable: true,
+        isAvailable: form.isAvailable,
       };
       if (editingItem) {
-        const res = await axiosClient.patch(`/menu/${editingItem.id}`, payload);
-        setItems(prev => prev.map(i => i.id === editingItem.id ? res.data : i));
+        await axiosClient.patch(`/menu/${editingItem.id}`, payload);
         addToast({ type: 'success', title: 'Item updated' });
       } else {
-        const res = await axiosClient.post('/menu', payload);
-        setItems(prev => [res.data, ...prev]);
+        await axiosClient.post('/menu', payload);
         addToast({ type: 'success', title: 'Item added to menu' });
       }
+      invalidateMenu();
       setSlideOverOpen(false);
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Save failed', message: err.response?.data?.error });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      addToast({ type: 'error', title: 'Save failed', message: e.response?.data?.error });
     } finally {
       setIsSaving(false);
     }
@@ -139,14 +176,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
 
   const handleAvailabilityToggle = async (item: MenuItem) => {
     const prev = item.isAvailable;
-    // Optimistic update
-    setItems(all => all.map(i => i.id === item.id ? { ...i, isAvailable: !prev } : i));
     try {
       await axiosClient.patch(`/menu/${item.id}/availability`, { isAvailable: !prev });
-    } catch (err: any) {
-      // Rollback
-      setItems(all => all.map(i => i.id === item.id ? { ...i, isAvailable: prev } : i));
-      addToast({ type: 'error', title: 'Availability update failed', message: err.response?.data?.error });
+      invalidateMenu();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      addToast({ type: 'error', title: 'Availability update failed', message: e.response?.data?.error });
     }
   };
 
@@ -155,11 +190,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     setIsDeleting(true);
     try {
       await axiosClient.delete(`/menu/${deleteTarget.id}`);
-      setItems(prev => prev.filter(i => i.id !== deleteTarget.id));
+      invalidateMenu();
       addToast({ type: 'success', title: `${deleteTarget.name} removed` });
       setDeleteTarget(null);
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Delete failed', message: err.response?.data?.error });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      addToast({ type: 'error', title: 'Delete failed', message: e.response?.data?.error });
     } finally {
       setIsDeleting(false);
     }
@@ -172,14 +208,13 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     reader.onloadend = () => {
       const dataUrl = reader.result as string;
       setImagePreview(dataUrl);
-      setForm(f => ({ ...f, imageUrl: dataUrl }));
+      setForm((f) => ({ ...f, imageUrl: dataUrl }));
     };
     reader.readAsDataURL(file);
   };
 
   return (
     <div className="space-y-6">
-      {/* Header row */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -199,9 +234,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
         )}
       </div>
 
-      {/* Category tabs */}
       <div className="flex gap-1 p-1 bg-secondary/40 rounded-lg w-fit border border-border/50">
-        {CATEGORIES.map(cat => (
+        {CATEGORIES.map((cat) => (
           <button
             key={cat}
             onClick={() => setCategoryFilter(cat)}
@@ -211,12 +245,11 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            {cat}
+            {cat === 'All' ? 'All' : cat.charAt(0) + cat.slice(1).toLowerCase()}
           </button>
         ))}
       </div>
 
-      {/* Grid */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -226,7 +259,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       ) : error ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <p className="text-destructive font-medium">{error}</p>
-          <Button variant="outline" size="sm" onClick={fetchItems}>Retry</Button>
+          <Button variant="outline" size="sm" onClick={() => void menuQuery.refetch()}>Retry</Button>
         </div>
       ) : filteredItems.length === 0 ? (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -234,9 +267,11 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
             <UtensilsCrossed className="w-7 h-7 text-muted-foreground" />
           </div>
           <div>
-            <p className="font-semibold text-foreground">No menu items found</p>
+            <p className="font-semibold text-foreground">
+              {items.length === 0 ? 'No menu items yet — add your first item' : 'No menu items found'}
+            </p>
             <p className="text-sm text-muted-foreground mt-1">
-              {search ? 'Try a different search term.' : 'Add your first item to get started.'}
+              {search ? 'Try a different search term.' : 'Build your catalog with photos, prices, and categories.'}
             </p>
           </div>
           {canEdit && !search && (
@@ -251,7 +286,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
           variants={{ show: { transition: { staggerChildren: 0.04 } } }}
         >
           <AnimatePresence>
-            {filteredItems.map(item => (
+            {filteredItems.map((item) => (
               <motion.div
                 key={item.id}
                 layout
@@ -262,7 +297,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
                 exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
               >
                 <Card className="overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-                  {/* Image or placeholder */}
                   <div className="w-full h-28 bg-secondary/40 flex items-center justify-center overflow-hidden">
                     {item.imageUrl ? (
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
@@ -274,7 +308,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
                     <div>
                       <p className="font-semibold text-sm text-foreground truncate">{item.name}</p>
                       <p className="text-base font-mono font-bold text-primary mt-0.5">
-                        ${item.price.toFixed(2)}
+                        {formatCurrency(item.price)}
                       </p>
                     </div>
                     <Badge variant={CATEGORY_COLORS[item.category]} className="w-fit text-[10px]">
@@ -297,12 +331,14 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
                           <button
                             onClick={() => openEdit(item)}
                             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                            aria-label={`Edit ${item.name}`}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setDeleteTarget(item)}
                             className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            aria-label={`Delete ${item.name}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -317,149 +353,125 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
         </motion.div>
       )}
 
-      {/* Slide-over for Add/Edit */}
-      <AnimatePresence>
-        {slideOverOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm"
-              onClick={() => setSlideOverOpen(false)}
-            />
-            <motion.div
-              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-              className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-card border-l border-border z-50 flex flex-col shadow-2xl"
+      <Sheet
+        open={slideOverOpen}
+        onClose={() => setSlideOverOpen(false)}
+        title={editingItem ? 'Edit Item' : 'Add Menu Item'}
+        footer={
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
+            <Button onClick={handleSave} disabled={isSaving || !isFormValid} className="flex-1">
+              {isSaving ? 'Saving...' : (editingItem ? 'Save Changes' : 'Add to Menu')}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-5">
+          <div>
+            <label className="text-sm font-medium text-foreground block mb-2">Photo</label>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    const dataUrl = reader.result as string;
+                    setImagePreview(dataUrl);
+                    setForm((f) => ({ ...f, imageUrl: dataUrl }));
+                  };
+                  reader.readAsDataURL(file);
+                }
+              }}
+              className="w-full h-32 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors overflow-hidden"
             >
-              <div className="flex items-center justify-between p-6 border-b border-border">
-                <h2 className="text-lg font-bold">{editingItem ? 'Edit Item' : 'Add Menu Item'}</h2>
-                <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                {/* Image upload */}
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-2">Photo</label>
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full h-32 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors overflow-hidden"
-                  >
-                    {imagePreview ? (
-                      <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <>
-                        <Upload className="w-6 h-6 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Click to upload image</span>
-                      </>
-                    )}
-                  </div>
-                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                </div>
+              {imagePreview ? (
+                <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
+              ) : (
+                <>
+                  <Upload className="w-6 h-6 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Drag & drop or click to upload</span>
+                </>
+              )}
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+          </div>
 
-                {/* Name */}
-                <div>
-                  <label htmlFor="form-name" className="text-sm font-medium text-foreground block mb-1.5">
-                    Name <span className="text-destructive">*</span>
-                  </label>
-                  <Input
-                    id="form-name"
-                    value={form.name}
-                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="e.g. Wagyu Gourmet Burger"
-                    className={formErrors.name ? 'border-destructive' : ''}
-                  />
-                  {formErrors.name && <p className="text-destructive text-xs mt-1">{formErrors.name}</p>}
-                </div>
-
-                {/* Category */}
-                <div>
-                  <label htmlFor="form-category" className="text-sm font-medium text-foreground block mb-1.5">
-                    Category <span className="text-destructive">*</span>
-                  </label>
-                  <Select
-                    id="form-category"
-                    value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value as any }))}
-                    className={formErrors.category ? 'border-destructive' : ''}
-                  >
-                    <option value="FOOD">Food</option>
-                    <option value="DRINK">Drink</option>
-                    <option value="DESSERT">Dessert</option>
-                    <option value="OTHER">Other</option>
-                  </Select>
-                  {formErrors.category && <p className="text-destructive text-xs mt-1">{formErrors.category}</p>}
-                </div>
-
-                {/* Price */}
-                <div>
-                  <label htmlFor="form-price" className="text-sm font-medium text-foreground block mb-1.5">
-                    Price (USD) <span className="text-destructive">*</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-sm">$</span>
-                    <Input
-                      id="form-price"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={form.price}
-                      onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
-                      placeholder="0.00"
-                      className={`pl-7 font-mono ${formErrors.price ? 'border-destructive' : ''}`}
-                    />
-                  </div>
-                  {formErrors.price && <p className="text-destructive text-xs mt-1">{formErrors.price}</p>}
-                </div>
-              </div>
-              <div className="p-6 border-t border-border flex gap-3">
-                <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={isSaving || !form.name || !form.price}
-                  className="flex-1"
-                >
-                  {isSaving ? 'Saving...' : (editingItem ? 'Save Changes' : 'Add to Menu')}
-                </Button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Delete confirm dialog */}
-      <AnimatePresence>
-        {deleteTarget && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm flex items-center justify-center p-4"
-              onClick={() => setDeleteTarget(null)}
+          <div>
+            <label htmlFor="form-name" className="text-sm font-medium text-foreground block mb-1.5">
+              Name <span className="text-destructive">*</span>
+            </label>
+            <Input
+              id="form-name"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="e.g. Wagyu Gourmet Burger"
+              className={formErrors.name ? 'border-destructive' : ''}
             />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            {formErrors.name && <p className="text-destructive text-xs mt-1">{formErrors.name}</p>}
+          </div>
+
+          <div>
+            <label htmlFor="form-category" className="text-sm font-medium text-foreground block mb-1.5">
+              Category <span className="text-destructive">*</span>
+            </label>
+            <Select
+              id="form-category"
+              value={form.category}
+              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as MenuItem['category'] }))}
+              className={formErrors.category ? 'border-destructive' : ''}
             >
-              <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full pointer-events-auto">
-                <h3 className="text-base font-bold mb-2">Remove "{deleteTarget.name}"?</h3>
-                <p className="text-sm text-muted-foreground mb-6">
-                  This will remove the item from the menu catalog. This action can't be undone.
-                </p>
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setDeleteTarget(null)} className="flex-1">Cancel</Button>
-                  <Button
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {isDeleting ? 'Removing...' : 'Remove Item'}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              <option value="FOOD">Food</option>
+              <option value="DRINK">Drink</option>
+              <option value="DESSERT">Dessert</option>
+              <option value="OTHER">Other</option>
+            </Select>
+            {formErrors.category && <p className="text-destructive text-xs mt-1">{formErrors.category}</p>}
+          </div>
+
+          <div>
+            <label htmlFor="form-price" className="text-sm font-medium text-foreground block mb-1.5">
+              Price (ETB) <span className="text-destructive">*</span>
+            </label>
+            <div className="relative">
+              <Input
+                id="form-price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.price}
+                onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                placeholder="0.00"
+                className={`font-mono ${formErrors.price ? 'border-destructive' : ''}`}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-sm">ETB</span>
+            </div>
+            {formErrors.price && <p className="text-destructive text-xs mt-1">{formErrors.price}</p>}
+          </div>
+
+          <div className="flex items-center justify-between py-2">
+            <label htmlFor="form-available" className="text-sm font-medium text-foreground">Available</label>
+            <Switch
+              id="form-available"
+              checked={form.isAvailable}
+              onCheckedChange={(checked) => setForm((f) => ({ ...f, isAvailable: checked }))}
+            />
+          </div>
+        </div>
+      </Sheet>
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title={deleteTarget ? `Remove ${deleteTarget.name} from the menu?` : ''}
+        description="This can't be undone."
+        confirmText="Remove Item"
+        tone="destructive"
+        loading={isDeleting}
+      />
     </div>
   );
 };
