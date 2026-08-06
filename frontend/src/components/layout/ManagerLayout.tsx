@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Header } from '../common/Header';
-import { Users, UtensilsCrossed, CalendarCheck, DollarSign } from 'lucide-react';
+import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
 
@@ -10,6 +10,7 @@ const MANAGER_TABS = [
   { to: '/manager/menu', label: 'Menu Catalog', icon: UtensilsCrossed },
   { to: '/manager/attendance', label: 'Attendance', icon: CalendarCheck },
   { to: '/manager/payroll', label: 'Payroll', icon: DollarSign },
+  { to: '/manager/expenses', label: 'Expenses', icon: Wallet },
 ];
 
 export const ManagerLayout: React.FC = () => {
