@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useSocketStore } from '../../store/socketStore';
@@ -9,6 +10,7 @@ import { Select } from '../../components/ui/Select';
 import { Badge } from '../../components/ui/Badge';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Printer, Plus, Pencil, Trash2, Zap, Wifi, WifiOff, X, AlertCircle } from 'lucide-react';
+import { usePrintersQuery } from '../../hooks/useCachedQueries';
 
 interface PrinterStation {
   id?: string;
@@ -28,12 +30,17 @@ const EMPTY_FORM = { station: 'kitchen', ip: '', port: '9100' };
 export const OwnerPrinters: React.FC = () => {
   const { addToast } = useToastStore();
   const { socket } = useSocketStore();
+  const queryClient = useQueryClient();
 
-  const [printers, setPrinters] = useState<PrinterStation[]>([]);
+  const printersQuery = usePrintersQuery();
+  const printers: PrinterStation[] = printersQuery.data ?? [];
+  const isLoading = printersQuery.isLoading;
+  const error = printersQuery.error
+    ? ((printersQuery.error as { response?: { data?: { error?: string } } }).response?.data?.error ||
+        'Failed to load printers.')
+    : null;
+
   const [statuses, setStatuses] = useState<PrinterStatus>({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const [slideOverOpen, setSlideOverOpen] = useState(false);
   const [editingPrinter, setEditingPrinter] = useState<PrinterStation | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -43,45 +50,30 @@ export const OwnerPrinters: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<PrinterStation | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchPrinters = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await axiosClient.get('/settings/printers');
-      setPrinters(res.data);
-      // Default all to unknown until we get real status
-      const initStatus: PrinterStatus = {};
-      res.data.forEach((p: PrinterStation) => {
-        initStatus[p.station] = 'unknown';
-      });
-      setStatuses(prev => ({ ...initStatus, ...prev }));
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load printers.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const invalidatePrinters = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['printers'] });
+  }, [queryClient]);
 
-  useEffect(() => { fetchPrinters(); }, [fetchPrinters]);
+  useEffect(() => {
+    const initStatus: PrinterStatus = {};
+    printers.forEach((p) => {
+      initStatus[p.station] = 'unknown';
+    });
+    setStatuses((prev) => ({ ...initStatus, ...prev }));
+  }, [printers]);
 
   // Subscribe to printer:failed and printer:recovered socket events
   useEffect(() => {
     if (!socket) return;
 
     const handleFailed = (data: { ip: string; port: number }) => {
-      setPrinters(prev => {
-        const p = prev.find(pr => pr.ip === data.ip && pr.port === data.port);
-        if (p) setStatuses(st => ({ ...st, [p.station]: 'offline' }));
-        return prev;
-      });
+      const p = printers.find((pr) => pr.ip === data.ip && pr.port === data.port);
+      if (p) setStatuses((st) => ({ ...st, [p.station]: 'offline' }));
     };
 
     const handleRecovered = (data: { ip: string; port: number }) => {
-      setPrinters(prev => {
-        const p = prev.find(pr => pr.ip === data.ip && pr.port === data.port);
-        if (p) setStatuses(st => ({ ...st, [p.station]: 'online' }));
-        return prev;
-      });
+      const p = printers.find((pr) => pr.ip === data.ip && pr.port === data.port);
+      if (p) setStatuses((st) => ({ ...st, [p.station]: 'online' }));
     };
 
     socket.on('printer:failed', handleFailed);
@@ -90,7 +82,7 @@ export const OwnerPrinters: React.FC = () => {
       socket.off('printer:failed', handleFailed);
       socket.off('printer:recovered', handleRecovered);
     };
-  }, [socket]);
+  }, [socket, printers]);
 
   const openAdd = () => {
     setEditingPrinter(null);
@@ -121,16 +113,13 @@ export const OwnerPrinters: React.FC = () => {
       if (editingPrinter) {
         const stationId = editingPrinter.id || editingPrinter.station;
         await axiosClient.patch(`/settings/printers/${stationId}`, payload);
-        setPrinters(prev => prev.map(p =>
-          (p.id || p.station) === stationId ? { ...p, ...payload } : p
-        ));
         addToast({ type: 'success', title: 'Printer updated' });
       } else {
-        const all = printers.map(p => ({ station: p.station, ip: p.ip, port: p.port }));
-        const res = await axiosClient.post('/settings/printers', { stations: [...all, payload] });
-        setPrinters(res.data);
+        const all = printers.map((p) => ({ station: p.station, ip: p.ip, port: p.port }));
+        await axiosClient.post('/settings/printers', { stations: [...all, payload] });
         addToast({ type: 'success', title: 'Printer added' });
       }
+      invalidatePrinters();
       setSlideOverOpen(false);
     } catch (err: any) {
       addToast({ type: 'error', title: 'Save failed', message: err.response?.data?.error });
@@ -145,7 +134,7 @@ export const OwnerPrinters: React.FC = () => {
     try {
       const stationId = deleteTarget.id || deleteTarget.station;
       await axiosClient.delete(`/settings/printers/${stationId}`);
-      setPrinters(prev => prev.filter(p => (p.id || p.station) !== stationId));
+      invalidatePrinters();
       addToast({ type: 'success', title: 'Printer removed' });
       setDeleteTarget(null);
     } catch (err: any) {
@@ -210,7 +199,7 @@ export const OwnerPrinters: React.FC = () => {
         <div className="py-12 text-center">
           <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
           <p className="text-destructive">{error}</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={fetchPrinters}>Retry</Button>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void printersQuery.refetch()}>Retry</Button>
         </div>
       ) : printers.length === 0 ? (
         <div className="py-16 text-center border-2 border-dashed border-border rounded-xl">
