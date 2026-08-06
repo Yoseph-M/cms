@@ -9,7 +9,7 @@
 import { PrismaClient, Role } from '@prisma/client';
 import { app } from '../src/app';
 import { hashPin, hashPassword, generateAccessToken, generateRefreshToken } from '../src/utils/security';
-import request from 'supertest';
+import { authRateLimitStore } from '../src/modules/auth/auth.routes';
 
 // Force Prisma to use the in-memory MongoDB URI set by globalSetup
 let prisma: PrismaClient;
@@ -94,10 +94,18 @@ export async function seedTestUser(overrides: {
  * Wipes all data from all collections. Call between tests to ensure isolation.
  */
 export async function cleanDb() {
+  // Reset auth IP rate-limit counters so tests don't bleed into each other
+  await authRateLimitStore.resetAll();
+
   const p = getPrisma();
   // Order matters due to relations — delete children first
   await p.refreshToken.deleteMany();
   await p.loginAttempt.deleteMany();
+  await p.payrollAdjustment.deleteMany();
+  await p.auditLog.deleteMany();
+  await p.notification.deleteMany();
+  await p.expense.deleteMany();
+  await p.printerStation.deleteMany();
   await p.userPayment.deleteMany();
   await p.attendance.deleteMany();
   await p.order.deleteMany();
