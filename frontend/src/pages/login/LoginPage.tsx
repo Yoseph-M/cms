@@ -63,7 +63,14 @@ export const LoginPage: React.FC = () => {
       <div className="relative z-10 w-full max-w-md animate-fade-in">
         {/* Brand mark */}
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-display font-semibold text-foreground tracking-tight">
+          <div className="inline-flex items-center gap-2.5 mb-5">
+            <span className="h-px w-10 bg-gradient-to-r from-transparent to-primary/60" />
+            <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.3em] text-primary">
+              Management System
+            </span>
+            <span className="h-px w-10 bg-gradient-to-l from-transparent to-primary/60" />
+          </div>
+          <h1 className="text-5xl font-display font-semibold text-foreground tracking-tight leading-none">
             CMS
           </h1>
           <p className="mt-3 text-sm text-muted-foreground">
@@ -98,7 +105,7 @@ export const LoginPage: React.FC = () => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@cafeflow.com"
+                placeholder="you@example.com"
                 leftIcon={<Mail className="h-4 w-4" />}
                 autoComplete="email"
                 required
