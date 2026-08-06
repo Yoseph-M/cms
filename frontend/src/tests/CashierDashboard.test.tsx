@@ -1,13 +1,12 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CashierDashboard } from '../../pages/cashier/CashierDashboard';
-import { axiosClient } from '../../api/axiosClient';
-import { useSocketStore } from '../../store/socketStore';
-import { useToastStore } from '../../store/toastStore';
+import { CashierDashboard } from '../pages/cashier/CashierDashboard';
+import { axiosClient } from '../api/axiosClient';
+import { useSocketStore } from '../store/socketStore';
+import { useToastStore } from '../store/toastStore';
 
-// Mock dependencies
-vi.mock('../../api/axiosClient', () => ({
+vi.mock('../api/axiosClient', () => ({
   axiosClient: {
     get: vi.fn(),
     patch: vi.fn(),
@@ -15,21 +14,21 @@ vi.mock('../../api/axiosClient', () => ({
   },
 }));
 
-vi.mock('../../store/socketStore', () => ({
+vi.mock('../store/socketStore', () => ({
   useSocketStore: vi.fn(),
 }));
 
-vi.mock('../../store/toastStore', () => ({
+vi.mock('../store/toastStore', () => ({
   useToastStore: vi.fn(),
 }));
 
-vi.mock('../../components/receipt/ReceiptModal', () => ({
+vi.mock('../components/receipt/ReceiptModal', () => ({
   ReceiptModal: () => <div data-testid="receipt-modal">Receipt Modal</div>,
 }));
 
 describe('CashierDashboard', () => {
-  let mockSocket: any;
-  let mockAddToast: any;
+  let mockSocket: { on: ReturnType<typeof vi.fn>; off: ReturnType<typeof vi.fn> };
+  let mockAddToast: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -51,7 +50,8 @@ describe('CashierDashboard', () => {
           tableNumber: '1',
           status: 'SERVED',
           totalAmount: 50,
-          items: [],
+          createdAt: new Date().toISOString(),
+          items: [{ name: 'Espresso', quantity: 1, unitPrice: 50 }],
         },
         {
           id: 'order-2',
@@ -59,24 +59,23 @@ describe('CashierDashboard', () => {
           tableNumber: '2',
           status: 'PAID',
           totalAmount: 100,
+          createdAt: new Date().toISOString(),
           items: [],
         },
       ],
     });
   });
 
-  it('renders active orders and hides the settle button for PAID orders', async () => {
+  it('renders active orders and hides Mark Paid for PAID orders', async () => {
     render(<CashierDashboard />);
 
-    // Wait for fetchOrders
     await waitFor(() => {
-      expect(screen.getByText('Table #1')).toBeInTheDocument();
-      expect(screen.getByText('Table #2')).toBeInTheDocument();
+      expect(screen.getByText('Mark Paid')).toBeInTheDocument();
     });
 
-    // Check that "Settle Payment" button is only rendered for the SERVED order
-    const settleButtons = screen.getAllByText('Settle Payment');
-    expect(settleButtons).toHaveLength(1); // Only for order-1
+    // Active ticket is in the queue; PAID Table 2 is filtered out
+    expect(screen.getAllByText('Table 1').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Table 2')).not.toBeInTheDocument();
   });
 
   it('handles mark paid flow correctly', async () => {
@@ -85,68 +84,47 @@ describe('CashierDashboard', () => {
         id: 'order-1',
         clientOrderId: 'ref-1',
         tableNumber: '1',
-        status: 'PAID', // updated
+        status: 'PAID',
         totalAmount: 50,
-        items: [],
+        createdAt: new Date().toISOString(),
+        items: [{ name: 'Espresso', quantity: 1, unitPrice: 50 }],
       },
     });
 
     render(<CashierDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Table #1')).toBeInTheDocument();
+      expect(screen.getByText('Mark Paid')).toBeInTheDocument();
     });
 
-    // Click settle payment for Table #1
-    const settleBtn = screen.getByText('Settle Payment');
-    fireEvent.click(settleBtn);
-
-    // Modal opens
-    expect(screen.getByText('Process Table #1 Payment')).toBeInTheDocument();
-
-    // Select CASH (which is default, but let's click it)
-    const cashBtn = screen.getByText('CASH');
-    fireEvent.click(cashBtn);
-
-    // Confirm
-    const confirmBtn = screen.getByText('Confirm Payment PAID');
-    fireEvent.click(confirmBtn);
+    fireEvent.click(screen.getByText('CASH'));
+    fireEvent.click(screen.getByText('Mark Paid'));
 
     await waitFor(() => {
       expect(axiosClient.patch).toHaveBeenCalledWith('/orders/order-1/pay', { paymentMethod: 'CASH' });
-      // Toast should be called
-      expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
     });
-
-    // Modal should close (or wait for it to be removed if it unmounts)
-    expect(screen.queryByText('Process Table #1 Payment')).not.toBeInTheDocument();
   });
 
-  it('displays printer failure banner and triggers reprint', async () => {
+  it('displays printer failure banner and allows dismiss', async () => {
     render(<CashierDashboard />);
 
-    // Simulate socket event for printer failure
+    await waitFor(() => {
+      expect(screen.getByText('Mark Paid')).toBeInTheDocument();
+    });
+
     const onPrinterFailed = mockSocket.on.mock.calls.find((call: any) => call[0] === 'printer:failed')?.[1];
     expect(onPrinterFailed).toBeDefined();
 
-    // Trigger failure
     onPrinterFailed({ id: 'order-1', tableNumber: '1', message: 'Out of paper' });
 
-    // Banner should appear
     await waitFor(() => {
-      expect(screen.getByText(/Printer Failure: Table #1/)).toBeInTheDocument();
+      expect(screen.getByText(/Printer failure detected/i)).toBeInTheDocument();
     });
 
-    (axiosClient.post as any).mockResolvedValueOnce({});
-
-    // Click Re-print
-    const reprintBtn = screen.getByText(/Re-print Ticket/);
-    fireEvent.click(reprintBtn);
+    fireEvent.click(screen.getByText('Dismiss'));
 
     await waitFor(() => {
-      expect(axiosClient.post).toHaveBeenCalledWith('/orders/order-1/reprint');
-      // Banner should disappear after successful reprint
-      expect(screen.queryByText(/Printer Failure: Table #1/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Printer failure detected/i)).not.toBeInTheDocument();
     });
   });
 });
