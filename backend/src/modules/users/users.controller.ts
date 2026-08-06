@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { hashPin, isValidPinFormat, hashPassword } from '../../utils/security';
+import { recordAudit } from '../../services/audit.service';
 import { Role } from '@prisma/client';
 
 export async function getUsers(req: AuthenticatedRequest, res: Response) {
@@ -12,8 +13,8 @@ export async function getUsers(req: AuthenticatedRequest, res: Response) {
   
   if (isActive !== undefined) {
     whereClause.isActive = isActive === 'true';
-  } else {
-    // Spec §5: soft-delete query discipline - exclude inactive by default
+  } else if (req.user!.role !== Role.OWNER && req.user!.role !== Role.MANAGER) {
+    // Spec §5: soft-delete query discipline - exclude inactive by default for non-admin callers
     whereClause.isActive = true;
   }
 
@@ -103,6 +104,14 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
     },
   });
 
+  await recordAudit({
+    actorId: req.user!.userId,
+    actionType: 'USER_CREATED',
+    targetType: 'User',
+    targetId: newUser.id,
+    details: { name: newUser.name, role: newUser.role },
+  });
+
   return res.status(201).json(newUser);
 }
 
@@ -135,6 +144,14 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
     },
   });
 
+  await recordAudit({
+    actorId: req.user!.userId,
+    actionType: 'USER_UPDATED',
+    targetType: 'User',
+    targetId: id,
+    details: { changes: req.body },
+  });
+
   return res.json(updatedUser);
 }
 
@@ -155,6 +172,14 @@ export async function deactivateUser(req: AuthenticatedRequest, res: Response) {
     where: { id },
     data: { isActive: false },
     select: { id: true, name: true, isActive: true },
+  });
+
+  await recordAudit({
+    actorId: req.user!.userId,
+    actionType: 'USER_DEACTIVATED',
+    targetType: 'User',
+    targetId: id,
+    details: { name: targetUser.name },
   });
 
   return res.json({ message: 'Staff member deactivated successfully.', user: updated });
