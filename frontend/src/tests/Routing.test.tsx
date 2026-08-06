@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { OwnerLayout } from '../components/layout/OwnerLayout';
 import { ManagerLayout } from '../components/layout/ManagerLayout';
-import { App } from '../App';
+import { AppRoutes } from '../App';
 import { useAuthStore } from '../store/authStore';
 
 // Mock zustand store for auth
@@ -12,10 +12,10 @@ vi.mock('../store/authStore', () => ({
 }));
 // Mock other stores
 vi.mock('../store/socketStore', () => ({
-  useSocketStore: () => ({ connect: vi.fn(), disconnect: vi.fn() }),
+  useSocketStore: () => ({ connect: vi.fn(), disconnect: vi.fn(), isConnected: false }),
 }));
 vi.mock('../store/offlineSyncStore', () => ({
-  useOfflineSyncStore: () => ({ initListeners: vi.fn() }),
+  useOfflineSyncStore: () => ({ initListeners: vi.fn(), isOnline: true, pendingCount: 0 }),
 }));
 
 describe('Layout Architecture Regression Tests', () => {
@@ -108,7 +108,7 @@ describe('Layout Architecture Regression Tests', () => {
 
       render(
         <MemoryRouter initialEntries={['/owner/printers']}>
-          <App />
+          <AppRoutes />
         </MemoryRouter>
       );
       
@@ -128,7 +128,7 @@ describe('Layout Architecture Regression Tests', () => {
 
       render(
         <MemoryRouter initialEntries={['/manager/people']}>
-          <App />
+          <AppRoutes />
         </MemoryRouter>
       );
 
