@@ -14,49 +14,65 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   // Server-side totalAmount calculation (NEVER trust client total)
   const computedTotal = items.reduce((sum: number, item: any) => sum + item.unitPrice * item.quantity, 0);
 
-  // Idempotent upsert on clientOrderId
-  const order = await prisma.order.upsert({
+  const includeWaiter = { waiter: { select: { id: true, name: true } } } as const;
+
+  // Idempotent create: return existing order on retry (Background Sync)
+  const existing = await prisma.order.findUnique({
     where: { clientOrderId },
-    update: {}, // If already exists -> return existing (no-op)
-    create: {
-      clientOrderId,
-      tableNumber,
-      waiterId,
-      items: items.map((i: any) => ({
-        menuItemId: i.menuItemId,
-        name: i.name,
-        unitPrice: i.unitPrice,
-        quantity: i.quantity,
-        notes: i.notes || '',
-      })),
-      totalAmount: computedTotal,
-      status: OrderStatus.SUBMITTED,
-    },
-    include: {
-      waiter: { select: { id: true, name: true } },
-    },
+    include: includeWaiter,
   });
-
-  // Check if order was newly created vs already existed
-  const isNew = new Date(order.createdAt).getTime() === new Date(order.updatedAt).getTime();
-
-  if (isNew) {
-    // Trigger server-side kitchen thermal print over TCP
-    triggerKitchenPrint({
-      id: order.id,
-      clientOrderId: order.clientOrderId,
-      tableNumber: order.tableNumber,
-      waiterName: order.waiter?.name || waiterName,
-      createdAt: order.createdAt,
-      items: order.items,
-    });
-
-    // Broadcast live event to Socket.io orders room
-    emitToLiveOrders('order:new', order);
+  if (existing) {
+    return res.status(200).json({ isNew: false, order: existing });
   }
 
-  return res.status(isNew ? 201 : 200).json({
-    isNew,
+  let order;
+  try {
+    order = await prisma.order.create({
+      data: {
+        clientOrderId,
+        tableNumber,
+        waiterId,
+        items: items.map((i: any) => ({
+          menuItemId: i.menuItemId,
+          name: i.name,
+          unitPrice: i.unitPrice,
+          quantity: i.quantity,
+          notes: i.notes || '',
+        })),
+        totalAmount: computedTotal,
+        status: OrderStatus.SUBMITTED,
+      },
+      include: includeWaiter,
+    });
+  } catch (err: any) {
+    // Concurrent duplicate clientOrderId — return the winner
+    if (err?.code === 'P2002') {
+      const raced = await prisma.order.findUnique({
+        where: { clientOrderId },
+        include: includeWaiter,
+      });
+      if (raced) {
+        return res.status(200).json({ isNew: false, order: raced });
+      }
+    }
+    throw err;
+  }
+
+  // Trigger server-side kitchen thermal print over TCP
+  triggerKitchenPrint({
+    id: order.id,
+    clientOrderId: order.clientOrderId,
+    tableNumber: order.tableNumber,
+    waiterName: order.waiter?.name || waiterName,
+    createdAt: order.createdAt,
+    items: order.items,
+  });
+
+  // Broadcast live event to Socket.io orders room
+  emitToLiveOrders('order:new', order);
+
+  return res.status(201).json({
+    isNew: true,
     order,
   });
 }
