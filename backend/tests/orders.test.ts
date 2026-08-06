@@ -12,7 +12,9 @@ import { OrderStatus } from '@prisma/client';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
 import { canTransition } from '../src/utils/orderStateMachine';
 import { buildEscPosKitchenTicket } from '../src/services/printer.service';
-import { v4 as uuid } from 'uuid';
+import crypto from 'crypto';
+
+const uuid = () => crypto.randomUUID();
 
 const app = getTestApp();
 
