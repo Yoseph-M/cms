@@ -11,6 +11,7 @@ import { Badge } from '../../components/ui/Badge';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Printer, Plus, Pencil, Trash2, Zap, Wifi, WifiOff, X, AlertCircle } from 'lucide-react';
 import { usePrintersQuery } from '../../hooks/useCachedQueries';
+import { EmptyState } from '../../components/common/EmptyState';
 
 interface PrinterStation {
   id?: string;
@@ -26,6 +27,7 @@ interface PrinterStatus {
 const STATION_OPTIONS = ['kitchen', 'bar', 'cashier'];
 
 const EMPTY_FORM = { station: 'kitchen', ip: '', port: '9100' };
+const EMPTY_PRINTERS: PrinterStation[] = [];
 
 export const OwnerPrinters: React.FC = () => {
   const { addToast } = useToastStore();
@@ -33,7 +35,9 @@ export const OwnerPrinters: React.FC = () => {
   const queryClient = useQueryClient();
 
   const printersQuery = usePrintersQuery();
-  const printers: PrinterStation[] = printersQuery.data ?? [];
+  // Keep the fallback reference stable. A new [] on every error/loading render
+  // retriggered the status effect below, causing an infinite render loop.
+  const printers: PrinterStation[] = printersQuery.data ?? EMPTY_PRINTERS;
   const isLoading = printersQuery.isLoading;
   const error = printersQuery.error
     ? ((printersQuery.error as { response?: { data?: { error?: string } } }).response?.data?.error ||
@@ -59,7 +63,12 @@ export const OwnerPrinters: React.FC = () => {
     printers.forEach((p) => {
       initStatus[p.station] = 'unknown';
     });
-    setStatuses((prev) => ({ ...initStatus, ...prev }));
+    setStatuses((prev) => {
+      const next = { ...initStatus, ...prev };
+      const unchanged = Object.keys(next).length === Object.keys(prev).length
+        && Object.entries(next).every(([key, value]) => prev[key] === value);
+      return unchanged ? prev : next;
+    });
   }, [printers]);
 
   // Subscribe to printer:failed and printer:recovered socket events
@@ -165,8 +174,8 @@ export const OwnerPrinters: React.FC = () => {
 
   const getStatusIcon = (station: string) => {
     const st = statuses[station];
-    if (st === 'online') return <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)] animate-pulse" />;
-    if (st === 'offline') return <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)]" />;
+    if (st === 'online') return <div className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--success))] shadow-[0_0_6px_hsl(var(--success)/0.5)] animate-pulse" />;
+    if (st === 'offline') return <div className="w-2.5 h-2.5 rounded-full bg-destructive shadow-[0_0_6px_hsl(var(--destructive)/0.5)]" />;
     return <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/30" />;
   };
 
@@ -202,12 +211,16 @@ export const OwnerPrinters: React.FC = () => {
           <Button variant="outline" size="sm" className="mt-3" onClick={() => void printersQuery.refetch()}>Retry</Button>
         </div>
       ) : printers.length === 0 ? (
-        <div className="py-16 text-center border-2 border-dashed border-border rounded-xl">
-          <Printer className="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
-          <p className="font-semibold text-foreground">No printers configured yet</p>
-          <p className="text-sm text-muted-foreground mt-1 mb-4">Add your kitchen printer to start printing tickets automatically.</p>
-          <Button onClick={openAdd}><Plus className="w-4 h-4 mr-2" />Add Printer</Button>
-        </div>
+        <EmptyState
+          title="No printers configured yet"
+          message="Add your kitchen printer to start printing order tickets automatically when orders come in."
+          icon={<Printer className="w-7 h-7" />}
+          action={{
+            label: 'Add Printer',
+            onClick: openAdd,
+            icon: <Plus className="w-4 h-4 mr-1.5" />,
+          }}
+        />
       ) : (
         <motion.div
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
