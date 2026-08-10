@@ -27,12 +27,25 @@ export async function getAttendance(req: AuthenticatedRequest, res: Response) {
     };
   }
 
-  const records = await prisma.attendance.findMany({
+  // MongoDB does not enforce relations. Older data can therefore contain an
+  // attendance row whose staff account was removed. `include: { user: ... }`
+  // makes Prisma throw for the whole result set in that case. Fetch the two
+  // collections explicitly and omit only those orphaned legacy rows.
+  const rawRecords = await prisma.attendance.findMany({
     where: whereClause,
-    include: {
-      user: { select: { id: true, name: true, role: true } },
-    },
     orderBy: { date: 'desc' },
+  });
+  const userIds = [...new Set(rawRecords.map((record) => record.userId))];
+  const users = userIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, name: true, role: true },
+      })
+    : [];
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const records = rawRecords.flatMap((record) => {
+    const user = usersById.get(record.userId);
+    return user ? [{ ...record, user }] : [];
   });
 
   // Manager scope: exclude Owner/Manager attendance rows from response
