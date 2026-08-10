@@ -7,6 +7,17 @@ import { OrderStatus, PaymentMethod, Role } from '@prisma/client';
 import { canTransition } from '../../utils/orderStateMachine';
 
 export async function createOrder(req: AuthenticatedRequest, res: Response) {
+  const callerRole = req.user!.role as Role;
+
+  if (callerRole === Role.CASHIER) {
+    const setting = await prisma.systemSetting.findUnique({ where: { key: 'cashierOrderingEnabled' } });
+    if (setting?.value !== 'true') {
+      return res.status(403).json({
+        error: 'Cashier order creation is currently disabled. Ask a Manager or Owner to enable it in Settings.',
+      });
+    }
+  }
+
   const waiterId = req.user!.userId;
   const waiterName = req.user!.name;
   const { clientOrderId, tableNumber, items } = req.body;
@@ -179,6 +190,10 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) {
     return res.status(404).json({ error: 'Order not found.' });
+  }
+
+  if (order.status === OrderStatus.PAID || order.isPaid) {
+    return res.status(200).json(order);
   }
 
   if (!canTransition(order.status, OrderStatus.PAID)) {
