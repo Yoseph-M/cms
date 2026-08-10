@@ -15,6 +15,8 @@ import printersRoutes from './modules/printers/printers.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import expensesRoutes from './modules/expenses/expenses.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
+import settingsRoutes from './modules/settings/settings.routes';
+import searchRoutes from './modules/search/search.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { prisma } from './services/prisma.service';
 import { hashPin, hashPassword } from './utils/security';
@@ -97,6 +99,8 @@ app.use('/api/settings/printers', printersRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/search', searchRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
@@ -203,6 +207,32 @@ export async function seedInitialData() {
     }
 
     await ensureDefaultPrinters();
+
+    const cashierSetting = await prisma.systemSetting.findUnique({
+      where: { key: 'cashierOrderingEnabled' },
+    });
+    if (!cashierSetting) {
+      await prisma.systemSetting.create({
+        data: { key: 'cashierOrderingEnabled', value: 'false' },
+      });
+      logger.info('Seeded cashierOrderingEnabled system setting (default: off).');
+    }
+
+    const businessDefaults: Record<string, string> = {
+      businessName: 'Enterprise POS Restaurant',
+      businessAddress: '123 Culinary Boulevard, Suite 100',
+      businessPhone: '+1 (555) 019-2831',
+      taxRate: '0',
+      currency: 'ETB',
+      receiptFooter: 'Thank you for dining with us!',
+      receiptLogo: '',
+    };
+    for (const [key, value] of Object.entries(businessDefaults)) {
+      const existing = await prisma.systemSetting.findUnique({ where: { key } });
+      if (!existing) {
+        await prisma.systemSetting.create({ data: { key, value } });
+      }
+    }
   } catch (err) {
     logger.warn({ err }, 'Seed check warning (DB might be connecting or uninitialized).');
   }
