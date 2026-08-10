@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
-import { hashPin, isValidPinFormat, hashPassword } from '../../utils/security';
+import { comparePassword, hashPassword, hashPin, isValidPinFormat } from '../../utils/security';
 import { recordAudit } from '../../services/audit.service';
 import { Role } from '@prisma/client';
 
@@ -273,4 +273,60 @@ export async function unlockUser(req: AuthenticatedRequest, res: Response) {
   });
 
   return res.json({ message: `Staff member ${targetUser.name} has been unlocked successfully.` });
+}
+
+export async function getMe(req: AuthenticatedRequest, res: Response) {
+  const userId = req.user!.userId;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      email: true,
+      phone: true,
+      salaryAmount: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!user || !user.isActive) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  return res.json(user);
+}
+
+export async function changeOwnPassword(req: AuthenticatedRequest, res: Response) {
+  const userId = req.user!.userId;
+  const { currentPassword, newPassword } = req.body;
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  if (user.role === Role.WAITER) {
+    return res.status(403).json({ error: 'Waiters cannot change passwords via the web app.' });
+  }
+
+  if (!user.passwordHash) {
+    return res.status(400).json({ error: 'No password is set for this account.' });
+  }
+
+  const isValid = await comparePassword(currentPassword, user.passwordHash);
+  if (!isValid) {
+    return res.status(401).json({ error: 'Current password is incorrect.' });
+  }
+
+  const passHash = await hashPassword(newPassword);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: passHash },
+  });
+
+  return res.json({ message: 'Password updated successfully.' });
 }
