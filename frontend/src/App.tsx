@@ -37,6 +37,20 @@ const OwnerAudit = lazy(() =>
 const OwnerPrinters = lazy(() =>
   import('./pages/owner/OwnerPrinters').then((m) => ({ default: m.OwnerPrinters }))
 );
+const OwnerSettings = lazy(() =>
+  import('./pages/settings/OwnerSettings').then((m) => ({ default: m.OwnerSettings }))
+);
+const ManagerSettings = lazy(() =>
+  import('./pages/settings/ManagerSettings').then((m) => ({ default: m.ManagerSettings }))
+);
+const CashierSettings = lazy(() =>
+  import('./pages/settings/CashierSettings').then((m) => ({ default: m.CashierSettings }))
+);
+const CashierOrderingPanel = lazy(() =>
+  import('./components/cashier/CashierOrderingPanel').then((m) => ({
+    default: m.CashierOrderingPanel,
+  }))
+);
 const ManagerDashboard = lazy(() =>
   import('./pages/manager/ManagerDashboard').then((m) => ({ default: m.ManagerDashboard }))
 );
@@ -134,6 +148,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="payroll" element={<Lazy><OwnerPayroll /></Lazy>} />
           <Route path="audit" element={<Lazy><OwnerAudit /></Lazy>} />
           <Route path="printers" element={<Lazy><OwnerPrinters /></Lazy>} />
+          <Route path="settings" element={<Lazy><OwnerSettings /></Lazy>} />
           <Route path="*" element={<Navigate to="/owner" replace />} />
         </Route>
 
@@ -151,6 +166,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="attendance" element={<Lazy><AttendanceCalendar isOwner={false} /></Lazy>} />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
           <Route path="expenses" element={<Lazy><ManagerExpenses /></Lazy>} />
+          <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
           <Route path="*" element={<Navigate to="/manager/people" replace />} />
         </Route>
 
@@ -163,6 +179,7 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Lazy><CashierDashboard /></Lazy>} />
+          <Route path="settings" element={<Lazy><CashierSettings /></Lazy>} />
           <Route path="*" element={<Navigate to="/cashier" replace />} />
         </Route>
 
