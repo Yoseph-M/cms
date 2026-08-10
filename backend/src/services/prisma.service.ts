@@ -11,6 +11,10 @@ export async function connectDatabase() {
     logger.info('Successfully connected to MongoDB database via Prisma ORM.');
   } catch (error) {
     logger.error({ error }, 'Failed to connect to MongoDB database via Prisma.');
+    // Do not start an HTTP server that cannot serve requests.  Continuing here
+    // made a bad DATABASE_URL look like a healthy backend until the first API
+    // request failed.
+    throw error;
   }
 }
 
