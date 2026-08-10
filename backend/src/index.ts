@@ -29,4 +29,5 @@ async function startServer() {
 
 startServer().catch((error) => {
   logger.error({ error }, 'Fatal error during server startup.');
+  process.exitCode = 1;
 });
