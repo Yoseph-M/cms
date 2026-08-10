@@ -10,7 +10,7 @@ const router = Router();
 
 router.use(requireAuth);
 
-router.post('/', requireRole([Role.WAITER]), validate(createOrderSchema), OrdersController.createOrder);
+router.post('/', requireRole([Role.WAITER, Role.CASHIER]), validate(createOrderSchema), OrdersController.createOrder);
 router.get('/', OrdersController.getOrders);
 router.get('/:id', OrdersController.getOrderById);
 
