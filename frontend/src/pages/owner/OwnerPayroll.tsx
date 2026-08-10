@@ -12,6 +12,7 @@ import {
   DollarSign, Plus, Download, RotateCcw, ChevronRight
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
+import { EmptyState } from '../../components/common/EmptyState';
 
 interface StaffUser {
   id: string;
@@ -314,10 +315,16 @@ export const OwnerPayroll: React.FC = () => {
               <Button variant="outline" size="sm" className="mt-3" onClick={fetchLedger}>Retry</Button>
             </div>
           ) : paymentRows.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground">
-              <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>No payroll entries recorded yet.</p>
-            </div>
+            <EmptyState
+              title="No payroll entries yet"
+              message="Record your first payroll entry to build the ledger. You can log what was actually paid per staff member and period."
+              icon={<DollarSign className="w-7 h-7" />}
+              action={{
+                label: 'Record your first payroll entry',
+                onClick: openForm,
+                icon: <Plus className="w-4 h-4 mr-1.5" />,
+              }}
+            />
           ) : (
             <div>
               <div className="flex items-center border-b border-border bg-secondary/30 text-sm px-4 py-3 font-semibold text-muted-foreground">
