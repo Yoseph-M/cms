@@ -5,6 +5,10 @@ export interface Toast {
   type: 'success' | 'error' | 'info' | 'warning';
   title: string;
   message?: string;
+  undo?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
 interface ToastState {
@@ -19,10 +23,10 @@ export const useToastStore = create<ToastState>((set) => ({
     const id = Math.random().toString(36).substring(2, 9);
     set((state) => ({ toasts: [...state.toasts, { ...toast, id }] }));
 
-    // Auto remove after 4 seconds
+    const duration = toast.undo ? 6000 : 4000;
     setTimeout(() => {
       set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
-    }, 4000);
+    }, duration);
   },
   removeToast: (id) => {
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
