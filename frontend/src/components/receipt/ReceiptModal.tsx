@@ -2,6 +2,7 @@ import React from 'react';
 import { Order } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { Printer, X, CheckCircle, Clock } from 'lucide-react';
+import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 
 interface ReceiptModalProps {
   order: Order | null;
@@ -9,6 +10,8 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) => {
+  const footerQuery = useSystemSettingQuery('receiptFooter');
+  const logoQuery = useSystemSettingQuery('receiptLogo');
   if (!order) return null;
 
   const handleBrowserPrint = () => {
@@ -22,13 +25,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white text-slate-900 w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden font-mono text-sm print:shadow-none print:w-full print:max-w-none print:rounded-none animate-scale-in"
+        className="bg-card text-card-foreground border border-border w-full max-w-md rounded-2xl shadow-2xl relative overflow-hidden font-mono text-sm print:shadow-none print:w-full print:max-w-none print:rounded-none print:border-0 animate-scale-in"
       >
         {/* Modal chrome — only visible on screen, hidden on print */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50 print:hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-secondary/40 print:hidden">
           <div>
-            <h3 className="font-sans text-sm font-semibold text-slate-900">Customer Receipt</h3>
-            <p className="font-sans text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+            <h3 className="font-sans text-sm font-semibold text-foreground">Customer Receipt</h3>
+            <p className="font-sans text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
               <Clock className="w-3 h-3" />
               {new Date(order.createdAt).toLocaleString()}
             </p>
@@ -36,7 +39,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
           <div className="flex items-center gap-1.5">
             <button
               onClick={handleBrowserPrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-sans text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-sans text-xs font-semibold transition-colors"
             >
               <Printer className="w-3.5 h-3.5" />
               Print
@@ -44,7 +47,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
             <button
               onClick={onClose}
               aria-label="Close"
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 transition-colors"
+              className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary/60 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -54,16 +57,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
         {/* Printable receipt body */}
         <div className="p-6 print:p-4">
           <div className="text-center space-y-1 mb-4">
-            <h2 className="text-lg font-extrabold tracking-tight uppercase text-slate-900">
+            {logoQuery.data?.value && logoQuery.data.value.trim() && (
+              <img src={logoQuery.data.value} alt="Business logo" className="mx-auto mb-2 max-h-16 max-w-36 object-contain" />
+            )}
+            <h2 className="text-lg font-extrabold tracking-tight uppercase text-foreground">
               Enterprise POS Restaurant
             </h2>
-            <p className="text-xs text-slate-500">123 Culinary Boulevard, Suite 100</p>
-            <p className="text-xs text-slate-500">Tel: +1 (555) 019-2831</p>
+            <p className="text-xs text-muted-foreground">123 Culinary Boulevard, Suite 100</p>
+            <p className="text-xs text-muted-foreground">Tel: +1 (555) 019-2831</p>
             <div
               className={`inline-flex items-center gap-1 px-2.5 py-0.5 mt-2 rounded-full text-xs font-bold font-sans ${
                 order.isPaid
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-amber-50 text-amber-700'
+                  ? 'bg-[hsl(var(--success))]/15 text-[hsl(var(--success))]'
+                  : 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]'
               }`}
             >
               <CheckCircle className="w-3.5 h-3.5" />
@@ -71,7 +77,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
             </div>
           </div>
 
-          <div className="border-t border-b border-dashed border-slate-300 py-3 my-3 text-xs space-y-1.5">
+          <div className="border-t border-b border-dashed border-border py-3 my-3 text-xs space-y-1.5">
             <Row label="Order ID" value={`#${order.clientOrderId.slice(0, 8)}`} mono />
             <Row label="Table" value={`#${order.tableNumber}`} mono />
             <Row label="Waiter" value={order.waiter?.name || '—'} />
@@ -81,7 +87,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
           </div>
 
           <div className="my-4">
-            <div className="flex justify-between text-xs font-bold border-b border-slate-300 pb-1 mb-2 uppercase tracking-wider">
+            <div className="flex justify-between text-xs font-bold border-b border-border pb-1 mb-2 uppercase tracking-wider">
               <span>Qty · Item</span>
               <span>Amount</span>
             </div>
@@ -92,7 +98,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
                     <span className="font-bold mr-2">{item.quantity}x</span>
                     <span>{item.name}</span>
                     {item.notes && (
-                      <p className="text-[10px] text-slate-500 italic">Note: {item.notes}</p>
+                      <p className="text-[10px] text-muted-foreground italic">Note: {item.notes}</p>
                     )}
                   </div>
                   <span className="font-semibold tabular-nums">
@@ -103,18 +109,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose }) =>
             </div>
           </div>
 
-          <div className="border-t border-slate-300 pt-3 mt-4">
+          <div className="border-t border-border pt-3 mt-4">
             <div className="flex justify-between font-extrabold text-base pt-1">
               <span className="uppercase tracking-wider">Total</span>
-              <span className="text-emerald-700 tabular-nums">
+              <span className="text-[hsl(var(--success))] tabular-nums">
                 {formatCurrency(order.totalAmount)}
               </span>
             </div>
           </div>
 
-          <div className="mt-6 text-center text-[11px] text-slate-500 space-y-0.5">
-            <p className="font-semibold text-slate-700">Thank you for dining with us!</p>
-            <p>Please come again soon.</p>
+          <div className="mt-6 text-center text-[11px] text-muted-foreground space-y-0.5">
+            <p className="font-semibold text-foreground">{footerQuery.data?.value?.trim() || 'Thank you for dining with us!'}</p>
           </div>
         </div>
       </div>
@@ -128,7 +133,7 @@ const Row: React.FC<{ label: string; value: string; mono?: boolean }> = ({
   mono,
 }) => (
   <div className="flex justify-between">
-    <span className="text-slate-500">{label}</span>
+    <span className="text-muted-foreground">{label}</span>
     <span className={mono ? 'font-bold tabular-nums' : ''}>{value}</span>
   </div>
 );
