@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useSocketStore } from '../../store/socketStore';
 import { useOfflineSyncStore } from '../../store/offlineSyncStore';
@@ -7,12 +8,14 @@ import {
   WifiOff,
   RefreshCw,
   LogOut,
-  User as UserIcon,
   Shield,
   ChevronDown,
   CalendarDays,
+  Settings,
+  Search,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
+import { CommandPalette } from './CommandPalette';
 import {
   getCalendarPreference,
   setCalendarPreference,
@@ -23,10 +26,12 @@ export const Header: React.FC = () => {
   const { user, logout } = useAuthStore();
   const { isConnected } = useSocketStore();
   const { isOnline, pendingCount, processSyncQueue, isSyncing } = useOfflineSyncStore();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [calendar, setCalendar] = React.useState<CalendarSystem>(() => getCalendarPreference());
+  const menuRef = React.useRef<HTMLDivElement>(null);
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [calendar, setCalendar] = useState<CalendarSystem>(() => getCalendarPreference());
-  const menuRef = useRef<HTMLDivElement>(null);
+  const isCashier = user?.role === 'CASHIER';
+  const showSidebarNav = user?.role === 'OWNER' || user?.role === 'MANAGER';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -55,65 +60,57 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className="h-16 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between">
-      {/* Brand & Connection Status */}
-      <div className="flex items-center gap-4 min-w-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="hidden sm:block w-0.5 h-8 rounded-full bg-gradient-to-b from-primary via-accent to-primary/30" />
-          <div className="min-w-0">
-            <h1 className="text-base font-display font-semibold text-foreground leading-tight truncate">
-              CMS
-            </h1>
-            <p className="text-[10px] text-muted-foreground font-mono tracking-wider truncate">
-              Management System · v1.0
-            </p>
-          </div>
-        </div>
-
-        <div className="hidden sm:block h-8 w-px bg-border mx-1" aria-hidden />
-
-        {/* Status Indicators */}
-        <div className="hidden sm:flex items-center gap-2">
-          <StatusPill
-            tone={isConnected ? 'success' : 'danger'}
-            dot
-            pulse={isConnected}
-            label={isConnected ? 'Live' : 'Reconnecting'}
-          />
-          <StatusPill
-            tone={isOnline ? 'neutral' : 'warning'}
-            icon={isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-            label={isOnline ? 'Online' : 'Offline'}
-          />
-          {pendingCount > 0 && (
-            <button
-              onClick={() => processSyncQueue()}
-              disabled={isSyncing || !isOnline}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border border-warning/40 bg-warning/10 text-[hsl(var(--warning))] hover:bg-warning/20 disabled:opacity-50 transition-colors"
-            >
-              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span className="tabular-nums">{pendingCount}</span> pending
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* User menu */}
+    <header className="h-12 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between">
+      {/* Connection status strip */}
       <div className="flex items-center gap-2">
-        {(user?.role === 'OWNER' || user?.role === 'MANAGER') && (
+        <StatusPill
+          tone={isConnected ? 'success' : 'danger'}
+          dot
+          pulse={isConnected}
+          label={isConnected ? 'Live' : 'Reconnecting'}
+        />
+        <StatusPill
+          tone={isOnline ? 'neutral' : 'warning'}
+          icon={isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+          label={isOnline ? 'Online' : 'Offline'}
+        />
+        {pendingCount > 0 && (
           <button
-            onClick={toggleCalendar}
-            title={calendar === 'gregorian' ? 'Switch to Ethiopian calendar' : 'Switch to Gregorian calendar'}
-            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+            onClick={() => processSyncQueue()}
+            disabled={isSyncing || !isOnline}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border border-warning/40 bg-warning/10 text-[hsl(var(--warning))] hover:bg-warning/20 disabled:opacity-50 transition-colors"
           >
-            <CalendarDays className="w-3.5 h-3.5" />
-            {calendar === 'gregorian' ? 'Gregorian' : 'Ethiopian'}
+            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span className="tabular-nums">{pendingCount}</span> pending
           </button>
         )}
+      </div>
 
-        {(user?.role === 'OWNER' || user?.role === 'MANAGER') && <NotificationBell />}
+      {/* Right-side actions */}
+      <div className="flex items-center gap-2">
+        {showSidebarNav && (
+          <>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('cafeflow:open-command-palette'))} className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors" title="Open command palette">
+              <Search className="w-3.5 h-3.5" /> Search <kbd className="text-[10px] opacity-70">⌘K</kbd>
+            </button>
+            <button
+              onClick={toggleCalendar}
+              title={
+                calendar === 'gregorian'
+                  ? 'Switch to Ethiopian calendar'
+                  : 'Switch to Gregorian calendar'
+              }
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              {calendar === 'gregorian' ? 'Gregorian' : 'Ethiopian'}
+            </button>
+            <NotificationBell />
+          </>
+        )}
 
-        {user && (
+        {/* Cashier keeps avatar/logout in header — no sidebar by design */}
+        {isCashier && user && (
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
@@ -149,19 +146,15 @@ export const Header: React.FC = () => {
                     {user.role}
                   </p>
                 </div>
-                <div className="p-1.5 sm:hidden">
-                  <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-                    {isOnline ? (
-                      <Wifi className="w-3.5 h-3.5 text-primary" />
-                    ) : (
-                      <WifiOff className="w-3.5 h-3.5 text-[hsl(var(--warning))]" />
-                    )}
-                    {isOnline ? 'Online' : 'Offline'}
-                    <span className="mx-1 text-border">·</span>
-                    {isConnected ? 'Live' : 'Reconnecting'}
-                  </div>
-                </div>
                 <div className="p-1.5">
+                  <Link
+                    to="/cashier/settings"
+                    onClick={() => setMenuOpen(false)}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <Settings className="w-4 h-4" />
+                    Settings
+                  </Link>
                   <button
                     onClick={() => {
                       setMenuOpen(false);
@@ -175,24 +168,24 @@ export const Header: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {!menuOpen && (
+              <button
+                onClick={logout}
+                title="Sign Out"
+                className="sm:hidden p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         )}
-
-        {!menuOpen && (
-          <button
-            onClick={logout}
-            title="Sign Out"
-            className="sm:hidden p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        )}
       </div>
+      <CommandPalette />
     </header>
   );
 };
 
-/* ── Internal: status pill ─────────────────────────────────────────── */
 const StatusPill: React.FC<{
   tone: 'success' | 'danger' | 'warning' | 'neutral';
   label: string;
