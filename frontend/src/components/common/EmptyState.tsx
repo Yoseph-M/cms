@@ -1,17 +1,25 @@
 import React from 'react';
 import { Ghost } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { Button, type ButtonProps } from '../ui/Button';
 
 export function EmptyState({
   title = 'Nothing here yet',
   message = 'Check back later.',
   icon,
   className,
+  action,
 }: {
   title?: string;
   message?: string;
   icon?: React.ReactNode;
   className?: string;
+  action?: {
+    label: string;
+    onClick: () => void;
+    variant?: ButtonProps['variant'];
+    icon?: React.ReactNode;
+  };
 }) {
   return (
     <div
@@ -29,6 +37,17 @@ export function EmptyState({
       <p className="text-sm text-muted-foreground max-w-xs text-center">
         {message}
       </p>
+      {action && (
+        <Button
+          onClick={action.onClick}
+          variant={action.variant || 'default'}
+          className="mt-5"
+          size="sm"
+        >
+          {action.icon}
+          {action.label}
+        </Button>
+      )}
     </div>
   );
 }
