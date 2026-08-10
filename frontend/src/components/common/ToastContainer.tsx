@@ -70,6 +70,18 @@ export const ToastContainer: React.FC = () => {
                     {toast.message}
                   </p>
                 )}
+                {toast.undo && (
+                  <button
+                    onClick={() => {
+                      toast.undo!.onClick();
+                      removeToast(toast.id);
+                    }}
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline underline-offset-2"
+                  >
+                    <span>↩</span>
+                    {toast.undo.label}
+                  </button>
+                )}
               </div>
               <button
                 onClick={() => removeToast(toast.id)}
