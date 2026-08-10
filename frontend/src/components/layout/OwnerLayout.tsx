@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
 import { Header } from '../common/Header';
+import { SidebarProfile } from './SidebarProfile';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -12,8 +12,7 @@ import {
   CalendarCheck,
   Printer,
   FileText,
-  ShieldCheck,
-  Server,
+  Settings,
 } from 'lucide-react';
 
 const OWNER_NAV = [
@@ -26,6 +25,7 @@ const OWNER_NAV = [
   { to: '/owner/payroll', label: 'Payroll', icon: DollarSign, group: 'people' },
   { to: '/owner/audit', label: 'Audit Logs', icon: FileText, group: 'system' },
   { to: '/owner/printers', label: 'LAN Printers', icon: Printer, group: 'system' },
+  { to: '/owner/settings', label: 'Settings', icon: Settings, group: 'system' },
 ] as const;
 
 const GROUP_LABELS: Record<string, string> = {
@@ -38,8 +38,6 @@ const GROUP_LABELS: Record<string, string> = {
 const GROUP_ORDER: string[] = ['core', 'ops', 'people', 'system'];
 
 export const OwnerLayout: React.FC = () => {
-  const { user } = useAuthStore();
-
   const grouped = GROUP_ORDER.map((g) => ({
     group: g,
     items: OWNER_NAV.filter((n) => n.group === g),
@@ -50,6 +48,15 @@ export const OwnerLayout: React.FC = () => {
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <aside className="w-64 shrink-0 border-r border-border bg-card/40 flex flex-col">
+          <div className="px-5 py-4 border-b border-border">
+            <h1 className="text-base font-display font-semibold text-foreground leading-tight">
+              CMS
+            </h1>
+            <p className="text-[10px] text-muted-foreground font-mono tracking-wider">
+              Owner Console
+            </p>
+          </div>
+
           <nav className="flex-1 px-3 py-5 overflow-y-auto space-y-6">
             {grouped.map(({ group, items }) => (
               <div key={group}>
@@ -108,33 +115,7 @@ export const OwnerLayout: React.FC = () => {
             ))}
           </nav>
 
-          <div className="p-3 border-t border-border">
-            <div className="rounded-xl bg-secondary/40 border border-border p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <Server className="w-3.5 h-3.5 text-primary" />
-                <p className="text-[11px] font-semibold text-foreground">System Status</p>
-              </div>
-              <div className="space-y-1 text-[11px] text-muted-foreground">
-                <div className="flex items-center justify-between">
-                  <span>CMS</span>
-                  <span className="font-mono">v1.0</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Signed in as</span>
-                  <span className="font-medium text-foreground truncate ml-2 max-w-[7rem]">
-                    {user?.name}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Role</span>
-                  <span className="inline-flex items-center gap-1 text-primary font-medium">
-                    <ShieldCheck className="w-3 h-3" />
-                    {user?.role}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SidebarProfile />
         </aside>
 
         <main className="flex-1 bg-background overflow-y-auto">
