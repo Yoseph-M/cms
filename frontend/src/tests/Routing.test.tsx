@@ -82,7 +82,9 @@ describe('Layout Architecture Regression Tests', () => {
       expect(asides.length).toBe(1);
     });
 
-    it('ManagerLayout renders zero <aside> (uses top tabs)', () => {
+    it('ManagerLayout renders exactly one <aside> (sidebar, mirrors OwnerLayout per Phase 14 §2)', () => {
+      // Phase 14 §2 dropped the workbench tab-strip distinction — Manager and
+      // Owner now share the same sidebar-based structural pattern.
       (useAuthStore as any).mockReturnValue({
         user: { role: 'MANAGER', name: 'Test Manager' },
         isAuthenticated: true,
@@ -95,7 +97,7 @@ describe('Layout Architecture Regression Tests', () => {
       );
 
       const asides = container.querySelectorAll('aside');
-      expect(asides.length).toBe(0);
+      expect(asides.length).toBe(1);
     });
   });
 
