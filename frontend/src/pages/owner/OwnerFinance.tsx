@@ -8,9 +8,10 @@ import { Donut, BarChart, LineChart } from '../../components/ui/Charts';
 import { OrderVolumePulse } from '../../components/common/OrderVolumePulse';
 import { motion } from 'framer-motion';
 import {
-  Download, AlertCircle, RotateCcw, TrendingUp, ShoppingCart, DollarSign,
+  Download, AlertCircle, RotateCcw, TrendingUp, ShoppingCart, DollarSign, PieChart
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
+import { EmptyState } from '../../components/common/EmptyState';
 
 function exportCSV(data: Record<string, unknown>[], filename: string) {
   if (!data.length) return;
@@ -40,9 +41,11 @@ const Widget: React.FC<{
   onRetry: () => void;
   empty?: boolean;
   emptyMsg?: string;
+  emptyIcon?: React.ReactNode;
+  emptyTitle?: string;
   headerExtra?: React.ReactNode;
   children: React.ReactNode;
-}> = ({ title, onExportCSV, onExportPDF, loading, error, onRetry, empty, emptyMsg, headerExtra, children }) => (
+}> = ({ title, onExportCSV, onExportPDF, loading, error, onRetry, empty, emptyMsg, emptyIcon, emptyTitle, headerExtra, children }) => (
   <Card>
     <CardHeader className="flex flex-row items-center justify-between pb-3 gap-2 flex-wrap">
       <CardTitle className="text-sm font-bold text-foreground">{title}</CardTitle>
@@ -70,7 +73,12 @@ const Widget: React.FC<{
           <Button variant="outline" size="sm" onClick={onRetry}><RotateCcw className="w-3 h-3 mr-1.5" />Retry</Button>
         </div>
       ) : empty ? (
-        <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">{emptyMsg || 'No data for this period.'}</div>
+        <EmptyState
+          title={emptyTitle || 'No data for this period'}
+          message={emptyMsg || 'Try widening the date range or check back once there is activity.'}
+          icon={emptyIcon || <PieChart className="w-7 h-7" />}
+          className="min-h-[10rem] py-8"
+        />
       ) : children}
     </CardContent>
   </Card>
