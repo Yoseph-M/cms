@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useSocketStore } from '../../store/socketStore';
 import { useToastStore } from '../../store/toastStore';
 import { Order, PaymentMethod } from '../../types';
 import { ReceiptModal } from '../../components/receipt/ReceiptModal';
-import { AlertTriangle, Clock, Receipt } from 'lucide-react';
+import { AlertTriangle, Clock, Receipt, ShoppingCart, ListOrdered, Armchair } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -12,7 +13,15 @@ import { Card } from '../../components/ui/Card';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
+import { PageSkeleton } from '../../components/common/PageSkeleton';
 import { formatCurrency } from '../../utils/currency';
+import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
+
+const CashierOrderingPanel = lazy(() =>
+  import('../../components/cashier/CashierOrderingPanel').then((m) => ({
+    default: m.CashierOrderingPanel,
+  }))
+);
 
 /* ─── Elapsed-time hook ─── */
 function useElapsedTime(createdAt: string) {
@@ -37,15 +46,11 @@ function useElapsedTime(createdAt: string) {
 }
 
 /* ─── Order ticket card (Framer layout animation) ─── */
-function OrderCard({
-  order,
-  isSelected,
-  onClick,
-}: {
+const OrderCard = React.forwardRef<HTMLDivElement, {
   order: Order;
   isSelected: boolean;
   onClick: () => void;
-}) {
+}>(({ order, isSelected, onClick }, ref) => {
   const { elapsed, isWarning, isDanger } = useElapsedTime(order.createdAt);
 
   let timeColor = 'text-muted-foreground';
@@ -58,15 +63,27 @@ function OrderCard({
   else if (order.cancellationReason) statusBadge = <Badge variant="warning">Cancel Req</Badge>;
   else statusBadge = <Badge variant="neutral">Active</Badge>;
 
+  const handleKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <motion.div
       layout
+      ref={ref}
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
       transition={{ type: 'spring', stiffness: 400, damping: 28 }}
       onClick={onClick}
-      className={`ticket-tear relative bg-card cursor-pointer border rounded-xl transition-all duration-200 ${
+      onKeyDown={handleKey}
+      tabIndex={0}
+      role="button"
+      aria-label={`Order ${order.clientOrderId.slice(0, 8)} ${order.tableNumber ? `Table ${order.tableNumber}` : 'Takeout'}`}
+      className={`ticket-tear relative bg-card cursor-pointer border rounded-xl transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
         isSelected
           ? 'border-primary shadow-xl shadow-primary/15 ring-1 ring-primary'
           : 'border-border hover:border-primary/40 hover:shadow-md'
@@ -101,12 +118,53 @@ function OrderCard({
       </div>
     </motion.div>
   );
-}
+});
+OrderCard.displayName = 'OrderCard';
 
 /* ─── Main Cashier Dashboard ─── */
 export const CashierDashboard: React.FC = () => {
   const { socket } = useSocketStore();
   const { addToast } = useToastStore();
+  const queryClient = useQueryClient();
+
+  const cardRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+
+  // Phase 14, §1.3 — live status of the cashier-ordering toggle.
+  // `enabled` flips without a refresh when an Owner/Manager changes the setting
+  // because we also subscribe to the `settings:cashierOrderingChanged` socket event.
+  const settingQuery = useSystemSettingQuery('cashierOrderingEnabled');
+  const [cashierOrderingEnabled, setCashierOrderingEnabled] = useState(false);
+  useEffect(() => {
+    if (settingQuery.data) {
+      setCashierOrderingEnabled(settingQuery.data.value === 'true');
+    }
+  }, [settingQuery.data]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (payload: { value: string }) => {
+      setCashierOrderingEnabled(payload.value === 'true');
+      queryClient.setQueryData(['systemSetting', 'cashierOrderingEnabled'], (old: any) =>
+        old ? { ...old, value: payload.value } : old
+      );
+    };
+    socket.on('settings:cashierOrderingChanged', handler);
+    return () => {
+      socket.off('settings:cashierOrderingChanged', handler);
+    };
+  }, [socket, queryClient]);
+
+  // View mode: 'queue' (default, existing live-queue + payment surface) or
+  // 'order' (the lazy-loaded ordering panel from §1.3).
+  const [mode, setMode] = useState<'queue' | 'tables' | 'order'>('queue');
+  const [tableForNewOrder, setTableForNewOrder] = useState('');
+  // If the toggle is flipped off while the user is in 'order' mode, snap back
+  // to 'queue' so we never render the panel for a disabled state.
+  useEffect(() => {
+    if (!cashierOrderingEnabled && mode === 'order') {
+      setMode('queue');
+    }
+  }, [cashierOrderingEnabled, mode]);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -125,6 +183,93 @@ export const CashierDashboard: React.FC = () => {
 
   // Receipt modal
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
+
+  const activeOrders = orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED');
+  const selectedOrder = orders.find((o) => o.id === selectedOrderId) || activeOrders[0];
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inForm = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+
+      if (e.key === 'Escape') {
+        if (showCancelModal) {
+          e.preventDefault();
+          setShowCancelModal(false);
+          setCancelReason('');
+          return;
+        }
+        if (mode === 'order') {
+          e.preventDefault();
+          setMode('queue');
+          return;
+        }
+        if (selectedOrderId) {
+          e.preventDefault();
+          setSelectedOrderId(null);
+        }
+        return;
+      }
+
+      if (mode === 'order') return;
+      if (inForm) return;
+
+      if (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J') {
+        e.preventDefault();
+        if (activeOrders.length === 0) return;
+        const currentIdx = selectedOrder ? activeOrders.findIndex((o) => o.id === selectedOrder.id) : -1;
+        const nextIdx = currentIdx < activeOrders.length - 1 ? currentIdx + 1 : 0;
+        const next = activeOrders[nextIdx];
+        if (next) {
+          setSelectedOrderId(next.id);
+          requestAnimationFrame(() => cardRefs.current.get(next.id)?.focus());
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        if (activeOrders.length === 0) return;
+        const currentIdx = selectedOrder ? activeOrders.findIndex((o) => o.id === selectedOrder.id) : 0;
+        const prevIdx = currentIdx > 0 ? currentIdx - 1 : activeOrders.length - 1;
+        const prev = activeOrders[prevIdx];
+        if (prev) {
+          setSelectedOrderId(prev.id);
+          requestAnimationFrame(() => cardRefs.current.get(prev.id)?.focus());
+        }
+        return;
+      }
+
+      if (!selectedOrder || selectedOrder.status === 'PAID' || selectedOrder.status === 'CANCELLED') return;
+
+      if (e.key === '1') {
+        e.preventDefault();
+        setPaymentMethod('CASH');
+        return;
+      }
+      if (e.key === '2') {
+        e.preventDefault();
+        setPaymentMethod('CARD');
+        return;
+      }
+      if (e.key === '3') {
+        e.preventDefault();
+        setPaymentMethod('MOBILE');
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!isPrinting && !printed) {
+          void handleMarkPaid(selectedOrder.id);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrders, selectedOrder?.id, selectedOrder?.status, paymentMethod, mode, showCancelModal, isPrinting, printed]);
 
   useEffect(() => {
     fetchOrders();
@@ -194,11 +339,61 @@ export const CashierDashboard: React.FC = () => {
     }
   };
 
-  const activeOrders = orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED');
-  const selectedOrder = orders.find((o) => o.id === selectedOrderId) || activeOrders[0];
-
   const todayRevenue = orders.filter((o) => o.status === 'PAID').reduce((acc, o) => acc + o.totalAmount, 0);
   const todayCount = orders.length;
+
+  // When the cashier-ordering toggle is on AND the user has selected "New
+  // Order", mount the dedicated ordering panel. This is the entire dashboard
+  // for that mode — the queue is still ticking in the background and the
+  // panel will see the new order via the same socket events on switch-back.
+  if (mode === 'order' && cashierOrderingEnabled) {
+    return (
+      <div className="h-full flex flex-col bg-background text-foreground overflow-hidden">
+        <header className="h-14 bg-card/60 backdrop-blur-sm border-b border-border flex items-center justify-between px-6 shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMode('queue')}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            >
+              <ListOrdered className="w-3.5 h-3.5" />
+              Back to queue
+            </button>
+            <span className="font-display font-semibold text-base tracking-tight text-primary flex items-center gap-2">
+              <ShoppingCart className="w-4 h-4" />
+              New Order
+            </span>
+          </div>
+        </header>
+        <Suspense fallback={<PageSkeleton />}>
+          <CashierOrderingPanel initialTableNumber={tableForNewOrder}
+            onOrderCreated={() => {
+              // After placing an order, hop back to the queue so the cashier
+              // sees the new ticket in the live grid (the server already
+              // emitted `order:new` on the socket, but a refetch is cheap
+              // and guarantees the new ticket is visible).
+              void fetchOrders();
+              setMode('queue');
+            }}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (mode === 'tables' && cashierOrderingEnabled) {
+    const tableNumbers = Array.from({ length: 12 }, (_, index) => String(index + 1));
+    return <div className="h-full flex flex-col bg-background text-foreground overflow-hidden">
+      <header className="h-14 bg-card/60 backdrop-blur-sm border-b border-border flex items-center justify-between px-6 shrink-0">
+        <button onClick={() => setMode('queue')} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60"><ListOrdered className="w-3.5 h-3.5" />Back to queue</button>
+        <span className="font-display font-semibold text-base text-primary flex items-center gap-2"><Armchair className="w-4 h-4" />Table map</span>
+      </header>
+      <main className="flex-1 overflow-y-auto p-6"><p className="mb-5 text-sm text-muted-foreground">Choose a table to start an order or open its active ticket.</p><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">{tableNumbers.map(number => {
+        const order = activeOrders.find(item => item.tableNumber === number);
+        const needsPayment = order?.status === 'SERVED';
+        return <button key={number} onClick={() => { if (order) { setSelectedOrderId(order.id); setMode('queue'); } else { setTableForNewOrder(number); setMode('order'); } }} className={`min-h-32 rounded-xl border p-4 text-left transition-colors ${order ? needsPayment ? 'border-[hsl(var(--warning))] bg-[hsl(var(--warning))]/10' : 'border-primary bg-primary/10' : 'border-border bg-card hover:border-primary/60 hover:bg-primary/5'}`}><p className="text-xs font-bold uppercase text-muted-foreground">Table</p><p className="mt-1 font-display text-3xl font-bold">{number}</p><p className={`mt-3 text-xs font-semibold ${order ? needsPayment ? 'text-[hsl(var(--warning))]' : 'text-primary' : 'text-[hsl(var(--success))]'}`}>{order ? needsPayment ? 'Needs payment' : 'Occupied' : 'Empty'}</p>{order && <p className="mt-1 text-xs text-muted-foreground">{formatCurrency(order.totalAmount)}</p>}</button>;
+      })}</div></main>
+    </div>;
+  }
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden text-foreground">
@@ -226,6 +421,17 @@ export const CashierDashboard: React.FC = () => {
           Cashier Console
         </div>
         <div className="flex items-center gap-2 text-sm">
+          {cashierOrderingEnabled && (
+            <Button
+              id="cashier-new-order-btn"
+              size="sm"
+              onClick={() => setMode('tables')}
+              className="h-9"
+            >
+              <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+              Table map
+            </Button>
+          )}
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 text-muted-foreground">
             <span className="tabular-nums font-medium text-foreground">{todayCount}</span>
             <span className="text-xs">orders</span>
@@ -252,6 +458,9 @@ export const CashierDashboard: React.FC = () => {
                   {activeOrders.map((order) => (
                     <OrderCard
                       key={order.id}
+                      ref={(node) => {
+                        cardRefs.current.set(order.id, node);
+                      }}
                       order={order}
                       isSelected={selectedOrder?.id === order.id}
                       onClick={() => setSelectedOrderId(order.id)}
