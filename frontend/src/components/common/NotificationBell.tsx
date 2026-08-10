@@ -107,11 +107,15 @@ export const NotificationBell: React.FC = () => {
     }
   };
 
-  const grouped = {
-    critical: items.filter((i) => i.severity === 'critical'),
-    warning: items.filter((i) => i.severity === 'warning'),
-    info: items.filter((i) => i.severity !== 'critical' && i.severity !== 'warning'),
+  const typeLabel: Record<string, string> = {
+    MISSING_ATTENDANCE: 'Attendance', PRINTER_FAILURE: 'Printers',
+    PAYROLL_PERIOD_DUE: 'Payroll', MENU_ITEM_UNAVAILABLE: 'Menu', SYSTEM_OVERRIDE: 'System',
   };
+  const grouped = items.reduce<Record<string, NotificationItem[]>>((groups, item) => {
+    const group = typeLabel[item.type] || 'System';
+    (groups[group] ||= []).push(item);
+    return groups;
+  }, {});
 
   return (
     <div className="relative" ref={ref}>
@@ -145,19 +149,19 @@ export const NotificationBell: React.FC = () => {
             {items.length === 0 ? (
               <p className="p-6 text-sm text-muted-foreground text-center">No notifications yet.</p>
             ) : (
-              (['critical', 'warning', 'info'] as const).map((sev) =>
-                grouped[sev].length === 0 ? null : (
-                  <div key={sev}>
+              <>
+              {Object.entries(grouped).map(([group, groupItems]) => (
+                  <div key={group}>
                     <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {sev}
+                      {group}
                     </p>
-                    {grouped[sev].map((n) => (
+                    {groupItems.map((n) => (
                       <button
                         key={n.id}
                         onClick={() => {
                           void markRead(n.id);
                           setOpen(false);
-                          navigate(linkFor(n, role));
+                          navigate(n.type === 'MISSING_ATTENDANCE' && n.relatedId ? `${linkFor(n, role)}?staff=${n.relatedId}` : linkFor(n, role));
                         }}
                         className={`w-full text-left px-3 py-2.5 border-l-2 border-b border-border/60 hover:bg-secondary/40 transition-colors ${
                           severityTone[n.severity] || severityTone.info
@@ -170,8 +174,8 @@ export const NotificationBell: React.FC = () => {
                       </button>
                     ))}
                   </div>
-                )
-              )
+              ))}
+              </>
             )}
           </div>
         </div>
