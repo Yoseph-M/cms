@@ -8,8 +8,9 @@ import { Avatar, AvatarFallback } from '../../components/ui/Avatar';
 import { ToggleGroup, ToggleGroupItem } from '../../components/ui/ToggleGroup';
 import { LoadingState } from '../../components/common/LoadingState';
 import { ErrorState } from '../../components/common/ErrorState';
+import { EmptyState } from '../../components/common/EmptyState';
 import { motion } from 'framer-motion';
-import { Calendar, Phone, Mail } from 'lucide-react';
+import { Calendar, Phone, Mail, Users } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const containerVariants = {
@@ -119,11 +120,11 @@ export const ManagerDashboard: React.FC = () => {
       ) : staffError ? (
         <ErrorState message={staffError} onRetry={fetchStaff} />
       ) : staffList.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No staff registered yet.
-          </CardContent>
-        </Card>
+        <EmptyState
+          title="No staff on your roster"
+          message="Once the Owner adds team members, you'll see them here to log daily attendance."
+          icon={<Users className="w-7 h-7" />}
+        />
       ) : (
         <motion.div
           variants={containerVariants}
