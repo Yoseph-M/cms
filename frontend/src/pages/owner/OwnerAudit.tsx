@@ -6,7 +6,8 @@ import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
-import { Filter, Download, AlertCircle, ChevronDown } from 'lucide-react';
+import { EmptyState } from '../../components/common/EmptyState';
+import { Filter, Download, AlertCircle, ChevronDown, ScrollText } from 'lucide-react';
 
 interface AuditLog {
   id: string;
@@ -235,9 +236,11 @@ export const OwnerAudit: React.FC = () => {
               <Button variant="outline" size="sm" className="mt-3" onClick={fetchLogs}>Retry</Button>
             </div>
           ) : logs.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground">
-              <p>No matching events for the current filter.</p>
-            </div>
+            <EmptyState
+              title="No audit events yet"
+              message={actionFilter || dateFrom || dateTo ? 'No events match the current filters. Try broadening your search.' : 'System activity will appear here once staff begin taking actions.'}
+              icon={<ScrollText className="w-7 h-7" />}
+            />
           ) : (
             <>
               <div className="flex items-center border-b border-border bg-secondary/30 px-4 py-2.5 text-xs font-semibold text-muted-foreground">
