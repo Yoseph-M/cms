@@ -42,3 +42,28 @@ export function useAnalyticsQuery<T = unknown>(endpoint: string, deps: Record<st
     staleTime: 90_000,
   });
 }
+
+/** System setting by key — 30s stale, refetch on window focus for toggles */
+export function useSystemSettingQuery(key: string, enabled = true) {
+  return useQuery({
+    queryKey: ['systemSetting', key],
+    queryFn: async () => {
+      const res = await axiosClient.get(`/settings/system/${key}`);
+      return res.data as { key: string; value: string; updatedAt: string };
+    },
+    staleTime: 30_000,
+    enabled,
+  });
+}
+
+/** Current user profile */
+export function useMeQuery() {
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const res = await axiosClient.get('/users/me');
+      return res.data;
+    },
+    staleTime: 60_000,
+  });
+}
