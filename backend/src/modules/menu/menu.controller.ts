@@ -47,7 +47,7 @@ export async function getMenuItems(req: AuthenticatedRequest, res: Response) {
 }
 
 export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
-  const { name, category, price, isAvailable } = req.body;
+  const { name, category, price, isAvailable, imageUrl } = req.body;
   const actorId = req.user!.userId;
 
   const newItem = await prisma.menuItem.create({
@@ -56,6 +56,7 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
       category,
       price: parseFloat(price),
       isAvailable: isAvailable !== undefined ? isAvailable : true,
+      imageUrl,
     },
   });
 
@@ -83,7 +84,13 @@ export async function updateMenuItem(req: AuthenticatedRequest, res: Response) {
 
   const updatedItem = await prisma.menuItem.update({
     where: { id },
-    data: req.body,
+    data: {
+      name: req.body.name,
+      category: req.body.category,
+      price: req.body.price ? parseFloat(req.body.price) : undefined,
+      isAvailable: req.body.isAvailable,
+      imageUrl: req.body.imageUrl,
+    },
   });
 
   invalidateMenuCache();
