@@ -14,6 +14,7 @@ import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { LoadingState } from '../../components/common/LoadingState';
 import { LivePulse } from '../../components/common/LivePulse';
+import { EmptyState } from '../../components/common/EmptyState';
 import { useToastStore } from '../../store/toastStore';
 import { cn } from '../../lib/utils';
 import { formatCurrency } from '../../utils/currency';
@@ -241,9 +242,12 @@ export const OwnerDashboard: React.FC = () => {
           </CardHeader>
           <CardContent>
             {trendData.length === 0 ? (
-              <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
-                No data for the selected range
-              </div>
+              <EmptyState
+                title="No revenue in this range"
+                message="Once orders start coming in and getting paid, you'll see daily revenue trends here."
+                icon={<TrendingUp className="w-7 h-7" />}
+                className="min-h-[12rem]"
+              />
             ) : (
               <div className="flex items-end gap-1.5 h-52 pt-4 border-b border-border overflow-x-auto">
                 {trendData.map((t, idx) => {
@@ -308,13 +312,12 @@ export const OwnerDashboard: React.FC = () => {
                 })}
               </ul>
             ) : (
-              <div className="h-32 flex flex-col items-center justify-center text-muted-foreground">
-                <Activity className="w-6 h-6 mb-2 opacity-50" />
-                <span className="text-sm italic">Aggregate items endpoint not connected</span>
-                <Button variant="ghost" size="sm" className="mt-3" rightIcon={<ChevronRight className="w-3 h-3" />}>
-                  Configure
-                </Button>
-              </div>
+              <EmptyState
+                title="No top items yet"
+                message="Once orders are placed, your best-sellers will appear here ranked by volume."
+                icon={<Activity className="w-7 h-7" />}
+                className="min-h-[10rem]"
+              />
             )}
           </CardContent>
         </Card>
