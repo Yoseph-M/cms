@@ -12,10 +12,11 @@ import { Input } from '../ui/Input';
 import { Sheet } from '../ui/Sheet';
 import { AlertDialog } from '../ui/AlertDialog';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, ImageIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, ImageIcon, CheckSquare, XSquare } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '../../utils/currency';
 import { useMenuQuery } from '../../hooks/useCachedQueries';
+import { cn } from '../../lib/utils';
 
 interface MenuItem {
   id: string;
@@ -75,15 +76,26 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
-  const [deleteTarget, setDeleteTarget] = useState<MenuItem | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkActioning, setBulkActioning] = useState(false);
+
+  const pendingDeletes = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [localItems, setLocalItems] = useState<MenuItem[] | null>(null);
+
+  const displayItems: MenuItem[] = localItems ?? items;
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const invalidateMenu = useCallback(() => {
+    setLocalItems(null);
     void queryClient.invalidateQueries({ queryKey: ['menu'] });
   }, [queryClient]);
+
+  useEffect(() => {
+    setLocalItems(null);
+  }, [items]);
 
   const { socket } = useSocketStore();
   useEffect(() => {
@@ -95,11 +107,26 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     };
   }, [socket, invalidateMenu]);
 
-  const filteredItems = items.filter((item) => {
+  const filteredItems = displayItems.filter((item) => {
     const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
     const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds(new Set(filteredItems.map(i => i.id)));
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     clearTimeout(searchDebounce.current);
@@ -185,19 +212,118 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
+  const handleDelete = useCallback((item: MenuItem) => {
+    const existing = pendingDeletes.current.get(item.id);
+    if (existing) clearTimeout(existing);
+
+    setLocalItems(prev => {
+      const list = prev ?? items;
+      return list.filter(i => i.id !== item.id);
+    });
+
+    const executeDelete = async () => {
+      try {
+        await axiosClient.delete(`/menu/${item.id}`);
+        pendingDeletes.current.delete(item.id);
+        invalidateMenu();
+      } catch (err: unknown) {
+        const e = err as { response?: { data?: { error?: string } } };
+        setLocalItems(prev => {
+          const list = prev ?? items;
+          if (list.some(i => i.id === item.id)) return list;
+          return [...list, item];
+        });
+        addToast({ type: 'error', title: 'Delete failed', message: e.response?.data?.error });
+        pendingDeletes.current.delete(item.id);
+      }
+    };
+
+    const timeoutId = setTimeout(executeDelete, 6000);
+    pendingDeletes.current.set(item.id, timeoutId);
+
+    const undo = () => {
+      const t = pendingDeletes.current.get(item.id);
+      if (t) clearTimeout(t);
+      pendingDeletes.current.delete(item.id);
+      setLocalItems(prev => {
+        const list = prev ?? items;
+        if (list.some(i => i.id === item.id)) return list;
+        return [...list, item];
+      });
+      addToast({
+        type: 'info',
+        title: `Removed — ${item.name} restored to menu`,
+      });
+    };
+
+    addToast({
+      type: 'success',
+      title: `${item.name} removed from menu`,
+      message: 'Item is no longer visible in the catalog.',
+      undo: { label: 'Undo', onClick: undo },
+    });
+  }, [items, addToast, invalidateMenu]);
+
+  const handleBulkAvailability = useCallback(async (nextAvailable: boolean) => {
+    if (selectedIds.size === 0) return;
+    setBulkActioning(true);
+    const ids = Array.from(selectedIds);
     try {
-      await axiosClient.delete(`/menu/${deleteTarget.id}`);
+      await Promise.all(
+        ids.map(id => axiosClient.patch(`/menu/${id}/availability`, { isAvailable: nextAvailable }))
+      );
+      addToast({
+        type: 'success',
+        title: nextAvailable
+          ? `${ids.length} item${ids.length > 1 ? 's' : ''} marked available`
+          : `${ids.length} item${ids.length > 1 ? 's' : ''} marked unavailable`,
+      });
+      clearSelection();
+      setSelectMode(false);
       invalidateMenu();
-      addToast({ type: 'success', title: `${deleteTarget.name} removed` });
-      setDeleteTarget(null);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
-      addToast({ type: 'error', title: 'Delete failed', message: e.response?.data?.error });
+      addToast({ type: 'error', title: 'Bulk update failed', message: e.response?.data?.error });
     } finally {
-      setIsDeleting(false);
+      setBulkActioning(false);
+    }
+  }, [selectedIds, addToast, invalidateMenu]);
+
+  const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length < 2) throw new Error('CSV must have a header and at least one row.');
+      const header = lines[0].split(',').map(s => s.trim().toLowerCase());
+      const nameIdx = header.indexOf('name');
+      const catIdx = header.indexOf('category');
+      const priceIdx = header.indexOf('price');
+      if (nameIdx === -1 || catIdx === -1 || priceIdx === -1) {
+        throw new Error('CSV must include name,category,price columns.');
+      }
+      const toCreate = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map(s => s.trim());
+        const name = cols[nameIdx];
+        const categoryRaw = (cols[catIdx] || '').toUpperCase();
+        const price = parseFloat(cols[priceIdx]);
+        if (!name || !price || Number.isNaN(price)) continue;
+        const category = (['FOOD', 'DRINK', 'DESSERT', 'OTHER'].includes(categoryRaw)
+          ? categoryRaw
+          : 'OTHER') as MenuItem['category'];
+        toCreate.push({ name, category, price });
+      }
+      if (toCreate.length === 0) throw new Error('No valid rows found.');
+      await Promise.all(toCreate.map(payload => axiosClient.post('/menu', payload)));
+      addToast({ type: 'success', title: `Imported ${toCreate.length} menu items` });
+      invalidateMenu();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to import CSV.';
+      addToast({ type: 'error', title: msg });
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -213,6 +339,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     reader.readAsDataURL(file);
   };
 
+  const csvFileRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
@@ -227,12 +355,94 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
           />
         </div>
         {canEdit && (
-          <Button id="add-menu-item-btn" onClick={openAdd} className="shrink-0">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Item
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {selectMode ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={selectAllVisible}
+                  disabled={filteredItems.length === 0}
+                >
+                  <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
+                  Select All ({filteredItems.length})
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearSelection}
+                  disabled={selectedIds.size === 0}
+                >
+                  <XSquare className="w-3.5 h-3.5 mr-1.5" />
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleBulkAvailability(true)}
+                  disabled={selectedIds.size === 0 || bulkActioning}
+                >
+                  Mark Available
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => handleBulkAvailability(false)}
+                  disabled={selectedIds.size === 0 || bulkActioning}
+                >
+                  86 / Mark Unavailable
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setSelectMode(false); clearSelection(); }}
+                >
+                  Exit Select
+                </Button>
+                {selectedIds.size > 0 && (
+                  <span className="text-xs font-bold text-primary px-2 py-1 rounded-md bg-primary/10 border border-primary/30">
+                    {selectedIds.size} selected
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <Button
+                  id="add-menu-item-btn"
+                  onClick={openAdd}
+                  className="shrink-0"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Item
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => csvFileRef.current?.click()}
+                >
+                  <Upload className="w-3.5 h-3.5 mr-1.5" />
+                  Import CSV
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectMode(true)}
+                >
+                  <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
+                  Select
+                </Button>
+              </>
+            )}
+          </div>
         )}
       </div>
+      <input
+        ref={csvFileRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleCSVImport}
+      />
 
       <div className="flex gap-1 p-1 bg-secondary/40 rounded-lg w-fit border border-border/50">
         {CATEGORIES.map((cat) => (
@@ -295,8 +505,32 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
                   show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 380, damping: 28 } },
                 }}
                 exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
+                className={cn(
+                  'relative',
+                  selectMode && 'cursor-pointer',
+                  selectMode && selectedIds.has(item.id) && 'ring-2 ring-primary ring-offset-2 rounded-xl'
+                )}
+                onClick={() => selectMode && toggleSelect(item.id)}
               >
-                <Card className="overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+                {selectMode && (
+                  <label
+                    className="absolute top-2 left-2 z-10 bg-card/90 backdrop-blur-sm p-1 rounded-md cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(item.id)}
+                      onChange={() => toggleSelect(item.id)}
+                      className="w-4 h-4 accent-primary"
+                    />
+                  </label>
+                )}
+                <Card
+                  className={cn(
+                    'overflow-hidden flex flex-col hover:shadow-md transition-shadow',
+                    selectMode && 'pointer-events-none'
+                  )}
+                >
                   <div className="w-full h-28 bg-secondary/40 flex items-center justify-center overflow-hidden">
                     {item.imageUrl ? (
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
@@ -320,13 +554,13 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
                           id={`avail-${item.id}`}
                           checked={item.isAvailable}
                           onCheckedChange={() => handleAvailabilityToggle(item)}
-                          disabled={!canEdit}
+                          disabled={!canEdit || selectMode}
                         />
                         <span className="text-[11px] text-muted-foreground">
                           {item.isAvailable ? 'Available' : 'Hidden'}
                         </span>
                       </div>
-                      {canEdit && (
+                      {canEdit && !selectMode && (
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => openEdit(item)}
@@ -336,13 +570,18 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => setDeleteTarget(item)}
+                            onClick={() => handleDelete(item)}
                             className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             aria-label={`Delete ${item.name}`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                      )}
+                      {canEdit && selectMode && (
+                        <span className="text-[10px] text-muted-foreground font-bold">
+                          {selectedIds.has(item.id) ? '✓ SELECTED' : 'Click card'}
+                        </span>
                       )}
                     </div>
                   </CardContent>
@@ -461,17 +700,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
           </div>
         </div>
       </Sheet>
-
-      <AlertDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title={deleteTarget ? `Remove ${deleteTarget.name} from the menu?` : ''}
-        description="This can't be undone."
-        confirmText="Remove Item"
-        tone="destructive"
-        loading={isDeleting}
-      />
     </div>
   );
 };
