@@ -15,9 +15,9 @@ export function canTransition(current: OrderStatus, next: OrderStatus): boolean 
 
   switch (current) {
     case OrderStatus.SUBMITTED:
-      return next === OrderStatus.IN_KITCHEN || next === OrderStatus.CANCELLED;
+      return next === OrderStatus.IN_KITCHEN || next === OrderStatus.CANCELLED || next === OrderStatus.PAID;
     case OrderStatus.IN_KITCHEN:
-      return next === OrderStatus.SERVED || next === OrderStatus.CANCELLED;
+      return next === OrderStatus.SERVED || next === OrderStatus.CANCELLED || next === OrderStatus.PAID;
     case OrderStatus.SERVED:
       return next === OrderStatus.PAID || next === OrderStatus.CANCELLED;
     case OrderStatus.PAID:
