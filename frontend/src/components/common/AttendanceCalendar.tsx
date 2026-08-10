@@ -26,11 +26,11 @@ interface StaffMember {
 }
 
 const STATUS_CONFIG: Record<AttendanceStatus, { label: string; short: string; color: string; bg: string }> = {
-  PRESENT:  { label: 'Present',  short: 'P',  color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-500/20 border-emerald-500/40 hover:bg-emerald-500/30' },
-  ABSENT:   { label: 'Absent',   short: 'A',  color: 'text-red-700 dark:text-red-400',         bg: 'bg-red-500/20 border-red-500/40 hover:bg-red-500/30' },
-  HALF_DAY: { label: 'Half Day', short: 'HD', color: 'text-amber-700 dark:text-amber-400',     bg: 'bg-amber-500/20 border-amber-500/40 hover:bg-amber-500/30' },
-  LEAVE:    { label: 'Leave',    short: 'L',  color: 'text-sky-700 dark:text-sky-400',         bg: 'bg-sky-500/20 border-sky-500/40 hover:bg-sky-500/30' },
-  HOLIDAY:  { label: 'Holiday',  short: 'HO', color: 'text-purple-700 dark:text-purple-400',   bg: 'bg-purple-500/20 border-purple-500/40 hover:bg-purple-500/30' },
+  PRESENT:  { label: 'Present',  short: 'P',  color: 'text-[hsl(var(--success))]',   bg: 'bg-[hsl(var(--success))]/20 border-[hsl(var(--success))]/40 hover:bg-[hsl(var(--success))]/30' },
+  ABSENT:   { label: 'Absent',   short: 'A',  color: 'text-destructive',             bg: 'bg-destructive/20 border-destructive/40 hover:bg-destructive/30' },
+  HALF_DAY: { label: 'Half Day', short: 'HD', color: 'text-[hsl(var(--warning))]',   bg: 'bg-[hsl(var(--warning))]/20 border-[hsl(var(--warning))]/40 hover:bg-[hsl(var(--warning))]/30' },
+  LEAVE:    { label: 'Leave',    short: 'L',  color: 'text-primary',                 bg: 'bg-primary/20 border-primary/40 hover:bg-primary/30' },
+  HOLIDAY:  { label: 'Holiday',  short: 'HO', color: 'text-accent',                  bg: 'bg-accent/20 border-accent/40 hover:bg-accent/30' },
 };
 
 const EXCLUDED_ROLES_FOR_MANAGER = ['OWNER', 'MANAGER'];
@@ -45,6 +45,10 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1); // 1-indexed
   const [staffFilter, setStaffFilter] = useState('');
+  const [selectedDay, setSelectedDay] = useState<number>(
+    (today.getFullYear() === year && today.getMonth() + 1 === month) ? today.getDate() : 1
+  );
+  const [markingAll, setMarkingAll] = useState(false);
 
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -131,6 +135,69 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
 
   const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
 
+  const selectedDateStr = `${year}-${String(month).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+
+  const handleMarkAllPresent = async () => {
+    if (filteredStaff.length === 0) return;
+    setMarkingAll(true);
+    const date = selectedDateStr;
+    let successCount = 0;
+    const newRecords: AttendanceRecord[] = [];
+    const updatedIds: Record<string, AttendanceRecord> = {};
+    try {
+      await Promise.all(
+        filteredStaff.map(async (s) => {
+          const existing = getRecord(s.id, selectedDay);
+          if (existing) {
+            if (existing.status === 'PRESENT') {
+              successCount++;
+              return;
+            }
+            try {
+              const res = await axiosClient.patch(`/attendance/${existing.id}`, {
+                status: 'PRESENT',
+                note: existing.note || 'Bulk mark all present',
+              });
+              updatedIds[existing.id] = res.data;
+              successCount++;
+            } catch {
+              /* ignore individual failures */
+            }
+          } else {
+            try {
+              const res = await axiosClient.post('/attendance', {
+                userId: s.id,
+                date,
+                status: 'PRESENT',
+                note: 'Bulk mark all present',
+              });
+              newRecords.push(res.data);
+              successCount++;
+            } catch {
+              /* ignore individual failures */
+            }
+          }
+        })
+      );
+      setAttendance(prev => {
+        let next = prev.map(r => updatedIds[r.id] ?? r);
+        const existingKeys = new Set(next.map(r => `${r.userId}|${r.date}`));
+        newRecords.forEach(r => {
+          const k = `${r.userId}|${r.date}`;
+          if (!existingKeys.has(k)) next.push(r);
+        });
+        return next;
+      });
+      addToast({
+        type: 'success',
+        title: 'Marked all present',
+        message: `${successCount}/${filteredStaff.length} staff marked Present for ${date}. Individual cells remain overridable.`,
+      });
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
   const exportCSV = () => {
     const rows = [['Staff', 'Role', ...dayNumbers.map(d => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`)]];
     filteredStaff.forEach(s => {
@@ -152,20 +219,36 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { if (month === 1) { setMonth(12); setYear(y => y-1); } else setMonth(m => m-1); }}
+            onClick={() => { if (month === 1) { setMonth(12); setYear(y => y-1); setSelectedDay(Math.min(selectedDay, 31)); } else setMonth(m => m-1); }}
             className="p-1.5 rounded-lg border border-border hover:bg-secondary transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="font-bold text-base w-36 text-center">{monthName} {year}</span>
           <button
-            onClick={() => { if (month === 12) { setMonth(1); setYear(y => y+1); } else setMonth(m => m+1); }}
+            onClick={() => { if (month === 12) { setMonth(1); setYear(y => y+1); setSelectedDay(1); } else setMonth(m => m+1); }}
             className="p-1.5 rounded-lg border border-border hover:bg-secondary transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/30 rounded-lg px-2.5 py-1">
+            <span className="text-[11px] font-bold text-primary">For:</span>
+            <Select
+              value={String(selectedDay)}
+              onChange={(e) => setSelectedDay(Math.min(parseInt(e.target.value, 10), daysInMonth) || 1)}
+              className="!border-0 !bg-transparent !py-0 !h-auto text-xs font-bold text-primary w-24 focus:!ring-0"
+            >
+              {dayNumbers.map(d => (
+                <option key={d} value={d}>Day {d}</option>
+              ))}
+            </Select>
+          </div>
+          <Button size="sm" onClick={handleMarkAllPresent} disabled={markingAll || filteredStaff.length === 0}>
+            <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
+            {markingAll ? 'Marking...' : 'Mark all Present'}
+          </Button>
           <Input
             id="staff-filter"
             placeholder="Filter staff..."
@@ -207,9 +290,20 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                 {dayNumbers.map(d => {
                   const date = new Date(year, month - 1, d);
                   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                  const isSelected = d === selectedDay;
                   return (
-                    <th key={d} className={`px-1 py-2 text-center font-medium w-10 min-w-[2.5rem] ${isWeekend ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>
-                      <div>{d}</div>
+                    <th
+                      key={d}
+                      onClick={() => setSelectedDay(d)}
+                      className={`px-1 py-2 text-center font-medium w-10 min-w-[2.5rem] cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-primary/20 text-primary border-b-2 border-b-primary'
+                          : isWeekend
+                            ? 'text-muted-foreground/50 hover:bg-secondary/30'
+                            : 'text-muted-foreground hover:bg-secondary/30'
+                      }`}
+                    >
+                      <div className="font-bold">{d}</div>
                       <div className="text-[9px]">{date.toLocaleString('default', { weekday: 'narrow' })}</div>
                     </th>
                   );
@@ -226,12 +320,18 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                   {dayNumbers.map(d => {
                     const rec = getRecord(s.id, d);
                     const cfg = rec ? STATUS_CONFIG[rec.status] : null;
+                    const isSelected = d === selectedDay;
                     return (
-                      <td key={d} className="p-0.5 text-center">
+                      <td
+                        key={d}
+                        className={`p-0.5 text-center ${isSelected ? 'bg-primary/5' : ''}`}
+                      >
                         <button
                           onClick={() => openPopover(s.id, d)}
                           title={cfg?.label || 'Log attendance'}
                           className={`w-8 h-7 rounded-md border text-[10px] font-bold transition-all ${
+                            isSelected ? 'ring-1 ring-primary/50 ring-offset-1' : ''
+                          } ${
                             cfg ? `${cfg.bg} ${cfg.color}` : 'border-transparent text-muted-foreground/40 hover:border-border hover:text-muted-foreground hover:bg-secondary/50'
                           }`}
                         >
