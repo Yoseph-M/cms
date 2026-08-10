@@ -249,3 +249,67 @@
   background-position: 0 50%;
   height: 1px;
 }
+
+/*
+ * Print styles.
+ *
+ * The on-screen palette is a warm dark theme (copper/moss/gold on near-black),
+ * which prints invisibly on white paper. These rules force all tokenized colors
+ * back to plain grayscale so receipts, modals, and any other printed surface
+ * remain legible — without leaking raw color values into component JSX.
+ */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    background-image: none !important;
+  }
+
+  /* Tokenized surfaces default to white in print. */
+  .bg-background,
+  .bg-card,
+  .bg-popover,
+  .bg-secondary,
+  .bg-muted {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Tokenized text colors default to black. */
+  .text-foreground,
+  .text-card-foreground,
+  .text-popover-foreground {
+    color: #000000 !important;
+  }
+
+  .text-muted-foreground {
+    color: #4b5563 !important; /* gray-600 — secondary text on print */
+  }
+
+  .text-primary,
+  .text-accent,
+  .text-success,
+  .text-destructive,
+  .text-warning {
+    color: #000000 !important;
+  }
+
+  /* Tokenized borders default to mid gray. */
+  .border-border,
+  .border-input,
+  .border-destructive,
+  .border-primary,
+  .border-accent,
+  .border-success,
+  .border-warning {
+    border-color: #d1d5db !important; /* gray-300 */
+  }
+
+  /* Hide on-screen chrome we don't want on paper. */
+  .no-print,
+  header,
+  aside,
+  nav {
+    display: none !important;
+  }
+}
