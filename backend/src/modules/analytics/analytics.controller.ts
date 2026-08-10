@@ -291,7 +291,7 @@ export async function getCategorySplit(req: AuthenticatedRequest, res: Response)
     { $unwind: '$items' },
     {
       $lookup: {
-        from: 'menu_items',
+        from: 'menuitems',
         localField: 'items.menuItemId',
         foreignField: '_id',
         as: 'menuItemDetails',
@@ -401,13 +401,26 @@ export async function getAuditLogs(req: AuthenticatedRequest, res: Response) {
     if (dateTo) (where.timestamp as Record<string, Date>).lte = new Date(dateTo as string);
   }
 
-  const auditLogs = await prisma.auditLog.findMany({
+  // MongoDB permits legacy audit rows to outlive their actor account. Do not
+  // let one orphaned actor relation make the whole audit feed unavailable.
+  const rawAuditLogs = await prisma.auditLog.findMany({
     where,
     take: take + 1,
     skip: cursor ? 1 : 0,
     cursor: cursor ? { id: cursor as string } : undefined,
     orderBy: { timestamp: 'desc' },
-    include: { actor: { select: { name: true, role: true } } },
+  });
+  const actorIds = [...new Set(rawAuditLogs.map((log) => log.actorId))];
+  const actors = actorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: actorIds } },
+        select: { id: true, name: true, role: true },
+      })
+    : [];
+  const actorsById = new Map(actors.map((actor) => [actor.id, actor]));
+  const auditLogs = rawAuditLogs.flatMap((log) => {
+    const actor = actorsById.get(log.actorId);
+    return actor ? [{ ...log, actor }] : [];
   });
 
   let nextCursor = null;
@@ -485,4 +498,3 @@ export async function getProfitLoss(req: AuthenticatedRequest, res: Response) {
     netProfit: Math.round(netProfit * 100) / 100,
   });
 }
-
