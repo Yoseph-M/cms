@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CashierDashboard } from '../pages/cashier/CashierDashboard';
 import { axiosClient } from '../api/axiosClient';
 import { useSocketStore } from '../store/socketStore';
@@ -26,6 +27,16 @@ vi.mock('../components/receipt/ReceiptModal', () => ({
   ReceiptModal: () => <div data-testid="receipt-modal">Receipt Modal</div>,
 }));
 
+// Phase 14, §1.3 — the dashboard now reads `cashierOrderingEnabled` via
+// useSystemSettingQuery and uses useQueryClient for the live socket update.
+// Tests need a QueryClientProvider or those hooks throw.
+const renderWithQueryClient = (ui: React.ReactElement) => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 0 } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+};
+
 describe('CashierDashboard', () => {
   let mockSocket: { on: ReturnType<typeof vi.fn>; off: ReturnType<typeof vi.fn> };
   let mockAddToast: ReturnType<typeof vi.fn>;
@@ -42,32 +53,39 @@ describe('CashierDashboard', () => {
     mockAddToast = vi.fn();
     (useToastStore as any).mockReturnValue({ addToast: mockAddToast });
 
-    (axiosClient.get as any).mockResolvedValue({
-      data: [
-        {
-          id: 'order-1',
-          clientOrderId: 'ref-1',
-          tableNumber: '1',
-          status: 'SERVED',
-          totalAmount: 50,
-          createdAt: new Date().toISOString(),
-          items: [{ name: 'Espresso', quantity: 1, unitPrice: 50 }],
-        },
-        {
-          id: 'order-2',
-          clientOrderId: 'ref-2',
-          tableNumber: '2',
-          status: 'PAID',
-          totalAmount: 100,
-          createdAt: new Date().toISOString(),
-          items: [],
-        },
-      ],
+    (axiosClient.get as any).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.startsWith('/settings/system/')) {
+        // 404 — no system setting seeded in this test environment. The
+        // dashboard treats "no data" as "disabled", which is the default.
+        return Promise.reject({ response: { status: 404 } });
+      }
+      return Promise.resolve({
+        data: [
+          {
+            id: 'order-1',
+            clientOrderId: 'ref-1',
+            tableNumber: '1',
+            status: 'SERVED',
+            totalAmount: 50,
+            createdAt: new Date().toISOString(),
+            items: [{ name: 'Espresso', quantity: 1, unitPrice: 50 }],
+          },
+          {
+            id: 'order-2',
+            clientOrderId: 'ref-2',
+            tableNumber: '2',
+            status: 'PAID',
+            totalAmount: 100,
+            createdAt: new Date().toISOString(),
+            items: [],
+          },
+        ],
+      });
     });
   });
 
   it('renders active orders and hides Mark Paid for PAID orders', async () => {
-    render(<CashierDashboard />);
+    renderWithQueryClient(<CashierDashboard />);
 
     await waitFor(() => {
       expect(screen.getByText('Mark Paid')).toBeInTheDocument();
@@ -91,7 +109,7 @@ describe('CashierDashboard', () => {
       },
     });
 
-    render(<CashierDashboard />);
+    renderWithQueryClient(<CashierDashboard />);
 
     await waitFor(() => {
       expect(screen.getByText('Mark Paid')).toBeInTheDocument();
@@ -106,7 +124,7 @@ describe('CashierDashboard', () => {
   });
 
   it('displays printer failure banner and allows dismiss', async () => {
-    render(<CashierDashboard />);
+    renderWithQueryClient(<CashierDashboard />);
 
     await waitFor(() => {
       expect(screen.getByText('Mark Paid')).toBeInTheDocument();
