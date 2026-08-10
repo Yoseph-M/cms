@@ -11,5 +11,11 @@
     "test:frontend": "npm --prefix frontend run test",
     "docker:up": "docker-compose up --build",
     "docker:down": "docker-compose down"
+  },
+  "devDependencies": {
+    "prisma": "^7.9.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.9.1"
   }
 }
