@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useAuthStore } from '../../store/authStore';
@@ -14,6 +14,7 @@ import {
   KeyRound, Copy, X, Eye, EyeOff, AlertTriangle
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
+import { EmptyState } from '../../components/common/EmptyState';
 
 interface User {
   id: string;
@@ -55,8 +56,7 @@ export const OwnerStaff: React.FC = () => {
   const [showCredential, setShowCredential] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [confirmTarget, setConfirmTarget] = useState<{ user: User; action: 'deactivate' | 'reactivate' } | null>(null);
-  const [isActioning, setIsActioning] = useState(false);
+  const pendingStatusTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const [resetResult, setResetResult] = useState<{ name: string; credential: string } | null>(null);
   const [isResetting, setIsResetting] = useState(false);
@@ -141,27 +141,50 @@ export const OwnerStaff: React.FC = () => {
     }
   };
 
-  const handleDeactivate = async () => {
-    if (!confirmTarget) return;
-    setIsActioning(true);
-    try {
-      const { user, action } = confirmTarget;
-      if (action === 'deactivate') {
-        await axiosClient.patch(`/users/${user.id}/deactivate`);
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: false } : u));
-        addToast({ type: 'success', title: `${user.name} deactivated` });
-      } else {
-        await axiosClient.patch(`/users/${user.id}`, { isActive: true });
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: true } : u));
-        addToast({ type: 'success', title: `${user.name} reactivated` });
+  const toggleActiveStatus = useCallback(async (user: User, nextActive: boolean) => {
+    const existingTimeout = pendingStatusTimeouts.current.get(user.id);
+    if (existingTimeout) clearTimeout(existingTimeout);
+
+    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: nextActive } : u));
+
+    const executeApi = async () => {
+      try {
+        if (nextActive) {
+          await axiosClient.patch(`/users/${user.id}`, { isActive: true });
+        } else {
+          await axiosClient.patch(`/users/${user.id}/deactivate`);
+        }
+        pendingStatusTimeouts.current.delete(user.id);
+      } catch (err: any) {
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: !nextActive } : u));
+        addToast({ type: 'error', title: 'Action failed', message: err.response?.data?.error });
+        pendingStatusTimeouts.current.delete(user.id);
       }
-      setConfirmTarget(null);
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Action failed', message: err.response?.data?.error });
-    } finally {
-      setIsActioning(false);
-    }
-  };
+    };
+
+    const timeoutId = setTimeout(executeApi, 6000);
+    pendingStatusTimeouts.current.set(user.id, timeoutId);
+
+    const undo = () => {
+      const t = pendingStatusTimeouts.current.get(user.id);
+      if (t) clearTimeout(t);
+      pendingStatusTimeouts.current.delete(user.id);
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: !nextActive } : u));
+      addToast({
+        type: 'info',
+        title: nextActive ? `Reactivation undone — ${user.name} stays inactive` : `Deactivation undone — ${user.name} stays active`,
+      });
+    };
+
+    addToast({
+      type: 'success',
+      title: nextActive ? `${user.name} reactivated` : `${user.name} deactivated`,
+      message: nextActive
+        ? 'They can now log in again.'
+        : 'They will no longer be able to log in.',
+      undo: { label: 'Undo', onClick: undo },
+    });
+  }, [addToast]);
 
   const handleReset = async (user: User) => {
     setIsResetting(true);
@@ -212,10 +235,16 @@ export const OwnerStaff: React.FC = () => {
           <Button variant="outline" size="sm" className="mt-3" onClick={fetchUsers}>Retry</Button>
         </div>
       ) : filteredUsers.length === 0 ? (
-        <div className="py-16 text-center text-muted-foreground">
-          <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>No staff match your filters.</p>
-        </div>
+        <EmptyState
+          title={users.length === 0 ? 'No staff yet' : 'No staff match your filters'}
+          message={users.length === 0 ? 'Add your first team member — managers, cashiers, waiters, and kitchen staff.' : 'Try clearing filters or searching for a different name.'}
+          icon={<Users className="w-7 h-7" />}
+          action={users.length === 0 ? {
+            label: 'Add Staff',
+            onClick: openAdd,
+            icon: <Plus className="w-4 h-4 mr-1.5" />,
+          } : undefined}
+        />
       ) : (
         <div className="rounded-xl border border-border overflow-hidden">
           <table className="w-full text-sm">
@@ -266,11 +295,11 @@ export const OwnerStaff: React.FC = () => {
                         <KeyRound className="w-3.5 h-3.5" />
                       </button>
                       {user.isActive ? (
-                        <button onClick={() => setConfirmTarget({ user, action: 'deactivate' })} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Deactivate">
+                        <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Deactivate">
                           <ShieldOff className="w-3.5 h-3.5" />
                         </button>
                       ) : (
-                        <button onClick={() => setConfirmTarget({ user, action: 'reactivate' })} className="p-1.5 rounded-md text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10 transition-colors" title="Reactivate">
+                        <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10 transition-colors" title="Reactivate">
                           <ShieldCheck className="w-3.5 h-3.5" />
                         </button>
                       )}
@@ -353,39 +382,6 @@ export const OwnerStaff: React.FC = () => {
                 <Button onClick={handleSave} disabled={isSaving} className="flex-1">
                   {isSaving ? 'Saving...' : editingUser ? 'Save Changes' : 'Add Staff'}
                 </Button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Deactivate confirm */}
-      <AnimatePresence>
-        {confirmTarget && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={() => setConfirmTarget(null)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-              <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full pointer-events-auto">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-destructive" />
-                  </div>
-                  <h3 className="font-bold">{confirmTarget.action === 'deactivate' ? 'Deactivate' : 'Reactivate'} {confirmTarget.user.name}?</h3>
-                </div>
-                <p className="text-sm text-muted-foreground mb-6">
-                  {confirmTarget.action === 'deactivate'
-                    ? 'They will no longer be able to log in until reactivated.'
-                    : 'Their account will be restored and they can log in again.'}
-                </p>
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setConfirmTarget(null)} className="flex-1">Cancel</Button>
-                  <Button onClick={handleDeactivate} disabled={isActioning}
-                    className={`flex-1 ${confirmTarget.action === 'deactivate' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}`}>
-                    {isActioning ? 'Processing...' : (confirmTarget.action === 'deactivate' ? 'Deactivate' : 'Reactivate')}
-                  </Button>
-                </div>
               </div>
             </motion.div>
           </>
