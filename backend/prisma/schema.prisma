@@ -104,11 +104,12 @@ model MenuItem {
   category    MenuCategory
   price       Float
   isAvailable Boolean      @default(true)
+  imageUrl    String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
   @@index([category, isAvailable])
-  @@map("menu_items")
+  @@map("menuitems")
 }
 
 // Composite (embedded) type — mirrors the original embedded orderItemSchema
@@ -272,4 +273,13 @@ model Notification {
 
   @@index([recipientRole, isRead, createdAt])
   @@map("notifications")
+}
+
+model SystemSetting {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
 }
