@@ -20,7 +20,7 @@ router.patch('/:id/pay', requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]), 
 router.post('/:id/cancel-request', requireRole([Role.WAITER, Role.CASHIER, Role.MANAGER, Role.OWNER]), validate(cancelRequestSchema), OrdersController.requestCancelOrder);
 router.patch('/:id/cancel-confirm', requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]), OrdersController.confirmCancelOrder);
 
-router.get('/:id/receipt', requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]), OrdersController.getReceipt);
+
 router.post('/:id/reprint', requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]), OrdersController.reprintOrder);
 
 export default router;
