@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
@@ -7,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { LoadingState } from '../common/LoadingState';
-import { Building2, Printer, ChevronRight } from 'lucide-react';
+import { Building2 } from 'lucide-react';
+import { formatEthiopianPhone, ETHIOPIAN_COUNTRY_CODE } from '../../utils/phone';
 
-const BUSINESS_KEYS = ['businessName', 'businessAddress', 'businessPhone', 'taxRate', 'currency'] as const;
+const BUSINESS_KEYS = ['businessName', 'businessAddress', 'businessPhone', 'currency'] as const;
 
 export const BusinessProfileSection: React.FC = () => {
   const { addToast } = useToastStore();
@@ -17,7 +17,6 @@ export const BusinessProfileSection: React.FC = () => {
     businessName: '',
     businessAddress: '',
     businessPhone: '',
-    taxRate: '',
     currency: '',
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -31,8 +30,7 @@ export const BusinessProfileSection: React.FC = () => {
         businessName: queries[0].data?.value || '',
         businessAddress: queries[1].data?.value || '',
         businessPhone: queries[2].data?.value || '',
-        taxRate: queries[3].data?.value || '',
-        currency: queries[4].data?.value || '',
+        currency: queries[3].data?.value || '',
       });
       setLoaded(true);
     }
@@ -97,18 +95,11 @@ export const BusinessProfileSection: React.FC = () => {
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
             <Input
+              type="tel"
               value={form.businessPhone}
-              onChange={(e) => setForm((f) => ({ ...f, businessPhone: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Tax rate (%)</label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.taxRate}
-              onChange={(e) => setForm((f) => ({ ...f, taxRate: e.target.value }))}
+              maxLength={ETHIOPIAN_COUNTRY_CODE.length + 9}
+              placeholder="+251 9XX XXX XXX"
+              onChange={(e) => setForm((f) => ({ ...f, businessPhone: formatEthiopianPhone(e.target.value) }))}
             />
           </div>
         </div>
@@ -119,27 +110,3 @@ export const BusinessProfileSection: React.FC = () => {
     </Card>
   );
 };
-
-export const PrintersShortcut: React.FC = () => (
-  <Card>
-    <CardContent className="p-4">
-      <Link
-        to="/owner/printers"
-        className="flex items-center justify-between gap-3 group rounded-lg hover:bg-secondary/40 p-2 -m-2 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10 text-primary">
-            <Printer className="w-4 h-4" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-foreground">LAN Printers</p>
-            <p className="text-xs text-muted-foreground">
-              Configure kitchen stations, test prints, and monitor status
-            </p>
-          </div>
-        </div>
-        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-      </Link>
-    </CardContent>
-  </Card>
-);
