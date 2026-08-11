@@ -49,7 +49,7 @@ export const ToastContainer: React.FC = () => {
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: 24, scale: 0.96, transition: { duration: 0.15 } }}
               transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-              className="pointer-events-auto relative overflow-hidden flex items-start gap-3 p-4 pr-10 rounded-xl border border-border bg-card/95 backdrop-blur-md shadow-2xl shadow-black/40"
+              className="pointer-events-auto relative overflow-hidden flex items-start gap-3 p-4 pr-10 rounded-xl border border-border bg-card/95 backdrop-blur-md shadow-xl"
             >
               {/* Accent bar on the left */}
               <span
