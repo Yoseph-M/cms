@@ -265,12 +265,12 @@ export const OwnerPayroll: React.FC = () => {
       return (
         <div
           style={style}
-          className="flex items-center border-b border-border/30 bg-amber-500/5 text-sm px-4 pl-8"
+          className="flex items-center border-b border-border/30 bg-[hsl(var(--warning))]/5 text-sm px-4 pl-8"
         >
           <div className="flex-[2] text-xs text-muted-foreground italic">↳ Correction</div>
           <div className="flex-1 hidden sm:block" />
           <div className="flex-1 hidden md:block" />
-          <div className="flex-1 text-right font-mono text-xs text-amber-600">
+          <div className="flex-1 text-right font-mono text-xs text-[hsl(var(--warning))]">
             {formatCurrency(adj.paidAmount)}
           </div>
           <div className="flex-[2] hidden lg:block text-xs text-muted-foreground truncate">
@@ -486,7 +486,7 @@ export const OwnerPayroll: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <p className="text-xs text-amber-500 font-medium">
+                    <p className="text-xs text-[hsl(var(--warning))] font-medium">
                       A correction creates a new linked record — the original is never modified.
                     </p>
                     <div>
