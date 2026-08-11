@@ -57,14 +57,14 @@ export const updateSystemSettingSchema = z.object({
 export const createMenuItemSchema = z.object({
   name: z.string().min(1, 'Item name is required'),
   category: z.nativeEnum(MenuCategory),
-  price: z.number().positive('Price must be greater than 0'),
+  price: z.number().nonnegative('Price must be greater than or equal to 0'),
   isAvailable: z.boolean().default(true),
 });
 
 export const updateMenuItemSchema = z.object({
   name: z.string().min(1).optional(),
   category: z.nativeEnum(MenuCategory).optional(),
-  price: z.number().positive().optional(),
+  price: z.number().nonnegative().optional(),
   isAvailable: z.boolean().optional(),
 });
 
@@ -76,7 +76,7 @@ export const availabilitySchema = z.object({
 export const orderItemInputSchema = z.object({
   menuItemId: z.string().min(1, 'menuItemId is required'),
   name: z.string().min(1, 'Item name is required'),
-  unitPrice: z.number().positive('Unit price must be positive'),
+  unitPrice: z.number().nonnegative('Unit price must be nonnegative'),
   quantity: z.number().int().positive('Quantity must be at least 1'),
   notes: z.string().default(''),
 });
