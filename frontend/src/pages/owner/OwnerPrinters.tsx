@@ -10,6 +10,7 @@ import { Select } from '../../components/ui/Select';
 import { Badge } from '../../components/ui/Badge';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Printer, Plus, Pencil, Trash2, Zap, Wifi, WifiOff, X, AlertCircle } from 'lucide-react';
+import { Tooltip } from '../../components/ui/Tooltip';
 import { usePrintersQuery } from '../../hooks/useCachedQueries';
 import { EmptyState } from '../../components/common/EmptyState';
 
@@ -212,8 +213,8 @@ export const OwnerPrinters: React.FC = () => {
         </div>
       ) : printers.length === 0 ? (
         <EmptyState
-          title="No printers configured yet"
-          message="Add your kitchen printer to start printing order tickets automatically when orders come in."
+          title="Let's set up your first printer"
+          message="You can add receipt printers for the front counter and the kitchen here to automate your workflow."
           icon={<Printer className="w-7 h-7" />}
           action={{
             label: 'Add Printer',
@@ -262,18 +263,22 @@ export const OwnerPrinters: React.FC = () => {
                         <Zap className={`w-3.5 h-3.5 mr-1.5 ${isTesting ? 'animate-bounce' : ''}`} />
                         {isTesting ? 'Sending...' : 'Test Print'}
                       </Button>
-                      <button
-                        onClick={() => openEdit(printer)}
-                        className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(printer)}
-                        className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <Tooltip label="Edit printer">
+                        <button
+                          onClick={() => openEdit(printer)}
+                          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </Tooltip>
+                      <Tooltip label="Delete printer">
+                        <button
+                          onClick={() => setDeleteTarget(printer)}
+                          className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </Tooltip>
                     </div>
                   </CardContent>
                 </Card>
@@ -295,9 +300,11 @@ export const OwnerPrinters: React.FC = () => {
             >
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <h2 className="text-lg font-bold">{editingPrinter ? 'Edit Printer' : 'Add Printer'}</h2>
-                <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
+                <Tooltip label="Close">
+                  <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </Tooltip>
               </div>
               <div className="flex-1 p-6 space-y-5">
                 <div>
