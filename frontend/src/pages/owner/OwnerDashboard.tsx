@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import {
   Activity,
@@ -18,17 +18,21 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { useToastStore } from '../../store/toastStore';
 import { cn } from '../../lib/utils';
 import { formatCurrency } from '../../utils/currency';
+import { PageHeading, StatNumber } from '../../components/ui/Typography';
+import { AnimatedCurrency, AnimatedNumber } from '../../components/ui/AnimatedNumber';
+import { OnboardingChecklist } from '../../components/onboarding/OnboardingChecklist';
 
 type StatTone = 'primary' | 'accent' | 'success' | 'muted';
 
 const StatTile: React.FC<{
   label: string;
-  value: string;
+  value: React.ReactNode;
   hint?: string;
   icon: React.ReactNode;
   tone: StatTone;
   trend?: { delta: number; positive: boolean };
-}> = ({ label, value, hint, icon, tone, trend }) => {
+  badge?: React.ReactNode;
+}> = ({ label, value, hint, icon, tone, trend, badge }) => {
   const toneClasses: Record<StatTone, string> = {
     primary: 'bg-primary/10 text-primary border-primary/20',
     accent: 'bg-accent/10 text-accent border-accent/20',
@@ -37,18 +41,21 @@ const StatTile: React.FC<{
   };
   return (
     <Card className="relative overflow-hidden card-lift">
-      <CardContent className="pt-6 pb-5">
+      <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-            {label}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+              {label}
+            </span>
+            {badge}
+          </div>
           <div className={cn('w-8 h-8 rounded-lg border flex items-center justify-center', toneClasses[tone])}>
             {icon}
           </div>
         </div>
-        <p className="text-3xl font-display font-semibold text-foreground tabular-nums">
+        <StatNumber className="block">
           {value}
-        </p>
+        </StatNumber>
         <div className="flex items-center justify-between mt-2">
           {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
           {trend && (
@@ -70,10 +77,31 @@ const StatTile: React.FC<{
   );
 };
 
+interface DailySalesData {
+  date: string;
+  totalRevenue: number;
+  mtdRevenue: number;
+  orderCount: number;
+  avgTicket: number;
+  activeOrdersCount: number;
+  deltas: {
+    revenueVsPriorDay: number | null;
+    mtdVsPriorMonth: number | null;
+    ordersVsPriorDay: number | null;
+    aovVsPriorDay: number | null;
+  };
+}
+
+interface TrendSalesData {
+  date: string;
+  revenue: number;
+  orderCount: number;
+}
+
 export const OwnerDashboard: React.FC = () => {
   const { addToast } = useToastStore();
-  const [dailySales, setDailySales] = useState<any>(null);
-  const [trendData, setTrendData] = useState<any[]>([]);
+  const [dailySales, setDailySales] = useState<DailySalesData | null>(null);
+  const [trendData, setTrendData] = useState<TrendSalesData[]>([]);
   const [staffCount, setStaffCount] = useState(0);
 
   const [trendStartDate, setTrendStartDate] = useState(
@@ -141,6 +169,19 @@ export const OwnerDashboard: React.FC = () => {
     addToast({ type: 'success', title: 'CSV exported' });
   };
 
+  const maxRev = Math.max(1, ...trendData.map((d) => d.revenue));
+
+  const isNewRecord = useMemo(() => {
+    if (!dailySales || trendData.length < 2) return false;
+    const pastMax = Math.max(
+      0,
+      ...trendData
+        .filter((d) => d.date !== dailySales.date)
+        .map((d) => d.revenue)
+    );
+    return pastMax > 0 && dailySales.totalRevenue > pastMax;
+  }, [dailySales, trendData]);
+
   if (isLoading) {
     return (
       <div className="h-[60vh] flex items-center justify-center">
@@ -148,8 +189,6 @@ export const OwnerDashboard: React.FC = () => {
       </div>
     );
   }
-
-  const maxRev = Math.max(1, ...trendData.map((d) => d.revenue));
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -159,41 +198,50 @@ export const OwnerDashboard: React.FC = () => {
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
             Owner Console
           </p>
-          <h1 className="mt-1 text-3xl font-display font-semibold text-foreground">
+          <PageHeading className="mt-1">
             Analytics Overview
-          </h1>
+          </PageHeading>
         </div>
         <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-card border border-border shadow-sm">
           <LivePulse activeOrdersCount={dailySales?.activeOrdersCount || 0} />
         </div>
       </div>
 
+      <OnboardingChecklist />
+
       {/* Stat tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatTile
           label="Today's Revenue"
-          value={formatCurrency(dailySales?.totalRevenue ?? 0)}
+          value={<AnimatedCurrency value={dailySales?.totalRevenue ?? 0} />}
+          badge={
+            isNewRecord ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] text-[10px] font-bold animate-fade-in">
+                🎉 New Record
+              </span>
+            ) : null
+          }
           hint={`${dailySales?.orderCount ?? 0} orders settled`}
           icon={<DollarSign className="w-4 h-4" />}
           tone="primary"
         />
         <StatTile
           label="Average Ticket"
-          value={formatCurrency(dailySales?.avgTicket ?? 0)}
+          value={<AnimatedCurrency value={dailySales?.avgTicket ?? 0} />}
           hint="per table"
           icon={<TrendingUp className="w-4 h-4" />}
           tone="accent"
         />
         <StatTile
           label="Kitchen Queue"
-          value={String(dailySales?.activeOrdersCount ?? 0)}
+          value={<AnimatedNumber value={dailySales?.activeOrdersCount ?? 0} />}
           hint="active orders"
           icon={<ShoppingBag className="w-4 h-4" />}
           tone="success"
         />
         <StatTile
           label="Active Staff"
-          value={String(staffCount)}
+          value={<AnimatedNumber value={staffCount} />}
           hint="registered users"
           icon={<Users className="w-4 h-4" />}
           tone="muted"
@@ -243,8 +291,8 @@ export const OwnerDashboard: React.FC = () => {
           <CardContent>
             {trendData.length === 0 ? (
               <EmptyState
-                title="No revenue in this range"
-                message="Once orders start coming in and getting paid, you'll see daily revenue trends here."
+                title="Quiet in this window"
+                message="No orders came through yet. Once they do, you'll see daily revenue trends here."
                 icon={<TrendingUp className="w-7 h-7" />}
                 className="min-h-[12rem]"
               />
@@ -313,7 +361,7 @@ export const OwnerDashboard: React.FC = () => {
               </ul>
             ) : (
               <EmptyState
-                title="No top items yet"
+                title="Not enough orders yet to crown a favorite."
                 message="Once orders are placed, your best-sellers will appear here ranked by volume."
                 icon={<Activity className="w-7 h-7" />}
                 className="min-h-[10rem]"
