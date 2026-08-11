@@ -6,7 +6,7 @@ import { useSocketStore } from './store/socketStore';
 import { useOfflineSyncStore } from './store/offlineSyncStore';
 
 import { ToastContainer } from './components/common/ToastContainer';
-import { OrientationPrompt } from './components/common/OrientationPrompt';
+
 import { PageSkeleton } from './components/common/PageSkeleton';
 
 import { OwnerLayout } from './components/layout/OwnerLayout';
@@ -43,9 +43,6 @@ const OwnerSettings = lazy(() =>
 const ManagerSettings = lazy(() =>
   import('./pages/settings/ManagerSettings').then((m) => ({ default: m.ManagerSettings }))
 );
-const CashierSettings = lazy(() =>
-  import('./pages/settings/CashierSettings').then((m) => ({ default: m.CashierSettings }))
-);
 const CashierOrderingPanel = lazy(() =>
   import('./components/cashier/CashierOrderingPanel').then((m) => ({
     default: m.CashierOrderingPanel,
@@ -68,6 +65,9 @@ const MenuCatalog = lazy(() =>
 );
 const AttendanceCalendar = lazy(() =>
   import('./components/common/AttendanceCalendar').then((m) => ({ default: m.AttendanceCalendar }))
+);
+const ProfilePage = lazy(() =>
+  import('./pages/shared/ProfilePage').then((m) => ({ default: m.ProfilePage }))
 );
 
 const Lazy: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -102,10 +102,7 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
   }
 
   return (
-    <>
-      {user.role !== 'OWNER' && <OrientationPrompt />}
-      {children}
-    </>
+    <>{children}</>
   );
 };
 
@@ -149,6 +146,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="audit" element={<Lazy><OwnerAudit /></Lazy>} />
           <Route path="printers" element={<Lazy><OwnerPrinters /></Lazy>} />
           <Route path="settings" element={<Lazy><OwnerSettings /></Lazy>} />
+          <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/owner" replace />} />
         </Route>
 
@@ -167,6 +165,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
           <Route path="expenses" element={<Lazy><ManagerExpenses /></Lazy>} />
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
+          <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/manager/people" replace />} />
         </Route>
 
@@ -179,7 +178,8 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Lazy><CashierDashboard /></Lazy>} />
-          <Route path="settings" element={<Lazy><CashierSettings /></Lazy>} />
+          <Route path="settings" element={<Navigate to="profile" replace />} />
+          <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/cashier" replace />} />
         </Route>
 
