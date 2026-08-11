@@ -1,35 +1,43 @@
 import React from 'react';
-import { AccountSettingsPanel } from '../../components/settings/AccountSettingsPanel';
-import { BusinessProfileSection, PrintersShortcut } from '../../components/settings/BusinessProfileSection';
+import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
+import { BusinessProfileSection } from '../../components/settings/BusinessProfileSection';
 import { CashierOrderingToggle } from '../../components/settings/CashierOrderingToggle';
-import { ReceiptCustomizationSection } from '../../components/settings/ReceiptCustomizationSection';
+import { TableCountSetting } from '../../components/settings/TableCountSetting';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { ShoppingCart } from 'lucide-react';
+import { Button } from '../../components/ui/Button';
+import { ShoppingCart, RotateCcw, CalendarCheck } from 'lucide-react';
+import { useOnboardingStore } from '../../store/onboardingStore';
+import { OwnerAttendanceToggle } from '../../components/settings/OwnerAttendanceToggle';
 
 /**
  * Owner Settings page — Phase 14, §3.2.
  *
  * Layers (in order):
- *   1. Shared AccountSettingsPanel  (every role)
+ *   1. Notification preferences      (shared, per-device)
  *   2. Business profile section      (Owner-only)
  *   3. Cashier-ordering toggle       (Owner-only — system setting)
- *   4. Printers shortcut             (Owner-only — links to /owner/printers)
  */
 export const OwnerSettings: React.FC = () => {
+  const { openWizard } = useOnboardingStore();
+
   return (
-    <div className="space-y-6">
-      <header>
-        <h3 className="text-lg font-bold">Settings</h3>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Manage your account, business profile, and system-wide behavior.
-        </p>
+    <div className="space-y-6 animate-fade-in">
+      <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-bold">Settings</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage your business profile, notifications, and system-wide behavior.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => openWizard(0)} className="gap-2 shrink-0">
+          <RotateCcw className="w-4 h-4" />
+          Re-run Setup Guide
+        </Button>
       </header>
 
-      <AccountSettingsPanel showNotificationPrefs />
+      <NotificationPreferencesSection />
 
       <BusinessProfileSection />
-
-      <ReceiptCustomizationSection />
 
       <Card>
         <CardHeader>
@@ -40,10 +48,21 @@ export const OwnerSettings: React.FC = () => {
         </CardHeader>
         <CardContent>
           <CashierOrderingToggle />
+          <TableCountSetting />
         </CardContent>
       </Card>
 
-      <PrintersShortcut />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <CalendarCheck className="w-4 h-4 text-primary" />
+            Attendance
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <OwnerAttendanceToggle />
+        </CardContent>
+      </Card>
     </div>
   );
 };
