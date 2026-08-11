@@ -4,8 +4,7 @@ import { axiosClient } from '../../api/axiosClient';
 import { useSocketStore } from '../../store/socketStore';
 import { useToastStore } from '../../store/toastStore';
 import { Order, PaymentMethod } from '../../types';
-import { ReceiptModal } from '../../components/receipt/ReceiptModal';
-import { AlertTriangle, Clock, Receipt, ShoppingCart, ListOrdered, Armchair } from 'lucide-react';
+import { AlertTriangle, Clock, ShoppingCart, ListOrdered, Armchair } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -15,6 +14,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { PageSkeleton } from '../../components/common/PageSkeleton';
 import { formatCurrency } from '../../utils/currency';
+import { PageHeading, StatNumber } from '../../components/ui/Typography';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 
 const CashierOrderingPanel = lazy(() =>
@@ -94,26 +94,33 @@ const OrderCard = React.forwardRef<HTMLDivElement, {
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Order
           </p>
-          <h3 className="font-display text-xl font-semibold text-foreground leading-tight">
+          <PageHeading className="text-xl leading-tight">
             {order.tableNumber ? `Table ${order.tableNumber}` : 'Takeout'}
-          </h3>
+          </PageHeading>
         </div>
         {statusBadge}
       </div>
       <div className="flex justify-between items-end">
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/50">
-          <Clock className={`w-3.5 h-3.5 ${timeColor}`} />
-          <span className={`text-xs font-mono font-semibold tabular-nums ${timeColor}`}>
-            {elapsed}
-          </span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/50 w-fit">
+            <Clock className={`w-3.5 h-3.5 ${timeColor}`} />
+            <span className={`text-xs font-mono font-semibold tabular-nums ${timeColor}`}>
+              {elapsed}
+            </span>
+          </div>
+          {order.waiter && (
+            <p className="text-[10px] text-muted-foreground px-1 truncate max-w-[100px]">
+              by {order.waiter.name}
+            </p>
+          )}
         </div>
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
             {order.items.reduce((acc, i) => acc + i.quantity, 0)} items
           </p>
-          <p className="font-mono font-bold text-foreground text-lg tabular-nums">
+          <StatNumber className="text-lg">
             {formatCurrency(order.totalAmount)}
-          </p>
+          </StatNumber>
         </div>
       </div>
     </motion.div>
@@ -133,12 +140,23 @@ export const CashierDashboard: React.FC = () => {
   // `enabled` flips without a refresh when an Owner/Manager changes the setting
   // because we also subscribe to the `settings:cashierOrderingChanged` socket event.
   const settingQuery = useSystemSettingQuery('cashierOrderingEnabled');
+  const tableCountQuery = useSystemSettingQuery('tableCount');
+  
   const [cashierOrderingEnabled, setCashierOrderingEnabled] = useState(false);
+  const [tableCount, setTableCount] = useState(12);
+
   useEffect(() => {
     if (settingQuery.data) {
       setCashierOrderingEnabled(settingQuery.data.value === 'true');
     }
   }, [settingQuery.data]);
+
+  useEffect(() => {
+    if (tableCountQuery.data) {
+      const val = parseInt(tableCountQuery.data.value, 10);
+      setTableCount(isNaN(val) ? 12 : val);
+    }
+  }, [tableCountQuery.data]);
 
   useEffect(() => {
     if (!socket) return;
@@ -148,9 +166,18 @@ export const CashierDashboard: React.FC = () => {
         old ? { ...old, value: payload.value } : old
       );
     };
+    const tableCountHandler = (payload: { value: string }) => {
+      const val = parseInt(payload.value, 10);
+      setTableCount(isNaN(val) ? 12 : val);
+      queryClient.setQueryData(['systemSetting', 'tableCount'], (old: any) =>
+        old ? { ...old, value: payload.value } : old
+      );
+    };
     socket.on('settings:cashierOrderingChanged', handler);
+    socket.on('settings:tableCountChanged', tableCountHandler);
     return () => {
       socket.off('settings:cashierOrderingChanged', handler);
+      socket.off('settings:tableCountChanged', tableCountHandler);
     };
   }, [socket, queryClient]);
 
@@ -166,10 +193,18 @@ export const CashierDashboard: React.FC = () => {
     }
   }, [cashierOrderingEnabled, mode]);
 
+interface PrinterFailureEvent {
+  station: string;
+  ip: string;
+  port: number;
+  orderId?: string;
+  failedAt: string;
+}
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
-  const [printerFailures, setPrinterFailures] = useState<any[]>([]);
+  const [printerFailures, setPrinterFailures] = useState<PrinterFailureEvent[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -181,8 +216,7 @@ export const CashierDashboard: React.FC = () => {
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelModal, setShowCancelModal] = useState(false);
 
-  // Receipt modal
-  const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
+
 
   const activeOrders = orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED');
   const selectedOrder = orders.find((o) => o.id === selectedOrderId) || activeOrders[0];
@@ -316,6 +350,10 @@ export const CashierDashboard: React.FC = () => {
     try {
       const res = await axiosClient.patch(`/orders/${orderId}/pay`, { paymentMethod });
       setOrders((prev) => prev.map((o) => (o.id === orderId ? res.data : o)));
+      
+      const tableText = res.data.tableNumber ? `Table ${res.data.tableNumber}'s` : 'Takeout order is';
+      addToast({ type: 'success', title: `Nice — ${tableText} all settled` });
+
       setTimeout(() => {
         setIsPrinting(false);
         setPrinted(true);
@@ -381,7 +419,7 @@ export const CashierDashboard: React.FC = () => {
   }
 
   if (mode === 'tables' && cashierOrderingEnabled) {
-    const tableNumbers = Array.from({ length: 12 }, (_, index) => String(index + 1));
+    const tableNumbers = Array.from({ length: tableCount }, (_, index) => String(index + 1));
     return <div className="h-full flex flex-col bg-background text-foreground overflow-hidden">
       <header className="h-14 bg-card/60 backdrop-blur-sm border-b border-border flex items-center justify-between px-6 shrink-0">
         <button onClick={() => setMode('queue')} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60"><ListOrdered className="w-3.5 h-3.5" />Back to queue</button>
@@ -453,7 +491,7 @@ export const CashierDashboard: React.FC = () => {
             <ErrorState message={error} onRetry={fetchOrders} />
           ) : (
             <LayoutGroup>
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-5">
+              <div className="grid grid-cols-2 xl:grid-cols-3 gap-6">
                 <AnimatePresence mode="popLayout">
                   {activeOrders.map((order) => (
                     <OrderCard
@@ -491,13 +529,18 @@ export const CashierDashboard: React.FC = () => {
               >
                 <div className="p-6 border-b border-border">
                   <div className="flex justify-between items-center mb-1">
-                    <h2 className="font-display text-2xl font-semibold">
+                    <PageHeading className="text-2xl">
                       {selectedOrder.tableNumber ? `Table ${selectedOrder.tableNumber}` : 'Takeout'}
-                    </h2>
+                    </PageHeading>
                     <span className="font-mono text-sm text-muted-foreground">
                       #{selectedOrder.clientOrderId.slice(0, 8)}
                     </span>
                   </div>
+                  {selectedOrder.waiter && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Ordered by <span className="font-semibold text-foreground">{selectedOrder.waiter.name}</span>
+                    </p>
+                  )}
                   {selectedOrder.cancellationReason && (
                     <div className="mt-3 p-3 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm">
                       <strong>Cancel requested:</strong> {selectedOrder.cancellationReason}
@@ -523,9 +566,9 @@ export const CashierDashboard: React.FC = () => {
                 <div className="p-6 bg-secondary/50 border-t border-border space-y-5">
                   <div className="flex justify-between items-center text-lg">
                     <span className="font-medium text-muted-foreground">Total</span>
-                    <span className="font-display font-semibold text-2xl font-mono text-foreground">
+                    <StatNumber className="text-2xl text-foreground">
                       {formatCurrency(selectedOrder.totalAmount)}
-                    </span>
+                    </StatNumber>
                   </div>
 
                   {selectedOrder.status !== 'PAID' && selectedOrder.status !== 'CANCELLED' && (
@@ -567,12 +610,13 @@ export const CashierDashboard: React.FC = () => {
                                 transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
                                 className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
                               />
-                              Printing receipt…
+                              Processing…
                             </motion.span>
                           ) : printed ? (
                             <motion.span
                               initial={{ scale: 0.8 }}
-                              animate={{ scale: 1 }}
+                              animate={{ scale: [0.8, 1.05, 1] }}
+                              transition={{ duration: 0.6, ease: "easeOut" }}
                               className="flex items-center gap-2"
                             >
                               ✓ Printed
@@ -583,10 +627,7 @@ export const CashierDashboard: React.FC = () => {
                         </Button>
                       </motion.div>
 
-                      <div className="pt-2 border-t border-border flex justify-between">
-                        <Button variant="ghost" size="sm" onClick={() => setReceiptOrder(selectedOrder)}>
-                          Preview Receipt
-                        </Button>
+                      <div className="pt-2 border-t border-border flex justify-end">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -597,12 +638,6 @@ export const CashierDashboard: React.FC = () => {
                         </Button>
                       </div>
                     </>
-                  )}
-
-                  {selectedOrder.status === 'PAID' && (
-                    <Button className="w-full" variant="secondary" onClick={() => setReceiptOrder(selectedOrder)}>
-                      Reprint Receipt
-                    </Button>
                   )}
                 </div>
               </motion.div>
@@ -657,8 +692,6 @@ export const CashierDashboard: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Customer Receipt Dialog */}
-      <ReceiptModal order={receiptOrder} onClose={() => setReceiptOrder(null)} />
     </div>
   );
 };
