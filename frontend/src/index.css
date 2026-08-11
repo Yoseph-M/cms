@@ -3,42 +3,73 @@
 @tailwind utilities;
 
 @layer base {
+  /* ─── Light Theme (Default) ─── */
   :root {
-    --background: 24 15% 8%;
-    --foreground: 30 25% 92%;
+    --background: 0 0% 100%;
+    --foreground: 24 10% 10%;
 
-    --card: 24 15% 12%;
-    --card-foreground: 30 25% 92%;
+    --card: 30 10% 98%;
+    --card-foreground: 24 10% 10%;
 
-    --popover: 24 15% 12%;
-    --popover-foreground: 30 25% 92%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 24 10% 10%;
 
-    --primary: 22 68% 58%;
+    --primary: 22 68% 52%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 24 15% 15%;
-    --secondary-foreground: 30 25% 92%;
+    --secondary: 30 12% 94%;
+    --secondary-foreground: 24 10% 10%;
 
-    --muted: 25 12% 60%;
-    --muted-foreground: 25 12% 60%;
+    --muted: 30 8% 55%;
+    --muted-foreground: 30 8% 55%;
 
-    --accent: 38 68% 68%;
-    --accent-foreground: 30 25% 92%;
+    --accent: 38 60% 50%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 8 65% 60%;
+    --destructive: 8 65% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 130 15% 58%;
+    --success: 145 40% 42%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 36 90% 60%;
+    --warning: 36 90% 50%;
     --warning-foreground: 24 15% 8%;
 
+    --border: 30 12% 90%;
+    --input: 30 12% 90%;
+    --ring: 22 68% 52%;
+
+    --radius: 0.75rem;
+
+    --sidebar: 30 10% 97%;
+  }
+
+  /* ─── Dark Theme (opt-in via .dark class) ─── */
+  .dark {
+    --background: 24 15% 8%;
+    --foreground: 30 25% 92%;
+    --card: 24 15% 12%;
+    --card-foreground: 30 25% 92%;
+    --popover: 24 15% 12%;
+    --popover-foreground: 30 25% 92%;
+    --primary: 22 68% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 24 15% 15%;
+    --secondary-foreground: 30 25% 92%;
+    --muted: 25 12% 60%;
+    --muted-foreground: 25 12% 60%;
+    --accent: 38 68% 68%;
+    --accent-foreground: 30 25% 92%;
+    --destructive: 8 65% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 130 15% 58%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 90% 60%;
+    --warning-foreground: 24 15% 8%;
     --border: 24 12% 20%;
     --input: 24 12% 20%;
     --ring: 22 68% 58%;
-
-    --radius: 0.75rem;
+    --sidebar: 24 15% 10%;
   }
 
   * {
@@ -56,31 +87,58 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    background-image:
-      radial-gradient(
-        ellipse 80% 50% at 50% -10%,
-        hsl(var(--primary) / 0.06),
-        transparent 60%
-      ),
-      radial-gradient(
-        ellipse 60% 40% at 100% 100%,
-        hsl(var(--accent) / 0.04),
-        transparent 60%
-      );
-    background-attachment: fixed;
   }
 
-  /* Better default focus visibility */
-  :where(button, [role='button'], a, input, select, textarea):focus-visible {
+  /* Better default focus visibility — inputs are excluded so wrappers can style focus */
+  :where(button, [role='button'], a):focus-visible {
     @apply outline-none ring-2 ring-ring/70 ring-offset-2 ring-offset-background;
   }
 
-  /* Reusable thin divider on the dark surface */
+  /* Kill browser default styles that break pill inputs */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+    -webkit-text-fill-color: #111827 !important;
+    caret-color: #111827;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  input:invalid,
+  input:-moz-ui-invalid {
+    box-shadow: none !important;
+    outline: none !important;
+    border: none !important;
+  }
+
+  input {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+  }
+
+  input:focus,
+  input:focus-visible,
+  input:-moz-focusring {
+    outline: none !important;
+    box-shadow: none !important;
+    ring: 0 !important;
+  }
+
+  input::-webkit-credentials-auto-fill-button {
+    visibility: hidden;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+  }
+
+  /* Reusable thin divider */
   .hairline {
     background-image: linear-gradient(
       to right,
       transparent,
-      hsl(var(--border) / 0.7),
+      hsl(var(--border)),
       transparent
     );
     height: 1px;
@@ -93,30 +151,30 @@
     background:
       radial-gradient(
         ellipse 60% 50% at 20% 0%,
-        hsl(var(--primary) / 0.12),
+        hsl(var(--primary) / 0.06),
         transparent 60%
       ),
       radial-gradient(
         ellipse 60% 50% at 80% 100%,
-        hsl(var(--accent) / 0.08),
+        hsl(var(--accent) / 0.04),
         transparent 60%
       ),
       hsl(var(--background));
   }
 
-  /* Subtle noise/grain for premium dark surfaces (very low cost, CSS-only) */
+  /* Subtle noise/grain for premium surfaces (very low cost, CSS-only) */
   .bg-grain::before {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
     background-image: radial-gradient(
-      hsl(var(--foreground) / 0.04) 1px,
+      hsl(var(--foreground) / 0.03) 1px,
       transparent 1px
     );
     background-size: 3px 3px;
-    opacity: 0.5;
-    mix-blend-mode: overlay;
+    opacity: 0.4;
+    mix-blend-mode: multiply;
     border-radius: inherit;
   }
 
@@ -133,7 +191,7 @@
 
   /* Card hover lift used by analytics tiles */
   .card-lift {
-    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg;
+    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md;
   }
 
   /* Pulsing dot used by LivePulse */
@@ -165,9 +223,9 @@
   .skeleton {
     background: linear-gradient(
       90deg,
-      hsl(var(--secondary) / 0.6) 0%,
-      hsl(var(--secondary) / 0.9) 50%,
-      hsl(var(--secondary) / 0.6) 100%
+      hsl(var(--secondary)) 0%,
+      hsl(var(--border)) 50%,
+      hsl(var(--secondary)) 100%
     );
     background-size: 200% 100%;
     animation: skeleton-shimmer 1.4s ease-in-out infinite;
@@ -183,46 +241,54 @@
   }
 }
 
-/* Refined scrollbar tuned for the warm dark surface */
+/* Refined scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--border) / 0.7);
+  background-color: hsl(var(--border));
   border-radius: 9999px;
-  border: 2px solid transparent;
+  border: 1px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--primary) / 0.55);
+  background-color: hsl(var(--primary) / 0.45);
 }
 
 /* Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--border) / 0.7) transparent;
+  scrollbar-color: hsl(var(--border)) transparent;
 }
 
-/* Selection */
+/* Selection — light blue theme across the entire app */
 ::selection {
-  background: hsl(var(--primary) / 0.4);
-  color: hsl(var(--foreground));
+  background: #93C5FD;
+  color: #1A1D1F;
+}
+
+::-moz-selection {
+  background: #93C5FD;
+  color: #1A1D1F;
+}
+
+input::selection,
+input::-moz-selection,
+textarea::selection,
+textarea::-moz-selection {
+  background: #93C5FD;
+  color: #1A1D1F;
 }
 
 /*
  * Signature element: Ticket tear.
- *
- * Implemented as a mask (radial cutouts) rather than a hand-rolled polygon
- * so it scales with any card width. The card content should reserve a few
- * pixels of bottom padding so the tear is visible.
  */
 .ticket-tear {
   position: relative;
-  /* The bottom edge gets a row of half-circle cutouts that mimic a torn receipt. */
   -webkit-mask-image: radial-gradient(
     circle at 7px 100%,
     transparent 4px,
@@ -252,11 +318,6 @@
 
 /*
  * Print styles.
- *
- * The on-screen palette is a warm dark theme (copper/moss/gold on near-black),
- * which prints invisibly on white paper. These rules force all tokenized colors
- * back to plain grayscale so receipts, modals, and any other printed surface
- * remain legible — without leaking raw color values into component JSX.
  */
 @media print {
   body {
@@ -265,7 +326,6 @@
     background-image: none !important;
   }
 
-  /* Tokenized surfaces default to white in print. */
   .bg-background,
   .bg-card,
   .bg-popover,
@@ -275,7 +335,6 @@
     color: #000000 !important;
   }
 
-  /* Tokenized text colors default to black. */
   .text-foreground,
   .text-card-foreground,
   .text-popover-foreground {
@@ -283,7 +342,7 @@
   }
 
   .text-muted-foreground {
-    color: #4b5563 !important; /* gray-600 — secondary text on print */
+    color: #4b5563 !important;
   }
 
   .text-primary,
@@ -294,7 +353,6 @@
     color: #000000 !important;
   }
 
-  /* Tokenized borders default to mid gray. */
   .border-border,
   .border-input,
   .border-destructive,
@@ -302,10 +360,9 @@
   .border-accent,
   .border-success,
   .border-warning {
-    border-color: #d1d5db !important; /* gray-300 */
+    border-color: #d1d5db !important;
   }
 
-  /* Hide on-screen chrome we don't want on paper. */
   .no-print,
   header,
   aside,
