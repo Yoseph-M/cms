@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck } from 'lucide-react';
+import { Tooltip } from '../ui/Tooltip';
 import { axiosClient } from '../../api/axiosClient';
 import { useSocketStore } from '../../store/socketStore';
 import { useAuthStore } from '../../store/authStore';
@@ -119,21 +120,23 @@ export const NotificationBell: React.FC = () => {
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
-        aria-label="Notifications"
-      >
-        <Bell className="w-4.5 h-4.5 w-4 h-4" />
-        {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground flex items-center justify-center">
-            {unread > 99 ? '99+' : unread}
-          </span>
-        )}
-      </button>
+      <Tooltip label="Notifications" side="bottom">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+          aria-label="Notifications"
+        >
+          <Bell className="w-4.5 h-4.5 w-4 h-4" />
+          {unread > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground flex items-center justify-center">
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </button>
+      </Tooltip>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[22rem] max-h-[28rem] rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl shadow-black/40 overflow-hidden z-50 flex flex-col">
+        <div className="absolute right-0 top-full mt-2 w-[22rem] max-h-[28rem] rounded-xl border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden z-50 flex flex-col">
           <div className="px-3 py-2.5 border-b border-border flex items-center justify-between bg-secondary/30">
             <p className="text-sm font-semibold">Notifications</p>
             {unread > 0 && (
