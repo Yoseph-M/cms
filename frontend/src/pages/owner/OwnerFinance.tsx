@@ -132,8 +132,19 @@ const Delta: React.FC<{ value: number | null | undefined }> = ({ value }) => {
 
 export const OwnerFinance: React.FC = () => {
   const [range, setRange] = useState<DateRange>(() => computeRange('30d'));
-  const from = fmtDate(range.from);
-  const to = fmtDate(range.to);
+
+  // Send full ISO boundary strings so the backend query is anchored to the
+  // user's local day (start-of-day and end-of-day in local tz), not UTC midnight.
+  const from = (() => {
+    const d = new Date(range.from);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  })();
+  const to = (() => {
+    const d = new Date(range.to);
+    d.setHours(23, 59, 59, 999);
+    return d.toISOString();
+  })();
 
   const [trendChart, setTrendChart] = useState<'line' | 'bar'>('line');
   const [trendOverlay, setTrendOverlay] = useState<'none' | 'wow' | 'mom' | 'yoy'>('none');
