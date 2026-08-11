@@ -48,6 +48,11 @@ enum AttendanceStatus {
   HALF_DAY
 }
 
+enum AttendanceSource {
+  MANUAL
+  SYSTEM_LOGIN
+}
+
 enum ExpenseCategory {
   RENT
   UTILITIES
@@ -153,6 +158,7 @@ model Attendance {
   user      User             @relation(fields: [userId], references: [id])
   date      String // "YYYY-MM-DD", business-local
   status    AttendanceStatus
+  source    AttendanceSource @default(MANUAL)
   note      String           @default("")
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
