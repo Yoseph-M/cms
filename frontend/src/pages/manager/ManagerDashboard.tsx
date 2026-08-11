@@ -11,6 +11,7 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { motion } from 'framer-motion';
 import { Calendar, Phone, Mail, Users } from 'lucide-react';
+import { PageHeading } from '../../components/ui/Typography';
 import { cn } from '../../lib/utils';
 
 const containerVariants = {
@@ -94,9 +95,9 @@ export const ManagerDashboard: React.FC = () => {
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
             Manager
           </p>
-          <h1 className="mt-1 text-2xl font-display font-semibold text-foreground">
+          <PageHeading className="mt-1">
             Staff Roster
-          </h1>
+          </PageHeading>
           <p className="text-sm text-muted-foreground mt-1">
             Log attendance for today or past dates.
           </p>
@@ -121,8 +122,8 @@ export const ManagerDashboard: React.FC = () => {
         <ErrorState message={staffError} onRetry={fetchStaff} />
       ) : staffList.length === 0 ? (
         <EmptyState
-          title="No staff on your roster"
-          message="Once the Owner adds team members, you'll see them here to log daily attendance."
+          title="It's just you for now"
+          message="Once the Owner adds your team, you'll see everyone here to log daily attendance."
           icon={<Users className="w-7 h-7" />}
         />
       ) : (
@@ -130,7 +131,7 @@ export const ManagerDashboard: React.FC = () => {
           variants={containerVariants}
           initial="hidden"
           animate="show"
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
         >
           {staffList.map((staff) => {
             const initials = staff.name
