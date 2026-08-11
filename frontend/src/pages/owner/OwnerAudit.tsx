@@ -237,8 +237,8 @@ export const OwnerAudit: React.FC = () => {
             </div>
           ) : logs.length === 0 ? (
             <EmptyState
-              title="No audit events yet"
-              message={actionFilter || dateFrom || dateTo ? 'No events match the current filters. Try broadening your search.' : 'System activity will appear here once staff begin taking actions.'}
+              title="Nothing to report yet"
+              message={actionFilter || dateFrom || dateTo ? 'No events match the current filters. Try broadening your search.' : "It's quiet for now. System activity will appear here once staff begin taking actions."}
               icon={<ScrollText className="w-7 h-7" />}
             />
           ) : (
