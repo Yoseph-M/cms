@@ -298,40 +298,6 @@ export async function confirmCancelOrder(req: AuthenticatedRequest, res: Respons
   return res.json(updated);
 }
 
-export async function getReceipt(req: AuthenticatedRequest, res: Response) {
-  const { id } = req.params;
-
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      waiter: { select: { id: true, name: true } },
-      cashier: { select: { id: true, name: true } },
-    },
-  });
-
-  if (!order) {
-    return res.status(404).json({ error: 'Order not found.' });
-  }
-
-  const receiptData = {
-    businessName: 'Enterprise POS Restaurant',
-    receiptHeader: 'Thank you for dining with us!',
-    orderId: order.id,
-    clientOrderId: order.clientOrderId,
-    tableNumber: order.tableNumber,
-    waiter: order.waiter?.name || 'N/A',
-    cashier: order.cashier?.name || 'N/A',
-    createdAt: order.createdAt,
-    paidAt: order.paidAt,
-    paymentMethod: order.paymentMethod,
-    items: order.items,
-    totalAmount: order.totalAmount,
-    status: order.status,
-    isPaid: order.isPaid,
-  };
-
-  return res.json(receiptData);
-}
 
 export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
   const { id } = req.params;
