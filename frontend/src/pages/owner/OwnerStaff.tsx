@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
+import { Tooltip } from '../../components/ui/Tooltip';
+import { formatEthiopianPhone, isValidEthiopianPhone, ETHIOPIAN_COUNTRY_CODE } from '../../utils/phone';
 
 interface User {
   id: string;
@@ -109,6 +111,10 @@ export const OwnerStaff: React.FC = () => {
   const handleSave = async () => {
     if (!form.name.trim() || !form.phone.trim()) {
       addToast({ type: 'error', title: 'Name and phone are required.' });
+      return;
+    }
+    if (!isValidEthiopianPhone(form.phone)) {
+      addToast({ type: 'error', title: 'Invalid phone', message: `Ethiopian numbers need ${ETHIOPIAN_COUNTRY_CODE} plus ${9} digits.` });
       return;
     }
     setIsSaving(true);
@@ -282,7 +288,7 @@ export const OwnerStaff: React.FC = () => {
                     {formatCurrency(user.salaryAmount)}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${user.isActive ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/40' : 'bg-secondary text-muted-foreground border-border'}`}>
+                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${user.isActive ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] border-[hsl(var(--success))]/40' : 'bg-secondary text-muted-foreground border-border'}`}>
                       {user.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -299,7 +305,7 @@ export const OwnerStaff: React.FC = () => {
                           <ShieldOff className="w-3.5 h-3.5" />
                         </button>
                       ) : (
-                        <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-emerald-500 hover:bg-emerald-500/10 transition-colors" title="Reactivate">
+                        <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors" title="Reactivate">
                           <ShieldCheck className="w-3.5 h-3.5" />
                         </button>
                       )}
@@ -324,14 +330,16 @@ export const OwnerStaff: React.FC = () => {
             >
               <div className="flex items-center justify-between p-6 border-b border-border">
                 <h2 className="text-lg font-bold">{editingUser ? 'Edit Staff Member' : 'Add Staff Member'}</h2>
-                <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
+                <Tooltip label="Close">
+                  <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </Tooltip>
               </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
                 {[
                   { id: 'sf-name', label: 'Full Name', key: 'name', placeholder: 'e.g. Alice Johnson', required: true },
-                  { id: 'sf-phone', label: 'Phone', key: 'phone', placeholder: '+1 555 0001', required: true },
+                  { id: 'sf-phone', label: 'Phone', key: 'phone', placeholder: '+251 9XX XXX XXX', required: true, phone: true },
                   { id: 'sf-email', label: 'Email', key: 'email', placeholder: 'staff@cafe.com' },
                   { id: 'sf-salary', label: 'Monthly Salary (ETB)', key: 'salaryAmount', placeholder: '2500' },
                 ].map(field => (
@@ -342,7 +350,9 @@ export const OwnerStaff: React.FC = () => {
                     <Input
                       id={field.id}
                       value={(form as any)[field.key]}
-                      onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))}
+                      type={'phone' in field && field.phone ? 'tel' : undefined}
+                      maxLength={'phone' in field && field.phone ? ETHIOPIAN_COUNTRY_CODE.length + 9 : undefined}
+                      onChange={e => setForm(f => ({ ...f, [field.key]: 'phone' in field && field.phone ? formatEthiopianPhone(e.target.value) : e.target.value }))}
                       placeholder={field.placeholder}
                     />
                   </div>
@@ -398,7 +408,7 @@ export const OwnerStaff: React.FC = () => {
               className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
               <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full pointer-events-auto">
                 <h3 className="font-bold mb-1">New Credential for {resetResult.name}</h3>
-                <p className="text-xs text-amber-500 font-medium mb-4 flex items-center gap-1.5">
+                <p className="text-xs text-[hsl(var(--warning))] font-medium mb-4 flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   This won't be shown again — record it now.
                 </p>
