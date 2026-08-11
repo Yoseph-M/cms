@@ -1,6 +1,7 @@
 import React from 'react';
-import { AccountSettingsPanel } from '../../components/settings/AccountSettingsPanel';
+import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { CashierOrderingToggle } from '../../components/settings/CashierOrderingToggle';
+import { TableCountSetting } from '../../components/settings/TableCountSetting';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { ShoppingCart } from 'lucide-react';
 
@@ -8,7 +9,7 @@ import { ShoppingCart } from 'lucide-react';
  * Manager Settings page — Phase 14, §3.3.
  *
  * Layers:
- *   1. Shared AccountSettingsPanel  (every role)
+ *   1. Notification preferences      (shared, per-device)
  *   2. Cashier-ordering toggle       (Manager can edit the same global toggle as Owner;
  *                                     component itself notes "applies to all stations")
  *
@@ -20,11 +21,11 @@ export const ManagerSettings: React.FC = () => {
       <header>
         <h3 className="text-lg font-bold">Settings</h3>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Manage your account and the system behavior shared with Owners.
+          Manage notifications and the system behavior shared with Owners.
         </p>
       </header>
 
-      <AccountSettingsPanel showNotificationPrefs />
+      <NotificationPreferencesSection />
 
       <Card>
         <CardHeader>
@@ -35,6 +36,7 @@ export const ManagerSettings: React.FC = () => {
         </CardHeader>
         <CardContent>
           <CashierOrderingToggle />
+          <TableCountSetting />
         </CardContent>
       </Card>
     </div>
