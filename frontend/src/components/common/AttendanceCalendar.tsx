@@ -6,6 +6,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
+import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle } from 'lucide-react';
 
@@ -16,6 +17,7 @@ interface AttendanceRecord {
   userId: string;
   date: string;
   status: AttendanceStatus;
+  source: 'MANUAL' | 'SYSTEM_LOGIN';
   note: string;
 }
 
@@ -49,6 +51,11 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
     (today.getFullYear() === year && today.getMonth() + 1 === month) ? today.getDate() : 1
   );
   const [markingAll, setMarkingAll] = useState(false);
+  
+  const todayLocal = today.toISOString().split('T')[0];
+
+  const ownerCanEditSetting = useSystemSettingQuery('ownerCanEditAttendance');
+  const ownerCanEdit = ownerCanEditSetting.data?.value === 'true';
 
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -245,7 +252,11 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
               ))}
             </Select>
           </div>
-          <Button size="sm" onClick={handleMarkAllPresent} disabled={markingAll || filteredStaff.length === 0}>
+          <Button 
+            size="sm" 
+            onClick={handleMarkAllPresent} 
+            disabled={markingAll || filteredStaff.length === 0 || (isOwner && !ownerCanEdit) || (!isOwner && selectedDateStr !== todayLocal)}
+          >
             <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
             {markingAll ? 'Marking...' : 'Mark all Present'}
           </Button>
@@ -321,19 +332,27 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                     const rec = getRecord(s.id, d);
                     const cfg = rec ? STATUS_CONFIG[rec.status] : null;
                     const isSelected = d === selectedDay;
+                    
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    let canEdit = true;
+                    if (rec?.source === 'SYSTEM_LOGIN') canEdit = false;
+                    else if (isOwner) canEdit = ownerCanEdit;
+                    else canEdit = dateStr === todayLocal;
+
                     return (
                       <td
                         key={d}
                         className={`p-0.5 text-center ${isSelected ? 'bg-primary/5' : ''}`}
                       >
                         <button
-                          onClick={() => openPopover(s.id, d)}
-                          title={cfg?.label || 'Log attendance'}
+                          onClick={() => canEdit && openPopover(s.id, d)}
+                          disabled={!canEdit}
+                          title={!canEdit ? 'Editing restricted' : cfg?.label || 'Log attendance'}
                           className={`w-8 h-7 rounded-md border text-[10px] font-bold transition-all ${
                             isSelected ? 'ring-1 ring-primary/50 ring-offset-1' : ''
                           } ${
                             cfg ? `${cfg.bg} ${cfg.color}` : 'border-transparent text-muted-foreground/40 hover:border-border hover:text-muted-foreground hover:bg-secondary/50'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                           {cfg?.short || '·'}
                         </button>
