@@ -66,6 +66,7 @@ export interface Attendance {
   user?: { id: string; name: string; role: Role };
   date: string; // YYYY-MM-DD
   status: AttendanceStatus;
+  source?: 'MANUAL' | 'SYSTEM_LOGIN';
   note?: string;
 }
 
