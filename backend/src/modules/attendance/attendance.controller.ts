@@ -63,17 +63,42 @@ export async function createOrUpdateAttendance(req: AuthenticatedRequest, res: R
   const { userId, date, status, note } = req.body;
   const actorId = req.user!.userId;
   const callerRole = req.user!.role as Role;
+  const todayLocal = new Date().toISOString().split('T')[0];
 
   const targetUser = await prisma.user.findUnique({ where: { id: userId } });
   if (!targetUser) {
     return res.status(404).json({ error: 'User not found.' });
   }
 
-  // Owner override of an existing day requires a note
+  // OWNER: reject unless ownerCanEditAttendance is enabled
+  if (callerRole === Role.OWNER) {
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key: 'ownerCanEditAttendance' },
+    });
+    if (setting?.value !== 'true') {
+      return res.status(403).json({
+        error: 'Owner attendance editing is disabled. Enable it in Settings → Attendance.',
+      });
+    }
+  }
+
+  // MANAGER: only allowed to create for today's date
+  if (callerRole === Role.MANAGER && date !== todayLocal) {
+    return res.status(403).json({ error: 'Attendance can only be recorded for today.' });
+  }
+
+  // Check for existing record — block SYSTEM_LOGIN entries from being modified
   const existing = await prisma.attendance.findUnique({
     where: { userId_date: { userId, date } },
   });
-  if (existing && callerRole === Role.OWNER && !note) {
+  if (existing?.source === 'SYSTEM_LOGIN') {
+    return res.status(403).json({
+      error: 'This entry was recorded automatically at login and cannot be edited.',
+    });
+  }
+
+  // Owner override of an existing day requires a note
+  if (existing && callerRole === Role.OWNER && !note?.trim()) {
     return res.status(400).json({ error: 'A note is required when overriding an existing attendance record.' });
   }
 
@@ -89,6 +114,7 @@ export async function createOrUpdateAttendance(req: AuthenticatedRequest, res: R
       userId,
       date,
       status,
+      source: 'MANUAL',
       note: note || '',
     },
     include: {
@@ -128,17 +154,41 @@ export async function updateAttendance(req: AuthenticatedRequest, res: Response)
   const { status, note } = req.body;
   const actorId = req.user!.userId;
   const callerRole = req.user!.role as Role;
+  const todayLocal = new Date().toISOString().split('T')[0];
 
   const before = await prisma.attendance.findUnique({ where: { id } });
   if (!before) {
     return res.status(404).json({ error: 'Attendance record not found.' });
   }
 
-  // Owner override requires a reason when editing an existing entry
-  if (callerRole === Role.OWNER && !note?.trim()) {
-    return res.status(400).json({
-      error: 'A reason is required when overriding an existing attendance entry.',
+  // SYSTEM_LOGIN records are permanently immutable — no role can edit them
+  if (before.source === 'SYSTEM_LOGIN') {
+    return res.status(403).json({
+      error: 'This entry was recorded automatically at login and cannot be edited.',
     });
+  }
+
+  // OWNER: reject unless ownerCanEditAttendance is enabled
+  if (callerRole === Role.OWNER) {
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key: 'ownerCanEditAttendance' },
+    });
+    if (setting?.value !== 'true') {
+      return res.status(403).json({
+        error: 'Owner attendance editing is disabled. Enable it in Settings → Attendance.',
+      });
+    }
+    // Owner requires reason for history edits
+    if (!note?.trim()) {
+      return res.status(400).json({
+        error: 'A reason is required when overriding an existing attendance entry.',
+      });
+    }
+  }
+
+  // MANAGER: only allowed to edit today's records
+  if (callerRole === Role.MANAGER && before.date !== todayLocal) {
+    return res.status(403).json({ error: 'Attendance can only be edited for today.' });
   }
 
   const updated = await prisma.attendance.update({
