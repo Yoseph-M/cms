@@ -15,12 +15,11 @@ function mongoDate(d: Date) {
 function dateRangeMatch(field: string, from?: string, to?: string) {
   if (!from && !to) return {};
   const range: Record<string, unknown> = {};
-  if (from) range.$gte = mongoDate(new Date(from as string));
-  if (to) {
-    const end = new Date(to as string);
-    end.setHours(23, 59, 59, 999);
-    range.$lte = mongoDate(end);
-  }
+  // Accept the boundary timestamps exactly as provided by the frontend.
+  // The frontend sends full ISO strings (e.g. 2024-08-11T00:00:00.000+03:00 / ...T23:59:59.999+03:00)
+  // so that the query is always anchored to the *user's* local day, not the server's UTC midnight.
+  if (from) range.$gte = mongoDate(new Date(from));
+  if (to) range.$lte = mongoDate(new Date(to));
   return { [field]: range };
 }
 
@@ -440,53 +439,62 @@ export async function getProfitLoss(req: AuthenticatedRequest, res: Response) {
   const from = (req.query.from as string) || undefined;
   const to = (req.query.to as string) || undefined;
 
-  const orderDateFilter: Record<string, Date> = {};
-  const expenseDateFilter: Record<string, Date> = {};
-  const paymentDateFilter: Record<string, Date> = {};
-
-  if (from) {
-    const start = new Date(`${from}T00:00:00.000Z`);
-    orderDateFilter.gte = start;
-    expenseDateFilter.gte = start;
-    paymentDateFilter.gte = start;
-  }
-  if (to) {
-    const end = new Date(`${to}T23:59:59.999Z`);
-    orderDateFilter.lte = end;
-    expenseDateFilter.lte = end;
-    paymentDateFilter.lte = end;
-  }
-
-  const orderWhere: Record<string, unknown> = {
+  const orderMatch: Record<string, unknown> = {
     isPaid: true,
-    status: { not: OrderStatus.CANCELLED },
+    status: { $ne: 'CANCELLED' },
   };
-  if (from || to) orderWhere.paidAt = orderDateFilter;
+  Object.assign(orderMatch, dateRangeMatch('paidAt', from, to));
 
-  const [orders, payments, expenses] = await Promise.all([
-    prisma.order.findMany({
-      where: orderWhere,
-      select: { totalAmount: true },
-    }),
-    prisma.userPayment.findMany({
-      where: from || to ? { paymentDate: paymentDateFilter } : {},
-      select: { paidAmount: true, adjustments: { select: { adjustmentAmount: true } } },
-    }),
-    prisma.expense.findMany({
-      where: {
-        ...(from || to ? { date: expenseDateFilter } : {}),
-        category: { not: 'PAYROLL' }, // payroll costs come from UserPayment
+  const orderPipeline = [
+    { $match: orderMatch },
+    { $group: { _id: null, revenue: { $sum: '$totalAmount' } } },
+  ];
+
+  const paymentMatch = dateRangeMatch('paymentDate', from, to);
+
+  const paymentPipeline = [
+    { $match: paymentMatch },
+    {
+      $lookup: {
+        from: 'payroll_adjustments',
+        localField: '_id',
+        foreignField: 'originalPaymentId',
+        as: 'adjustments',
       },
-      select: { amount: true },
-    }),
-  ]);
+    },
+    {
+      $project: {
+        total: {
+          $add: ['$paidAmount', { $sum: '$adjustments.adjustmentAmount' }],
+        },
+      },
+    },
+    { $group: { _id: null, payrollCost: { $sum: '$total' } } },
+  ];
 
-  const revenue = orders.reduce((s, o) => s + o.totalAmount, 0);
-  const payrollCost = payments.reduce((s, p) => {
-    const adj = p.adjustments.reduce((a, x) => a + x.adjustmentAmount, 0);
-    return s + p.paidAmount + adj;
-  }, 0);
-  const otherExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+  const expenseMatch: Record<string, unknown> = {
+    category: { $ne: 'PAYROLL' },
+  };
+  Object.assign(expenseMatch, dateRangeMatch('date', from, to));
+
+  const expensePipeline = [
+    { $match: expenseMatch },
+    { $group: { _id: null, otherExpenses: { $sum: '$amount' } } },
+  ];
+
+  const [ordersRaw, paymentsRaw, expensesRaw] = (await Promise.all([
+    prisma.order.aggregateRaw({ pipeline: orderPipeline as never }),
+    prisma.userPayment.aggregateRaw({ pipeline: paymentPipeline as never }),
+    prisma.expense.aggregateRaw({ pipeline: expensePipeline as never }),
+  ])) as unknown as [
+    Array<{ revenue: number }>,
+    Array<{ payrollCost: number }>,
+    Array<{ otherExpenses: number }>
+  ];
+
+  const revenue = ordersRaw[0]?.revenue ?? 0;
+  const payrollCost = paymentsRaw[0]?.payrollCost ?? 0;
+  const otherExpenses = expensesRaw[0]?.otherExpenses ?? 0;
   const netProfit = revenue - payrollCost - otherExpenses;
 
   return res.json({
