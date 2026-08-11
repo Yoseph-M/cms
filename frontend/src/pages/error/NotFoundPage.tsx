@@ -8,7 +8,7 @@ export const NotFoundPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-surface-gradient flex flex-col items-center justify-center p-6 text-center">
-      <div className="max-w-md w-full bg-card/80 backdrop-blur-sm border border-border rounded-2xl p-10 shadow-2xl shadow-black/40 relative overflow-hidden animate-fade-in">
+      <div className="max-w-md w-full bg-card/80 backdrop-blur-sm border border-border rounded-2xl p-10 shadow-xl relative overflow-hidden animate-fade-in">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
 
         <div className="w-20 h-20 bg-secondary/50 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-border">
