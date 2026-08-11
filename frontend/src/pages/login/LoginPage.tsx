@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useToastStore } from '../../store/toastStore';
 import { axiosClient } from '../../api/axiosClient';
-import { Lock, Mail, ArrowRight } from 'lucide-react';
-import { Input } from '../../components/ui/Input';
+import { Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { cn } from '../../lib/utils';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -15,6 +15,8 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -55,111 +57,184 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-surface-gradient relative flex flex-col items-center justify-center p-6 overflow-hidden">
-      {/* Decorative top accent line */}
-      <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
-      <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+    <>
+      {/* Override browser default styles for autofill, invalid, and required states */}
+      <style>{`
+        .login-input:-webkit-autofill,
+        .login-input:-webkit-autofill:hover,
+        .login-input:-webkit-autofill:focus,
+        .login-input:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0 30px transparent inset !important;
+          -webkit-text-fill-color: #111827 !important;
+          caret-color: #111827;
+          transition: background-color 5000s ease-in-out 0s;
+        }
+        .login-input {
+          appearance: none;
+          -webkit-appearance: none;
+          -moz-appearance: none;
+        }
+        .login-input::-webkit-credentials-auto-fill-button {
+          visibility: hidden;
+          pointer-events: none;
+          position: absolute;
+          right: 0;
+        }
+        .login-input:-moz-ui-invalid {
+          box-shadow: none;
+          outline: none;
+        }
+        .login-input:invalid {
+          box-shadow: none;
+          outline: none;
+          border: none;
+        }
+      `}</style>
 
-      <div className="relative z-10 w-full max-w-md animate-fade-in">
-        {/* Brand mark */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2.5 mb-5">
-            <span className="h-px w-10 bg-gradient-to-r from-transparent to-primary/60" />
-            <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.3em] text-primary">
-              Management System
-            </span>
-            <span className="h-px w-10 bg-gradient-to-l from-transparent to-primary/60" />
+      <div className="min-h-screen w-full bg-white flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-md animate-fade-in">
+          {/* Logo/Brand */}
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#3B82F6] mb-5">
+              <svg
+                className="w-7 h-7 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
+              CMS
+            </h1>
+            <p className="mt-2 text-sm text-gray-500">
+              Sign in to your account
+            </p>
           </div>
-          <h1 className="text-5xl font-display font-semibold text-foreground tracking-tight leading-none">
-            CMS
-          </h1>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Sign in to your staff dashboard
-          </p>
-        </div>
 
-        {/* Card */}
-        <div className="rounded-2xl border border-border bg-card/80 backdrop-blur-sm shadow-2xl shadow-black/40 p-7 relative overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
-
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Login Form */}
+          <form onSubmit={handleSubmit} className="space-y-3" noValidate>
             {errorMsg && (
               <div
                 role="alert"
-                className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive animate-slide-in-from-top-2"
+                className="flex items-center gap-2 rounded-full bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-600"
               >
-                <Lock className="w-4 h-4 mt-0.5 shrink-0" />
-                <p className="font-medium leading-snug">{errorMsg}</p>
+                <Lock className="w-4 h-4 shrink-0" />
+                <p className="font-medium">{errorMsg}</p>
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="email"
-                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-              >
-                Email Address
-              </label>
-              <Input
+            {/* Email Input — single pill, fully curved */}
+            <div
+              className={cn(
+                'group relative flex items-center w-full rounded-full transition-all duration-200 overflow-hidden',
+                focusedField === 'email'
+                  ? 'bg-white border-2 border-[#3B82F6] shadow-[0_0_0_4px_rgba(59,130,246,0.1)]'
+                  : 'bg-[#EBF2FF] border-2 border-transparent shadow-none'
+              )}
+              style={{ borderRadius: '9999px' }}
+            >
+              <div className="pl-4 pr-3 flex items-center justify-center">
+                <Mail
+                  className={cn(
+                    'w-5 h-5 transition-colors duration-200',
+                    focusedField === 'email' ? 'text-[#3B82F6]' : 'text-gray-400'
+                  )}
+                />
+              </div>
+              <input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                leftIcon={<Mail className="h-4 w-4" />}
-                autoComplete="email"
+                onFocus={() => setFocusedField('email')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="Username"
+                autoComplete="off"
                 required
+                className="login-input flex-1 min-w-0 bg-transparent text-gray-900 placeholder:text-gray-400 text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
               />
+              <div className="pr-5 w-2 shrink-0" aria-hidden="true" />
             </div>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="password"
-                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-              >
-                Password
-              </label>
-              <Input
+            {/* Password Input — single pill, fully curved */}
+            <div
+              className={cn(
+                'group relative flex items-center w-full rounded-full transition-all duration-200 overflow-hidden',
+                focusedField === 'password'
+                  ? 'bg-white border-2 border-[#3B82F6] shadow-[0_0_0_4px_rgba(59,130,246,0.1)]'
+                  : 'bg-[#EBF2FF] border-2 border-transparent shadow-none'
+              )}
+              style={{ borderRadius: '9999px' }}
+            >
+              <div className="pl-4 pr-3 flex items-center justify-center">
+                <Lock
+                  className={cn(
+                    'w-5 h-5 transition-colors duration-200',
+                    focusedField === 'password' ? 'text-[#3B82F6]' : 'text-gray-400'
+                  )}
+                />
+              </div>
+              <input
                 id="password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                leftIcon={<Lock className="h-4 w-4" />}
-                autoComplete="current-password"
+                onFocus={() => setFocusedField('password')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="Password"
+                autoComplete="off"
                 required
+                className="login-input flex-1 min-w-0 bg-transparent text-gray-900 placeholder:text-gray-400 text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="pr-4 pl-2 text-gray-400 hover:text-gray-600 transition-colors flex items-center justify-center"
+                tabIndex={-1}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
+              </button>
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading || !email || !password}
-              className="group relative w-full inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl text-sm font-semibold text-primary-foreground bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 hover:shadow-primary/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none transition-all duration-200 active:scale-[0.98]"
+              className={cn(
+                'relative w-full flex items-center justify-center gap-2 h-12 rounded-full',
+                'bg-[#3B82F6] hover:bg-[#2563EB] text-white text-sm font-semibold',
+                'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#3B82F6]',
+                'transition-all duration-200 active:scale-[0.98] mt-4'
+              )}
+              style={{ borderRadius: '9999px' }}
             >
               {isLoading ? (
                 <span className="inline-flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Signing in…
                 </span>
               ) : (
                 <>
                   Sign In
-                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
+
+          {/* Footer */}
+          <p className="mt-8 text-center text-xs text-gray-400">
+            Need help? Contact your manager
+          </p>
         </div>
-
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          Need help signing in? <span className="text-primary">Contact your manager</span>
-        </p>
       </div>
-
-      {/* Footer */}
-      <p className="absolute bottom-4 inset-x-0 text-center text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60">
-        CMS · v1.0
-      </p>
-    </div>
+    </>
   );
 };
