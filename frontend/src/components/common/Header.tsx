@@ -4,14 +4,13 @@ import { useAuthStore } from '../../store/authStore';
 import { useSocketStore } from '../../store/socketStore';
 import { useOfflineSyncStore } from '../../store/offlineSyncStore';
 import {
-  Wifi,
   WifiOff,
   RefreshCw,
   LogOut,
   Shield,
   ChevronDown,
   CalendarDays,
-  Settings,
+  User,
   Search,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
@@ -69,11 +68,13 @@ export const Header: React.FC = () => {
           pulse={isConnected}
           label={isConnected ? 'Live' : 'Reconnecting'}
         />
-        <StatusPill
-          tone={isOnline ? 'neutral' : 'warning'}
-          icon={isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-          label={isOnline ? 'Online' : 'Offline'}
-        />
+        {!isOnline && (
+          <StatusPill
+            tone="warning"
+            icon={<WifiOff className="w-3 h-3" />}
+            label="Offline"
+          />
+        )}
         {pendingCount > 0 && (
           <button
             onClick={() => processSyncQueue()}
@@ -138,7 +139,7 @@ export const Header: React.FC = () => {
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl shadow-black/40 overflow-hidden animate-fade-in z-40">
+              <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden animate-fade-in z-40">
                 <div className="px-3 py-2.5 border-b border-border bg-secondary/30">
                   <p className="text-sm font-semibold truncate">{user.name}</p>
                   <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
@@ -148,12 +149,12 @@ export const Header: React.FC = () => {
                 </div>
                 <div className="p-1.5">
                   <Link
-                    to="/cashier/settings"
+                    to="/cashier/profile"
                     onClick={() => setMenuOpen(false)}
                     className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-foreground hover:bg-secondary transition-colors"
                   >
-                    <Settings className="w-4 h-4" />
-                    Settings
+                    <User className="w-4 h-4" />
+                    Profile
                   </Link>
                   <button
                     onClick={() => {
