@@ -48,8 +48,15 @@ export function useSystemSettingQuery(key: string, enabled = true) {
   return useQuery({
     queryKey: ['systemSetting', key],
     queryFn: async () => {
-      const res = await axiosClient.get(`/settings/system/${key}`);
-      return res.data as { key: string; value: string; updatedAt: string };
+      try {
+        const res = await axiosClient.get(`/settings/system/${key}`);
+        return res.data as { key: string; value: string; updatedAt: string };
+      } catch (err: any) {
+        if (err.response?.status === 404) {
+          return { key, value: null, updatedAt: new Date().toISOString() };
+        }
+        throw err;
+      }
     },
     staleTime: 30_000,
     enabled,
