@@ -183,12 +183,6 @@ const ROUTE_SPECS: RouteSpec[] = [
     description: 'Confirm cancel order',
   },
   {
-    method: 'GET',
-    path: `/api/orders/${fakeId}/receipt`,
-    allowedRoles: [Role.CASHIER, Role.MANAGER, Role.OWNER],
-    description: 'Get receipt',
-  },
-  {
     method: 'POST',
     path: `/api/orders/${fakeId}/reprint`,
     allowedRoles: [Role.CASHIER, Role.MANAGER, Role.OWNER],
