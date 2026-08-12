@@ -1,0 +1,62 @@
+{
+  "dashboard": {
+    "subtitle": "Manager",
+    "title": "Staff Roster",
+    "description": "Log attendance for today or past dates.",
+    "date": "Date",
+    "loading": "Loading staff roster…",
+    "emptyTitle": "It's just you for now",
+    "emptyMsg": "Once the Owner adds your team, you'll see everyone here to log daily attendance.",
+    "active": "Active",
+    "inactive": "Inactive",
+    "markAttendance": "Mark Attendance",
+    "attendance": {
+      "present": "P",
+      "absent": "A",
+      "halfDay": "HD",
+      "leave": "L"
+    }
+  },
+  "payroll": {
+    "title": "Record Payroll Entry",
+    "subtitle": "Log what was actually paid for your staff roster.",
+    "newEntry": "New Entry",
+    "ledgerTitle": "Payroll Ledger",
+    "emptyTitle": "No payroll entries yet",
+    "emptyMsg": "Record your first entry to log what was actually paid to your team roster.",
+    "emptyAction": "Record your first payroll entry",
+    "columns": {
+      "staff": "Staff",
+      "period": "Period",
+      "paid": "Paid",
+      "date": "Date"
+    },
+    "formDesc": "Log what was actually paid for a staff member and period.",
+    "form": {
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "record": "Record Entry",
+      "staff": "Staff",
+      "selectStaff": "Select staff member",
+      "month": "Period Month",
+      "year": "Year",
+      "amount": "Paid Amount (ETB)",
+      "loadingRef": "Loading reference salary…",
+      "refSuggested": "Suggested reference salary — edit to what you actually paid ({{amount}})",
+      "refSuggestedFallback": "Suggested reference salary — edit to what you actually paid",
+      "note": "Note",
+      "optional": "optional",
+      "notePlaceholder": "e.g. Paid in cash on the 28th"
+    }
+  },
+  "toasts": {
+    "fetchStaffError": "Failed to fetch staff list",
+    "attendanceLogged": "Attendance logged",
+    "attendanceFailed": "Failed to log attendance",
+    "refSalaryError": "Could not load salary reference",
+    "staffAmountRequired": "Staff and paid amount are required.",
+    "invalidAmount": "Paid amount must be a non-negative number.",
+    "payrollRecorded": "Payroll entry recorded",
+    "payrollRecordError": "Could not record entry"
+  }
+}
