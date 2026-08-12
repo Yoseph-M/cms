@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { User, Role } from '../../types';
@@ -43,6 +44,7 @@ const ROLE_TONE: Record<Role, 'default' | 'secondary' | 'success' | 'outline'> =
 
 export const ManagerDashboard: React.FC = () => {
   const { addToast } = useToastStore();
+  const { t } = useTranslation('manager');
 
   const [staffList, setStaffList] = useState<User[]>([]);
   const [attendanceDate, setAttendanceDate] = useState<string>(
@@ -63,7 +65,7 @@ export const ManagerDashboard: React.FC = () => {
       const res = await axiosClient.get('/users');
       setStaffList(res.data);
     } catch (err: any) {
-      setStaffError(err.response?.data?.error || 'Failed to fetch staff list');
+      setStaffError(err.response?.data?.error || t('toasts.fetchStaffError', { defaultValue: 'Failed to fetch staff list' }));
     } finally {
       setIsLoadingStaff(false);
     }
@@ -77,11 +79,11 @@ export const ManagerDashboard: React.FC = () => {
         status,
         date: attendanceDate,
       });
-      addToast({ type: 'success', title: 'Attendance logged' });
+      addToast({ type: 'success', title: t('toasts.attendanceLogged', { defaultValue: 'Attendance logged' }) });
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Failed to log attendance',
+        title: t('toasts.attendanceFailed', { defaultValue: 'Failed to log attendance' }),
         message: err.response?.data?.error,
       });
     }
@@ -93,19 +95,19 @@ export const ManagerDashboard: React.FC = () => {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-            Manager
+            {t('dashboard.subtitle', { defaultValue: 'Manager' })}
           </p>
           <PageHeading className="mt-1">
-            Staff Roster
+            {t('dashboard.title', { defaultValue: 'Staff Roster' })}
           </PageHeading>
           <p className="text-sm text-muted-foreground mt-1">
-            Log attendance for today or past dates.
+            {t('dashboard.description', { defaultValue: 'Log attendance for today or past dates.' })}
           </p>
         </div>
         <div className="flex items-center gap-2 bg-card/40 border border-border rounded-xl px-3 py-2">
           <Calendar className="w-4 h-4 text-muted-foreground" />
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Date
+            {t('dashboard.date', { defaultValue: 'Date' })}
           </span>
           <input
             type="date"
@@ -117,13 +119,13 @@ export const ManagerDashboard: React.FC = () => {
       </div>
 
       {isLoadingStaff ? (
-        <LoadingState message="Loading staff roster…" />
+        <LoadingState message={t('dashboard.loading', { defaultValue: 'Loading staff roster…' })} />
       ) : staffError ? (
         <ErrorState message={staffError} onRetry={fetchStaff} />
       ) : staffList.length === 0 ? (
         <EmptyState
-          title="It's just you for now"
-          message="Once the Owner adds your team, you'll see everyone here to log daily attendance."
+          title={t('dashboard.emptyTitle', { defaultValue: "It's just you for now" })}
+          message={t('dashboard.emptyMsg', { defaultValue: "Once the Owner adds your team, you'll see everyone here to log daily attendance." })}
           icon={<Users className="w-7 h-7" />}
         />
       ) : (
@@ -175,7 +177,7 @@ export const ManagerDashboard: React.FC = () => {
                                   : 'bg-muted-foreground/50'
                               )}
                             />
-                            {staff.isActive ? 'Active' : 'Inactive'}
+                            {staff.isActive ? t('dashboard.active', { defaultValue: 'Active' }) : t('dashboard.inactive', { defaultValue: 'Inactive' })}
                           </span>
                         </div>
                       </div>
@@ -202,7 +204,7 @@ export const ManagerDashboard: React.FC = () => {
                     {/* Attendance toggle */}
                     <div>
                       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.14em] mb-2">
-                        Mark Attendance
+                        {t('dashboard.markAttendance', { defaultValue: 'Mark Attendance' })}
                       </p>
                       <ToggleGroup
                         type="single"
@@ -214,28 +216,28 @@ export const ManagerDashboard: React.FC = () => {
                           aria-label="Present"
                           className="flex-1 text-[11px] h-8 font-semibold data-[state=on]:bg-[hsl(var(--success))]/15 data-[state=on]:text-[hsl(var(--success))] data-[state=on]:border data-[state=on]:border-[hsl(var(--success))]/40"
                         >
-                          P
+                          {t('dashboard.attendance.present', { defaultValue: 'P' })}
                         </ToggleGroupItem>
                         <ToggleGroupItem
                           value="ABSENT"
                           aria-label="Absent"
                           className="flex-1 text-[11px] h-8 font-semibold data-[state=on]:bg-destructive/15 data-[state=on]:text-destructive data-[state=on]:border data-[state=on]:border-destructive/40"
                         >
-                          A
+                          {t('dashboard.attendance.absent', { defaultValue: 'A' })}
                         </ToggleGroupItem>
                         <ToggleGroupItem
                           value="HALF_DAY"
                           aria-label="Half Day"
                           className="flex-1 text-[11px] h-8 font-semibold data-[state=on]:bg-warning/15 data-[state=on]:text-[hsl(var(--warning))] data-[state=on]:border data-[state=on]:border-warning/40"
                         >
-                          HD
+                          {t('dashboard.attendance.halfDay', { defaultValue: 'HD' })}
                         </ToggleGroupItem>
                         <ToggleGroupItem
                           value="LEAVE"
                           aria-label="Leave"
                           className="flex-1 text-[11px] h-8 font-semibold data-[state=on]:bg-accent/15 data-[state=on]:text-accent data-[state=on]:border data-[state=on]:border-accent/40"
                         >
-                          L
+                          {t('dashboard.attendance.leave', { defaultValue: 'L' })}
                         </ToggleGroupItem>
                       </ToggleGroup>
                     </div>
