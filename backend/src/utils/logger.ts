@@ -3,8 +3,35 @@ import { AsyncLocalStorage } from 'async_hooks';
 
 export const requestContext = new AsyncLocalStorage<{ requestId: string }>();
 
+/**
+ * Fields that must NEVER appear in log output.
+ * Pino's `redact` option replaces matching key values with "[Redacted]".
+ * The wildcard paths cover nested request bodies (e.g. req.body.password).
+ */
+const REDACTED_PATHS = [
+  'password',
+  'pinCode',
+  'pinSalt',
+  'pinCodeHash',
+  'accessToken',
+  'refreshToken',
+  'token',
+  'authorization',
+  'cookie',
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'req.body.password',
+  'req.body.pinCode',
+  'req.body.refreshToken',
+  'res.headers["set-cookie"]',
+];
+
 const baseLogger = pino({
   level: process.env.LOG_LEVEL || 'info',
+  redact: {
+    paths: REDACTED_PATHS,
+    censor: '[Redacted]',
+  },
   transport: process.env.NODE_ENV !== 'production'
     ? {
         target: 'pino-pretty',
@@ -32,3 +59,4 @@ export const logger = new Proxy(baseLogger, {
     return value;
   }
 });
+
