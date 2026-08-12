@@ -1,0 +1,115 @@
+{
+  "console": "Cashier Console",
+  "header": {
+    "orders": "orders",
+    "today": "Today"
+  },
+  "queue": {
+    "loadingQueue": "Loading live queue...",
+    "noActiveOrders": "No active orders",
+    "noActiveOrdersMsg": "New orders will appear here automatically.",
+    "selectOrder": "Select an order from the queue to view details and collect payment.",
+    "orderLabel": "Order",
+    "table": "Table",
+    "takeout": "Takeout",
+    "items": "items",
+    "by": "by",
+    "status": {
+      "paid": "Paid",
+      "cancelled": "Cancelled",
+      "cancelReq": "Cancel Req",
+      "active": "Active"
+    }
+  },
+  "orderDetail": {
+    "orderedBy": "Ordered by",
+    "cancelRequested": "Cancel requested:",
+    "total": "Total",
+    "markPaid": "Mark Paid",
+    "processing": "Processing…",
+    "printed": "✓ Printed",
+    "cancelOrder": "Cancel Order"
+  },
+  "payment": {
+    "cash": "CASH",
+    "card": "CARD",
+    "mobile": "MOBILE"
+  },
+  "cancelModal": {
+    "title": "Cancel Order",
+    "description": "Please provide a reason for cancelling this order.",
+    "placeholder": "e.g. Customer walked out",
+    "goBack": "Go Back",
+    "confirmCancel": "Confirm Cancel"
+  },
+  "printer": {
+    "failureBanner": "Printer failure detected! Some receipts did not print.",
+    "dismiss": "Dismiss"
+  },
+  "tables": {
+    "title": "Table map",
+    "chooseTable": "Choose a table to start an order or open its active ticket.",
+    "tableLabel": "Table",
+    "empty": "Empty",
+    "occupied": "Occupied",
+    "needsPayment": "Needs payment"
+  },
+  "ordering": {
+    "title": "New Order",
+    "searchPlaceholder": "Search menu...",
+    "loadingMenu": "Loading menu...",
+    "noItems": "No items to show",
+    "noItemsMenu": "No menu items have been added yet. Ask an Owner or Manager to set up the menu.",
+    "noItemsFilter": "No items match your filter.",
+    "categories": {
+      "all": "All",
+      "food": "Food",
+      "drinks": "Drinks",
+      "desserts": "Desserts",
+      "other": "Other"
+    },
+    "cart": {
+      "title": "New Order",
+      "line_one": "{{count}} line",
+      "line_other": "{{count}} lines",
+      "tableNumber": "Table number",
+      "tablePlaceholder": "e.g. 12 or Takeout",
+      "emptyCart": "Tap menu items to add them here.",
+      "each": "ea",
+      "notesPlaceholder": "Notes (optional)",
+      "items": "Items",
+      "total": "Total",
+      "placeOrder": "Place Order",
+      "placingOrder": "Placing order…",
+      "sentToKitchen": "Sent to kitchen",
+      "clearCart": "Clear cart",
+      "remove": "Remove line",
+      "decreaseQty": "Decrease quantity",
+      "increaseQty": "Increase quantity"
+    },
+    "toasts": {
+      "tableRequired": "Table required",
+      "tableRequiredMsg": "Enter a table number before placing the order.",
+      "emptyCart": "Empty cart",
+      "emptyCartMsg": "Add at least one item to the order.",
+      "orderPlaced": "Order placed",
+      "orderPlacedMsg": "Table {{table}} — {{count}} item sent to kitchen.",
+      "orderPlacedMsg_other": "Table {{table}} — {{count}} items sent to kitchen.",
+      "orderFailed": "Order failed",
+      "orderFailedMsg": "Could not place the order. Try again."
+    }
+  },
+  "toasts": {
+    "settled": "Nice — {{tableText}} all settled",
+    "tableText": "Table {{table}}'s",
+    "takeoutText": "Takeout order is",
+    "paymentFailed": "Payment Failed",
+    "cancelFailed": "Cancel Failed"
+  },
+  "shortcuts": {
+    "navigate": "↑↓ / J K — Navigate queue",
+    "payment": "1 2 3 — Cash / Card / Mobile",
+    "pay": "Enter — Mark paid",
+    "close": "Esc — Close / deselect"
+  }
+}
