@@ -59,7 +59,12 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className="h-12 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between">
+    <header className="relative h-12 border-b border-border bg-card/85 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between shadow-[0_1px_0_0_hsl(var(--primary)/0.08),0_4px_18px_-12px_hsl(var(--primary)/0.25)]">
+      {/* Brand accent strip */}
+      <span
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent"
+      />
       {/* Connection status strip */}
       <div className="flex items-center gap-2">
         <StatusPill
