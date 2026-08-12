@@ -102,9 +102,23 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/search', searchRoutes);
 
-// Health check endpoint
+// Liveness probe — always responds 200 if the process is up
 app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date(), service: 'MERN POS API' });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), service: 'MERN POS API' });
+});
+
+app.get('/api/health/live', (req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Readiness probe — verifies DB connectivity before accepting traffic
+app.get('/api/health/ready', async (req: Request, res: Response) => {
+  try {
+    await prisma.$runCommandRaw({ ping: 1 });
+    res.json({ status: 'ready', timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(503).json({ status: 'not_ready', error: 'Database not reachable' });
+  }
 });
 
 // Prometheus Metrics Endpoint
