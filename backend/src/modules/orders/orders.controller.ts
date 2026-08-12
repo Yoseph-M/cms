@@ -5,6 +5,7 @@ import { emitToLiveOrders } from '../../services/socket.service';
 import { triggerKitchenPrint } from '../../services/printer.service';
 import { OrderStatus, PaymentMethod, Role } from '@prisma/client';
 import { canTransition } from '../../utils/orderStateMachine';
+import { recordAudit } from '../../services/audit.service';
 
 export async function createOrder(req: AuthenticatedRequest, res: Response) {
   const callerRole = req.user!.role as Role;
@@ -22,8 +23,39 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   const waiterName = req.user!.name;
   const { clientOrderId, tableNumber, items } = req.body;
 
-  // Server-side totalAmount calculation (NEVER trust client total)
-  const computedTotal = items.reduce((sum: number, item: any) => sum + item.unitPrice * item.quantity, 0);
+  // Server-side pricing: NEVER trust the client for unitPrice or totalAmount
+  const requestedItemIds = items.map((i: any) => i.menuItemId);
+  const menuItems = await prisma.menuItem.findMany({
+    where: { id: { in: requestedItemIds } },
+  });
+
+  const menuItemMap = new Map(menuItems.map(m => [m.id, m]));
+  let computedTotal = 0;
+  
+  const validatedItems = [];
+  for (const item of items) {
+    const dbItem = menuItemMap.get(item.menuItemId);
+    if (!dbItem) {
+      return res.status(400).json({ error: `Menu item not found: ${item.menuItemId}` });
+    }
+    if (!dbItem.isAvailable) {
+      return res.status(400).json({ error: `Menu item unavailable: ${dbItem.name}` });
+    }
+    if (typeof item.quantity !== 'number' || item.quantity <= 0) {
+      return res.status(400).json({ error: `Invalid quantity for item: ${dbItem.name}` });
+    }
+
+    const unitPrice = dbItem.price; // Already minor units in DB
+    computedTotal += unitPrice * item.quantity;
+    
+    validatedItems.push({
+      menuItemId: dbItem.id,
+      name: dbItem.name,
+      unitPrice,
+      quantity: item.quantity,
+      notes: item.notes || '',
+    });
+  }
 
   const includeWaiter = { waiter: { select: { id: true, name: true } } } as const;
 
@@ -43,13 +75,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
         clientOrderId,
         tableNumber,
         waiterId,
-        items: items.map((i: any) => ({
-          menuItemId: i.menuItemId,
-          name: i.name,
-          unitPrice: i.unitPrice,
-          quantity: i.quantity,
-          notes: i.notes || '',
-        })),
+        items: validatedItems,
         totalAmount: computedTotal,
         status: OrderStatus.SUBMITTED,
       },
@@ -89,7 +115,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
 }
 
 export async function getOrders(req: AuthenticatedRequest, res: Response) {
-  const { status, waiterId, date } = req.query;
+  const { status, waiterId, date, page, limit } = req.query;
   const callerRole = req.user!.role as Role;
   const callerId = req.user!.userId;
 
@@ -107,22 +133,44 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
   }
 
   if (date) {
+    // Basic TZ adjustment for East Africa Time (UTC+3)
+    // For a real production app, use a timezone library or business setting
+    const offsetHours = 3;
     const start = new Date(`${date}T00:00:00.000Z`);
+    start.setUTCHours(start.getUTCHours() - offsetHours);
     const end = new Date(`${date}T23:59:59.999Z`);
+    end.setUTCHours(end.getUTCHours() - offsetHours);
     whereClause.createdAt = { gte: start, lte: end };
   }
 
-  const orders = await prisma.order.findMany({
-    where: whereClause,
-    include: {
-      waiter: { select: { id: true, name: true } },
-      cashier: { select: { id: true, name: true } },
-      cancelledBy: { select: { id: true, name: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+  const pageNum = Math.max(1, parseInt(page as string) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(limit as string) || 50));
+  const skip = (pageNum - 1) * pageSize;
 
-  return res.json(orders);
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where: whereClause,
+      include: {
+        waiter: { select: { id: true, name: true } },
+        cashier: { select: { id: true, name: true } },
+        cancelledBy: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: pageSize,
+    }),
+    prisma.order.count({ where: whereClause })
+  ]);
+
+  return res.json({
+    data: orders,
+    pagination: {
+      page: pageNum,
+      limit: pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize)
+    }
+  });
 }
 
 export async function getOrderById(req: AuthenticatedRequest, res: Response) {
@@ -202,7 +250,7 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
   }
 
   const result = await prisma.order.updateMany({
-    where: { id, status: order.status },
+    where: { id, status: order.status, isPaid: false },
     data: {
       status: OrderStatus.PAID,
       isPaid: true,
@@ -213,7 +261,7 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
   });
 
   if (result.count === 0) {
-    return res.status(409).json({ error: 'Concurrent update detected. Please try again.' });
+    return res.status(409).json({ error: 'Concurrent update detected or already paid. Please try again.' });
   }
 
   const updated = await prisma.order.findUnique({
@@ -223,6 +271,14 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
       cashier: { select: { id: true, name: true } },
       cancelledBy: { select: { id: true, name: true } },
     },
+  });
+
+  await recordAudit({
+    actorId: cashierId,
+    actionType: 'ORDER_PAID',
+    targetType: 'Order',
+    targetId: id,
+    details: { paymentMethod, totalAmount: updated?.totalAmount },
   });
 
   emitToLiveOrders('order:updated', updated);
@@ -239,8 +295,10 @@ export async function requestCancelOrder(req: AuthenticatedRequest, res: Respons
     return res.status(404).json({ error: 'Order not found.' });
   }
 
-  if (order.isPaid) {
-    return res.status(400).json({ error: 'Paid orders cannot be cancelled.' });
+  const callerRole = req.user!.role;
+
+  if (order.isPaid && callerRole !== Role.MANAGER && callerRole !== Role.OWNER) {
+    return res.status(403).json({ error: 'Only Managers or Owners can request cancellation for paid orders.' });
   }
 
   // Record cancellation reason and set pending cancel note or status
@@ -271,10 +329,16 @@ export async function confirmCancelOrder(req: AuthenticatedRequest, res: Respons
     return res.status(409).json({ error: `Illegal state transition from ${order.status} to CANCELLED` });
   }
 
+  const callerRole = req.user!.role;
+  if (order.isPaid && callerRole !== Role.MANAGER && callerRole !== Role.OWNER) {
+    return res.status(403).json({ error: 'Only Managers or Owners can confirm cancellation for paid orders.' });
+  }
+
   const result = await prisma.order.updateMany({
     where: { id, status: order.status },
     data: {
       status: OrderStatus.CANCELLED,
+      isPaid: false, // Ensure revenue is properly reversed
       cancellationReason: reason || order.cancellationReason || 'Cancelled by staff',
       cancelledById,
     },
@@ -291,6 +355,14 @@ export async function confirmCancelOrder(req: AuthenticatedRequest, res: Respons
       cashier: { select: { id: true, name: true } },
       cancelledBy: { select: { id: true, name: true } },
     },
+  });
+
+  await recordAudit({
+    actorId: cancelledById,
+    actionType: 'ORDER_CANCELLED',
+    targetType: 'Order',
+    targetId: id,
+    details: { reason: reason || order.cancellationReason || 'Cancelled by staff', wasPaid: order.isPaid },
   });
 
   emitToLiveOrders('order:cancelled', updated);
