@@ -1,10 +1,32 @@
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useSocketStore } from '../../store/socketStore';
 import { useToastStore } from '../../store/toastStore';
 import { Order, PaymentMethod } from '../../types';
-import { AlertTriangle, Clock, ShoppingCart, ListOrdered, Armchair } from 'lucide-react';
+import {
+  AlertTriangle,
+  Clock,
+  ShoppingCart,
+  ListOrdered,
+  Armchair,
+  Banknote,
+  CreditCard,
+  Smartphone,
+  CheckCircle2,
+  Sparkles,
+  TrendingUp,
+  Timer,
+  Receipt,
+  X,
+  Keyboard,
+  Inbox,
+  ChevronRight,
+  CircleDot,
+  Hash,
+  Search,
+} from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -14,8 +36,8 @@ import { ErrorState } from '../../components/common/ErrorState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { PageSkeleton } from '../../components/common/PageSkeleton';
 import { formatCurrency } from '../../utils/currency';
-import { PageHeading, StatNumber } from '../../components/ui/Typography';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
+import { cn } from '../../lib/utils';
 
 const CashierOrderingPanel = lazy(() =>
   import('../../components/cashier/CashierOrderingPanel').then((m) => ({
@@ -23,45 +45,69 @@ const CashierOrderingPanel = lazy(() =>
   }))
 );
 
-/* ─── Elapsed-time hook ─── */
+/* ─── Elapsed-time hook (ticks every 5s for a live feel) ─── */
 function useElapsedTime(createdAt: string) {
-  const [elapsed, setElapsed] = useState('');
+  const [elapsed, setElapsed] = useState({ mins: 0, secs: 0 });
   const [isWarning, setIsWarning] = useState(false);
   const [isDanger, setIsDanger] = useState(false);
 
   useEffect(() => {
-    const updateTime = () => {
-      const diff = Date.now() - new Date(createdAt).getTime();
-      const mins = Math.floor(diff / 60000);
-      setElapsed(`${mins}m`);
+    const tick = () => {
+      const diff = Math.max(0, Date.now() - new Date(createdAt).getTime());
+      const total = Math.floor(diff / 1000);
+      setElapsed({ mins: Math.floor(total / 60), secs: total % 60 });
+      const mins = Math.floor(total / 60);
       setIsWarning(mins >= 15 && mins < 30);
       setIsDanger(mins >= 30);
     };
-    updateTime();
-    const interval = setInterval(updateTime, 60000);
+    tick();
+    const interval = setInterval(tick, 5000);
     return () => clearInterval(interval);
   }, [createdAt]);
 
   return { elapsed, isWarning, isDanger };
 }
 
-/* ─── Order ticket card (Framer layout animation) ─── */
+const formatElapsed = (e: { mins: number; secs: number }) =>
+  e.mins >= 1 ? `${e.mins}m ${e.secs.toString().padStart(2, '0')}s` : `${e.secs}s`;
+
+/* ─── Payment method visual config ─── */
+type PaymentTile = {
+  pm: PaymentMethod;
+  label: string;
+  short: string;
+  icon: React.FC<{ className?: string }>;
+  hotkey: string;
+};
+const PAYMENT_TILES: PaymentTile[] = [
+  { pm: 'CASH',   label: 'Cash',   short: 'Cash',   icon: Banknote,   hotkey: '1' },
+  { pm: 'CARD',   label: 'Card',   short: 'Card',   icon: CreditCard, hotkey: '2' },
+  { pm: 'MOBILE', label: 'Mobile', short: 'Mobile', icon: Smartphone, hotkey: '3' },
+];
+
+/* ─── Order ticket card ─── */
+type FilterKey = 'all' | 'needsPayment' | 'fresh' | 'waiting';
+
 const OrderCard = React.forwardRef<HTMLDivElement, {
   order: Order;
   isSelected: boolean;
   onClick: () => void;
 }>(({ order, isSelected, onClick }, ref) => {
   const { elapsed, isWarning, isDanger } = useElapsedTime(order.createdAt);
-
-  let timeColor = 'text-muted-foreground';
-  if (isWarning) timeColor = 'text-accent';
-  if (isDanger) timeColor = 'text-destructive';
+  const { t } = useTranslation('cashier');
 
   let statusBadge: React.ReactNode;
-  if (order.status === 'PAID') statusBadge = <Badge variant="success">Paid</Badge>;
-  else if (order.status === 'CANCELLED') statusBadge = <Badge variant="error">Cancelled</Badge>;
-  else if (order.cancellationReason) statusBadge = <Badge variant="warning">Cancel Req</Badge>;
-  else statusBadge = <Badge variant="neutral">Active</Badge>;
+  if (order.status === 'PAID') statusBadge = <Badge variant="success">{t('queue.status.paid', { defaultValue: 'Paid' })}</Badge>;
+  else if (order.status === 'CANCELLED') statusBadge = <Badge variant="error">{t('queue.status.cancelled', { defaultValue: 'Cancelled' })}</Badge>;
+  else if (order.cancellationReason) statusBadge = <Badge variant="warning">{t('queue.status.cancelReq', { defaultValue: 'Cancel Req' })}</Badge>;
+  else if (order.status === 'SERVED') statusBadge = <Badge variant="default">Ready to pay</Badge>;
+  else statusBadge = <Badge variant="neutral">In kitchen</Badge>;
+
+  const tableLabel = order.tableNumber
+    ? `${t('queue.table')} ${order.tableNumber}`
+    : t('queue.takeout');
+
+  const itemCount = order.items.reduce((acc, i) => acc + i.quantity, 0);
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -74,74 +120,148 @@ const OrderCard = React.forwardRef<HTMLDivElement, {
     <motion.div
       layout
       ref={ref}
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      initial={{ opacity: 0, y: 16, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+      exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.18 } }}
+      whileHover={!isSelected ? { y: -3 } : undefined}
+      transition={{ type: 'spring', stiffness: 420, damping: 30 }}
       onClick={onClick}
       onKeyDown={handleKey}
       tabIndex={0}
       role="button"
-      aria-label={`Order ${order.clientOrderId.slice(0, 8)} ${order.tableNumber ? `Table ${order.tableNumber}` : 'Takeout'}`}
-      className={`ticket-tear relative bg-card cursor-pointer border rounded-xl transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+      aria-label={`${t('queue.orderLabel')} ${order.clientOrderId.slice(0, 8)} ${tableLabel}`}
+      className={cn(
+        'group relative cursor-pointer rounded-2xl text-left transition-all duration-200',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        'bg-card border p-4 pb-5 flex flex-col gap-3 min-h-[150px] overflow-hidden',
         isSelected
-          ? 'border-primary shadow-xl shadow-primary/15 ring-1 ring-primary'
-          : 'border-border hover:border-primary/40 hover:shadow-md'
-      } p-4 pb-7 flex flex-col justify-between min-h-[140px]`}
+          ? 'border-primary shadow-brand-lg ring-1 ring-primary/40 bg-gradient-to-br from-card via-card to-primary/[0.04]'
+          : 'border-border hover:border-primary/40 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_14px_-8px_rgba(59,130,246,0.18)] hover:shadow-brand',
+      )}
     >
-      <div className="flex justify-between items-start gap-2 mb-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Order
-          </p>
-          <PageHeading className="text-xl leading-tight">
-            {order.tableNumber ? `Table ${order.tableNumber}` : 'Takeout'}
-          </PageHeading>
+      {/* Brand accent strip — pulses on selected */}
+      <span
+        aria-hidden
+        className={cn(
+          'absolute inset-x-0 top-0 h-0.5 bg-brand-gradient transition-opacity',
+          isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-60',
+        )}
+      />
+
+      <div className="flex justify-between items-start gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            className={cn(
+              'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border',
+              order.tableNumber
+                ? isSelected
+                  ? 'bg-brand-gradient text-white border-transparent shadow-brand'
+                  : 'bg-primary/10 text-primary border-primary/20'
+                : isSelected
+                ? 'bg-cyan-500 text-white border-transparent shadow-cyan'
+                : 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20',
+            )}
+          >
+            {order.tableNumber ? (
+              <span className="font-display font-bold text-base leading-none">{order.tableNumber}</span>
+            ) : (
+              <ShoppingCart className="w-4.5 h-4.5" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+              {order.tableNumber ? t('queue.table') : t('queue.takeout')}
+            </p>
+            <p className="font-display text-lg font-semibold text-foreground leading-tight truncate">
+              {order.clientOrderId.slice(0, 8).toUpperCase()}
+            </p>
+          </div>
         </div>
         {statusBadge}
       </div>
+
       <div className="flex justify-between items-end">
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/50 w-fit">
-            <Clock className={`w-3.5 h-3.5 ${timeColor}`} />
-            <span className={`text-xs font-mono font-semibold tabular-nums ${timeColor}`}>
-              {elapsed}
-            </span>
-          </div>
-          {order.waiter && (
-            <p className="text-[10px] text-muted-foreground px-1 truncate max-w-[100px]">
-              by {order.waiter.name}
-            </p>
+        <div
+          className={cn(
+            'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-semibold tabular-nums border',
+            isDanger
+              ? 'bg-destructive/10 text-destructive border-destructive/30 animate-pulse'
+              : isWarning
+              ? 'bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30'
+              : 'bg-secondary/60 text-muted-foreground border-transparent',
           )}
+        >
+          {isDanger ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+          {formatElapsed(elapsed)}
         </div>
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            {order.items.reduce((acc, i) => acc + i.quantity, 0)} items
+            {itemCount} {itemCount === 1 ? 'item' : 'items'}
           </p>
-          <StatNumber className="text-lg">
+          <p className={cn(
+            'font-display text-xl font-bold tabular-nums leading-none mt-1',
+            isSelected ? 'text-brand-gradient bg-clip-text text-transparent' : 'text-foreground',
+          )}>
             {formatCurrency(order.totalAmount)}
-          </StatNumber>
+          </p>
         </div>
       </div>
+
+      {order.waiter && (
+        <div className="-mx-4 -mb-5 px-4 py-2 border-t border-border/60 bg-secondary/30 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <CircleDot className="w-3 h-3" />
+          <span className="truncate">{t('queue.by')} <span className="font-medium text-foreground">{order.waiter.name}</span></span>
+        </div>
+      )}
     </motion.div>
   );
 });
 OrderCard.displayName = 'OrderCard';
+
+/* ─── KPI tile ─── */
+const KpiTile: React.FC<{
+  label: string;
+  value: React.ReactNode;
+  icon: React.ReactNode;
+  tone: 'primary' | 'accent' | 'success' | 'warning';
+  hint?: string;
+}> = ({ label, value, icon, tone, hint }) => {
+  const toneClasses: Record<typeof tone, string> = {
+    primary: 'from-primary/15 to-primary/5 text-primary border-primary/20',
+    accent:  'from-cyan-500/15 to-cyan-500/5 text-cyan-600 border-cyan-500/20',
+    success: 'from-emerald-500/15 to-emerald-500/5 text-emerald-600 border-emerald-500/20',
+    warning: 'from-[hsl(var(--warning))]/15 to-[hsl(var(--warning))]/5 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/25',
+  };
+  return (
+    <div className={cn(
+      'relative flex items-center gap-3 rounded-xl border bg-gradient-to-br backdrop-blur-sm',
+      'px-3.5 py-2.5 min-w-0',
+      toneClasses[tone],
+    )}>
+      <div className="w-8 h-8 rounded-lg bg-background/70 border border-current/20 flex items-center justify-center shrink-0">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] opacity-80 truncate">{label}</p>
+        <p className="font-display text-lg font-bold tabular-nums leading-tight truncate">{value}</p>
+        {hint && <p className="text-[10px] opacity-70 truncate">{hint}</p>}
+      </div>
+    </div>
+  );
+};
 
 /* ─── Main Cashier Dashboard ─── */
 export const CashierDashboard: React.FC = () => {
   const { socket } = useSocketStore();
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
+  const { t } = useTranslation('cashier');
 
   const cardRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
-  // Phase 14, §1.3 — live status of the cashier-ordering toggle.
-  // `enabled` flips without a refresh when an Owner/Manager changes the setting
-  // because we also subscribe to the `settings:cashierOrderingChanged` socket event.
   const settingQuery = useSystemSettingQuery('cashierOrderingEnabled');
   const tableCountQuery = useSystemSettingQuery('tableCount');
-  
+
   const [cashierOrderingEnabled, setCashierOrderingEnabled] = useState(false);
   const [tableCount, setTableCount] = useState(12);
 
@@ -153,7 +273,7 @@ export const CashierDashboard: React.FC = () => {
 
   useEffect(() => {
     if (tableCountQuery.data) {
-      const val = parseInt(tableCountQuery.data.value, 10);
+      const val = parseInt(tableCountQuery.data.value ?? '', 10);
       setTableCount(isNaN(val) ? 12 : val);
     }
   }, [tableCountQuery.data]);
@@ -181,30 +301,28 @@ export const CashierDashboard: React.FC = () => {
     };
   }, [socket, queryClient]);
 
-  // View mode: 'queue' (default, existing live-queue + payment surface) or
-  // 'order' (the lazy-loaded ordering panel from §1.3).
   const [mode, setMode] = useState<'queue' | 'tables' | 'order'>('queue');
   const [tableForNewOrder, setTableForNewOrder] = useState('');
-  // If the toggle is flipped off while the user is in 'order' mode, snap back
-  // to 'queue' so we never render the panel for a disabled state.
   useEffect(() => {
     if (!cashierOrderingEnabled && mode === 'order') {
       setMode('queue');
     }
   }, [cashierOrderingEnabled, mode]);
 
-interface PrinterFailureEvent {
-  station: string;
-  ip: string;
-  port: number;
-  orderId?: string;
-  failedAt: string;
-}
+  interface PrinterFailureEvent {
+    station: string;
+    ip: string;
+    port: number;
+    orderId?: string;
+    failedAt: string;
+  }
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [printerFailures, setPrinterFailures] = useState<PrinterFailureEvent[]>([]);
+  const [filter, setFilter] = useState<FilterKey>('all');
+  const [search, setSearch] = useState('');
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -216,10 +334,49 @@ interface PrinterFailureEvent {
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelModal, setShowCancelModal] = useState(false);
 
-
-
-  const activeOrders = orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED');
+  const activeOrders = useMemo(
+    () => orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED'),
+    [orders],
+  );
   const selectedOrder = orders.find((o) => o.id === selectedOrderId) || activeOrders[0];
+
+  // Filtering
+  const filteredOrders = useMemo(() => {
+    let list = activeOrders;
+    if (filter === 'needsPayment') list = list.filter((o) => o.status === 'SERVED');
+    else if (filter === 'waiting') list = list.filter((o) => o.status !== 'SERVED');
+    else if (filter === 'fresh') {
+      list = [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (o) =>
+          o.clientOrderId.toLowerCase().includes(q) ||
+          (o.tableNumber && String(o.tableNumber).includes(q)) ||
+          (o.waiter?.name || '').toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [activeOrders, filter, search]);
+
+  // KPIs
+  const todayRevenue = useMemo(
+    () => orders.filter((o) => o.status === 'PAID').reduce((acc, o) => acc + o.totalAmount, 0),
+    [orders],
+  );
+  const settledCount = useMemo(
+    () => orders.filter((o) => o.status === 'PAID').length,
+    [orders],
+  );
+  const avgTicket = settledCount > 0 ? todayRevenue / settledCount : 0;
+  const oldestWaitMins = useMemo(() => {
+    if (activeOrders.length === 0) return 0;
+    const oldest = activeOrders.reduce((a, b) =>
+      new Date(a.createdAt).getTime() < new Date(b.createdAt).getTime() ? a : b,
+    );
+    return Math.floor((Date.now() - new Date(oldest.createdAt).getTime()) / 60000);
+  }, [activeOrders]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -250,10 +407,11 @@ interface PrinterFailureEvent {
 
       if (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J') {
         e.preventDefault();
-        if (activeOrders.length === 0) return;
-        const currentIdx = selectedOrder ? activeOrders.findIndex((o) => o.id === selectedOrder.id) : -1;
-        const nextIdx = currentIdx < activeOrders.length - 1 ? currentIdx + 1 : 0;
-        const next = activeOrders[nextIdx];
+        const source = filteredOrders.length ? filteredOrders : activeOrders;
+        if (source.length === 0) return;
+        const currentIdx = selectedOrder ? source.findIndex((o) => o.id === selectedOrder.id) : -1;
+        const nextIdx = currentIdx < source.length - 1 ? currentIdx + 1 : 0;
+        const next = source[nextIdx];
         if (next) {
           setSelectedOrderId(next.id);
           requestAnimationFrame(() => cardRefs.current.get(next.id)?.focus());
@@ -263,10 +421,11 @@ interface PrinterFailureEvent {
 
       if (e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K') {
         e.preventDefault();
-        if (activeOrders.length === 0) return;
-        const currentIdx = selectedOrder ? activeOrders.findIndex((o) => o.id === selectedOrder.id) : 0;
-        const prevIdx = currentIdx > 0 ? currentIdx - 1 : activeOrders.length - 1;
-        const prev = activeOrders[prevIdx];
+        const source = filteredOrders.length ? filteredOrders : activeOrders;
+        if (source.length === 0) return;
+        const currentIdx = selectedOrder ? source.findIndex((o) => o.id === selectedOrder.id) : 0;
+        const prevIdx = currentIdx > 0 ? currentIdx - 1 : source.length - 1;
+        const prev = source[prevIdx];
         if (prev) {
           setSelectedOrderId(prev.id);
           requestAnimationFrame(() => cardRefs.current.get(prev.id)?.focus());
@@ -276,21 +435,9 @@ interface PrinterFailureEvent {
 
       if (!selectedOrder || selectedOrder.status === 'PAID' || selectedOrder.status === 'CANCELLED') return;
 
-      if (e.key === '1') {
-        e.preventDefault();
-        setPaymentMethod('CASH');
-        return;
-      }
-      if (e.key === '2') {
-        e.preventDefault();
-        setPaymentMethod('CARD');
-        return;
-      }
-      if (e.key === '3') {
-        e.preventDefault();
-        setPaymentMethod('MOBILE');
-        return;
-      }
+      if (e.key === '1') { e.preventDefault(); setPaymentMethod('CASH'); return; }
+      if (e.key === '2') { e.preventDefault(); setPaymentMethod('CARD'); return; }
+      if (e.key === '3') { e.preventDefault(); setPaymentMethod('MOBILE'); return; }
 
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -303,7 +450,7 @@ interface PrinterFailureEvent {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrders, selectedOrder?.id, selectedOrder?.status, paymentMethod, mode, showCancelModal, isPrinting, printed]);
+  }, [activeOrders, filteredOrders, selectedOrder?.id, selectedOrder?.status, paymentMethod, mode, showCancelModal, isPrinting, printed]);
 
   useEffect(() => {
     fetchOrders();
@@ -336,7 +483,7 @@ interface PrinterFailureEvent {
     setError(null);
     try {
       const res = await axiosClient.get('/orders');
-      setOrders(res.data);
+      setOrders(res.data.data || res.data); // Support both paginated and flat arrays
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to fetch active queue');
     } finally {
@@ -350,9 +497,11 @@ interface PrinterFailureEvent {
     try {
       const res = await axiosClient.patch(`/orders/${orderId}/pay`, { paymentMethod });
       setOrders((prev) => prev.map((o) => (o.id === orderId ? res.data : o)));
-      
-      const tableText = res.data.tableNumber ? `Table ${res.data.tableNumber}'s` : 'Takeout order is';
-      addToast({ type: 'success', title: `Nice — ${tableText} all settled` });
+
+      const tableText = res.data.tableNumber
+        ? t('toasts.tableText', { table: res.data.tableNumber })
+        : t('toasts.takeoutText');
+      addToast({ type: 'success', title: t('toasts.settled', { tableText }) });
 
       setTimeout(() => {
         setIsPrinting(false);
@@ -361,7 +510,7 @@ interface PrinterFailureEvent {
       }, 800);
     } catch (err: any) {
       setIsPrinting(false);
-      addToast({ type: 'error', title: 'Payment Failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: t('toasts.paymentFailed'), message: err.response?.data?.error });
     }
   };
 
@@ -373,31 +522,29 @@ interface PrinterFailureEvent {
       setShowCancelModal(false);
       setCancelReason('');
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Cancel Failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: t('toasts.cancelFailed'), message: err.response?.data?.error });
     }
   };
 
-  const todayRevenue = orders.filter((o) => o.status === 'PAID').reduce((acc, o) => acc + o.totalAmount, 0);
-  const todayCount = orders.length;
-
-  // When the cashier-ordering toggle is on AND the user has selected "New
-  // Order", mount the dedicated ordering panel. This is the entire dashboard
-  // for that mode — the queue is still ticking in the background and the
-  // panel will see the new order via the same socket events on switch-back.
+  // ─── Order mode full-page ───
   if (mode === 'order' && cashierOrderingEnabled) {
     return (
-      <div className="h-full flex flex-col bg-background text-foreground overflow-hidden">
-        <header className="h-14 bg-card/60 backdrop-blur-sm border-b border-border flex items-center justify-between px-6 shrink-0">
+      <div className="h-full flex flex-col bg-app-gradient text-foreground overflow-hidden">
+        <header className="h-16 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-6 shrink-0 relative">
+          <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMode('queue')}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
             >
               <ListOrdered className="w-3.5 h-3.5" />
               Back to queue
             </button>
-            <span className="font-display font-semibold text-base tracking-tight text-primary flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4" />
+            <span className="w-px h-6 bg-border" />
+            <span className="font-display font-semibold text-base text-foreground flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-brand-gradient text-white flex items-center justify-center shadow-brand">
+                <ShoppingCart className="w-3.5 h-3.5" />
+              </span>
               New Order
             </span>
           </div>
@@ -405,10 +552,6 @@ interface PrinterFailureEvent {
         <Suspense fallback={<PageSkeleton />}>
           <CashierOrderingPanel initialTableNumber={tableForNewOrder}
             onOrderCreated={() => {
-              // After placing an order, hop back to the queue so the cashier
-              // sees the new ticket in the live grid (the server already
-              // emitted `order:new` on the socket, but a refetch is cheap
-              // and guarantees the new ticket is visible).
               void fetchOrders();
               setMode('queue');
             }}
@@ -418,23 +561,95 @@ interface PrinterFailureEvent {
     );
   }
 
+  // ─── Table map mode ───
   if (mode === 'tables' && cashierOrderingEnabled) {
     const tableNumbers = Array.from({ length: tableCount }, (_, index) => String(index + 1));
-    return <div className="h-full flex flex-col bg-background text-foreground overflow-hidden">
-      <header className="h-14 bg-card/60 backdrop-blur-sm border-b border-border flex items-center justify-between px-6 shrink-0">
-        <button onClick={() => setMode('queue')} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60"><ListOrdered className="w-3.5 h-3.5" />Back to queue</button>
-        <span className="font-display font-semibold text-base text-primary flex items-center gap-2"><Armchair className="w-4 h-4" />Table map</span>
-      </header>
-      <main className="flex-1 overflow-y-auto p-6"><p className="mb-5 text-sm text-muted-foreground">Choose a table to start an order or open its active ticket.</p><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">{tableNumbers.map(number => {
-        const order = activeOrders.find(item => item.tableNumber === number);
-        const needsPayment = order?.status === 'SERVED';
-        return <button key={number} onClick={() => { if (order) { setSelectedOrderId(order.id); setMode('queue'); } else { setTableForNewOrder(number); setMode('order'); } }} className={`min-h-32 rounded-xl border p-4 text-left transition-colors ${order ? needsPayment ? 'border-[hsl(var(--warning))] bg-[hsl(var(--warning))]/10' : 'border-primary bg-primary/10' : 'border-border bg-card hover:border-primary/60 hover:bg-primary/5'}`}><p className="text-xs font-bold uppercase text-muted-foreground">Table</p><p className="mt-1 font-display text-3xl font-bold">{number}</p><p className={`mt-3 text-xs font-semibold ${order ? needsPayment ? 'text-[hsl(var(--warning))]' : 'text-primary' : 'text-[hsl(var(--success))]'}`}>{order ? needsPayment ? 'Needs payment' : 'Occupied' : 'Empty'}</p>{order && <p className="mt-1 text-xs text-muted-foreground">{formatCurrency(order.totalAmount)}</p>}</button>;
-      })}</div></main>
-    </div>;
+    const occupiedCount = tableNumbers.filter(n => activeOrders.some(o => o.tableNumber === n)).length;
+    return (
+      <div className="h-full flex flex-col bg-app-gradient text-foreground overflow-hidden">
+        <header className="h-16 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-6 shrink-0 relative">
+          <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMode('queue')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            >
+              <ListOrdered className="w-3.5 h-3.5" />
+              Back to queue
+            </button>
+            <span className="w-px h-6 bg-border" />
+            <span className="font-display font-semibold text-base text-foreground flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-cyan-500 text-white flex items-center justify-center shadow-cyan">
+                <Armchair className="w-3.5 h-3.5" />
+              </span>
+              Table Map
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 font-semibold">
+              {tableNumbers.length - occupiedCount} free
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-semibold">
+              {occupiedCount} occupied
+            </span>
+          </div>
+        </header>
+        <main className="flex-1 overflow-y-auto p-6">
+          <p className="mb-5 text-sm text-muted-foreground">
+            Tap a table to start an order, or jump to its active ticket.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {tableNumbers.map(number => {
+              const order = activeOrders.find(item => item.tableNumber === number);
+              const needsPayment = order?.status === 'SERVED';
+              return (
+                <motion.button
+                  key={number}
+                  whileHover={{ y: -3 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    if (order) { setSelectedOrderId(order.id); setMode('queue'); }
+                    else { setTableForNewOrder(number); setMode('order'); }
+                  }}
+                  className={cn(
+                    'relative rounded-2xl border p-4 text-left transition-all overflow-hidden min-h-[140px] flex flex-col',
+                    order
+                      ? needsPayment
+                        ? 'border-[hsl(var(--warning))]/40 bg-gradient-to-br from-[hsl(var(--warning))]/15 to-[hsl(var(--warning))]/5 shadow-[0_8px_24px_-12px_hsl(var(--warning)/0.45)]'
+                        : 'border-primary/40 bg-gradient-to-br from-primary/15 to-primary/5 shadow-brand'
+                      : 'border-border bg-card hover:border-primary/40 hover:shadow-brand',
+                  )}
+                >
+                  <span className="absolute inset-x-0 top-0 h-0.5 bg-brand-gradient opacity-0 group-hover:opacity-100" />
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Table</p>
+                  <p className="mt-1 font-display text-4xl font-bold tabular-nums leading-none text-foreground">{number}</p>
+                  <div className="mt-auto pt-3 space-y-1">
+                    <p className={cn(
+                      'text-[11px] font-bold uppercase tracking-wider',
+                      order
+                        ? needsPayment
+                          ? 'text-[hsl(var(--warning))]'
+                          : 'text-primary'
+                        : 'text-emerald-600',
+                    )}>
+                      {order ? (needsPayment ? 'Ready to pay' : 'Occupied') : 'Available'}
+                    </p>
+                    {order && (
+                      <p className="text-xs text-muted-foreground tabular-nums">{formatCurrency(order.totalAmount)}</p>
+                    )}
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+        </main>
+      </div>
+    );
   }
 
+  // ─── Default: queue + detail ───
   return (
-    <div className="h-full flex flex-col bg-background overflow-hidden text-foreground">
+    <div className="h-full flex flex-col bg-app-gradient overflow-hidden text-foreground">
       {/* Printer Failure Banner */}
       <AnimatePresence>
         {printerFailures.length > 0 && (
@@ -442,81 +657,166 @@ interface PrinterFailureEvent {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="bg-destructive text-destructive-foreground p-3 flex justify-center items-center gap-4 shadow-sm z-10 overflow-hidden"
+            className="bg-gradient-to-r from-destructive to-rose-500 text-destructive-foreground px-6 py-3 flex justify-center items-center gap-3 shadow-sm z-10 overflow-hidden"
           >
             <AlertTriangle className="w-5 h-5" />
             <span className="font-semibold text-sm">Printer failure detected! Some receipts did not print.</span>
-            <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 ml-4" onClick={() => setPrinterFailures([])}>
+            <Button variant="ghost" size="sm" className="text-white hover:bg-white/20 ml-2" onClick={() => setPrinterFailures([])}>
               Dismiss
             </Button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Compact Header */}
-      <header className="h-14 bg-card/60 backdrop-blur-sm border-b border-border flex items-center justify-between px-6 shrink-0">
-        <div className="flex items-center gap-2.5 text-primary font-display font-semibold text-base tracking-tight">
-          Cashier Console
+      {/* Top bar — brand block + KPIs */}
+      <header className="relative h-20 bg-card/85 backdrop-blur-md border-b border-border px-6 flex items-center justify-between gap-4 shrink-0 shadow-[0_4px_18px_-12px_rgba(59,130,246,0.25)]">
+        <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-11 h-11 rounded-xl bg-brand-gradient text-white flex items-center justify-center shadow-brand">
+            <Receipt className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Cashier</p>
+            <h1 className="font-display text-xl font-bold text-foreground leading-tight tracking-tight">Live Queue</h1>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-sm">
+
+        <div className="hidden md:flex flex-1 max-w-3xl items-center gap-2">
+          <KpiTile
+            label="Today revenue"
+            value={formatCurrency(todayRevenue)}
+            icon={<TrendingUp className="w-4 h-4" />}
+            tone="success"
+            hint={`${settledCount} settled`}
+          />
+          <KpiTile
+            label="Active tickets"
+            value={activeOrders.length}
+            icon={<ListOrdered className="w-4 h-4" />}
+            tone="primary"
+            hint={activeOrders.length === 0 ? 'All clear' : 'On the floor'}
+          />
+          <KpiTile
+            label="Avg ticket"
+            value={avgTicket > 0 ? formatCurrency(avgTicket) : '—'}
+            icon={<Sparkles className="w-4 h-4" />}
+            tone="accent"
+          />
+          <KpiTile
+            label="Oldest wait"
+            value={activeOrders.length === 0 ? '—' : `${oldestWaitMins}m`}
+            icon={<Timer className="w-4 h-4" />}
+            tone={oldestWaitMins >= 30 ? 'warning' : oldestWaitMins >= 15 ? 'warning' : 'primary'}
+            hint={oldestWaitMins >= 30 ? 'Check now' : oldestWaitMins >= 15 ? 'Watch' : undefined}
+          />
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
           {cashierOrderingEnabled && (
             <Button
               id="cashier-new-order-btn"
               size="sm"
               onClick={() => setMode('tables')}
-              className="h-9"
+              className="h-10 px-4"
             >
-              <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
-              Table map
+              <Armchair className="w-4 h-4 mr-1.5" />
+              Tables
             </Button>
           )}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/50 text-muted-foreground">
-            <span className="tabular-nums font-medium text-foreground">{todayCount}</span>
-            <span className="text-xs">orders</span>
-          </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary/10 text-primary font-mono font-semibold tabular-nums">
-            <span className="text-[10px] uppercase tracking-wider text-primary/70">Today</span>
-            {formatCurrency(todayRevenue)}
-          </div>
         </div>
       </header>
 
-      {/* Main Workspace */}
+      {/* Main workspace */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Queue (Left) */}
-        <div className="w-3/5 lg:w-2/3 p-6 overflow-y-auto">
-          {isLoading ? (
-            <LoadingState message="Loading live queue..." />
-          ) : error ? (
-            <ErrorState message={error} onRetry={fetchOrders} />
-          ) : (
-            <LayoutGroup>
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-6">
-                <AnimatePresence mode="popLayout">
-                  {activeOrders.map((order) => (
-                    <OrderCard
-                      key={order.id}
-                      ref={(node) => {
-                        cardRefs.current.set(order.id, node);
-                      }}
-                      order={order}
-                      isSelected={selectedOrder?.id === order.id}
-                      onClick={() => setSelectedOrderId(order.id)}
-                    />
-                  ))}
-                </AnimatePresence>
-                {activeOrders.length === 0 && (
-                  <div className="col-span-full">
-                    <EmptyState title="No active orders" message="New orders will appear here automatically." />
-                  </div>
+        {/* Queue (left) */}
+        <div className="w-3/5 lg:w-2/3 flex flex-col overflow-hidden border-r border-border">
+          {/* Filter strip */}
+          <div className="px-6 pt-5 pb-3 flex items-center gap-2 shrink-0">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search table, order, waiter…"
+                className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/50 border border-transparent hover:border-border focus:border-primary focus:bg-background focus:shadow-[0_0_0_4px_hsl(217_91%_60%/0.12)] text-sm outline-none transition-all"
+              />
+            </div>
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-secondary/40 border border-border/60">
+              {([
+                { k: 'all',           label: 'All',          icon: ListOrdered },
+                { k: 'needsPayment',  label: 'Ready to pay', icon: CheckCircle2 },
+                { k: 'waiting',       label: 'In kitchen',   icon: Timer },
+                { k: 'fresh',         label: 'Newest',       icon: Sparkles },
+              ] as { k: FilterKey; label: string; icon: React.FC<{ className?: string }> }[]).map(({ k, label, icon: Icon }) => {
+                const active = filter === k;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setFilter(k)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold transition-all',
+                      active
+                        ? 'bg-card text-primary shadow-sm border border-primary/20'
+                        : 'text-muted-foreground hover:text-foreground border border-transparent',
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                    {k === 'needsPayment' && (
+                      <span className={cn(
+                        'ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold tabular-nums',
+                        active ? 'bg-primary text-primary-foreground' : 'bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))]',
+                      )}>
+                        {activeOrders.filter(o => o.status === 'SERVED').length}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="ml-auto text-xs text-muted-foreground hidden lg:flex items-center gap-3">
+              <span className="inline-flex items-center gap-1"><kbd className="px-1.5 py-0.5 rounded bg-secondary/60 border border-border font-mono text-[10px]">↑</kbd><kbd className="px-1.5 py-0.5 rounded bg-secondary/60 border border-border font-mono text-[10px]">↓</kbd> navigate</span>
+              <span className="inline-flex items-center gap-1"><kbd className="px-1.5 py-0.5 rounded bg-secondary/60 border border-border font-mono text-[10px]">↵</kbd> settle</span>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 pb-6">
+            {isLoading ? (
+              <LoadingState message={t('queue.loadingQueue')} />
+            ) : error ? (
+              <ErrorState message={error} onRetry={fetchOrders} />
+            ) : (
+              <LayoutGroup>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  <AnimatePresence mode="popLayout">
+                    {filteredOrders.map((order) => (
+                      <OrderCard
+                        key={order.id}
+                        ref={(node) => { cardRefs.current.set(order.id, node); }}
+                        order={order}
+                        isSelected={selectedOrder?.id === order.id}
+                        onClick={() => setSelectedOrderId(order.id)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+                {filteredOrders.length === 0 && (
+                  <EmptyState
+                    icon={activeOrders.length === 0 ? <Inbox className="w-7 h-7" /> : <Search className="w-7 h-7" />}
+                    title={activeOrders.length === 0 ? t('queue.noActiveOrders', { defaultValue: 'No active orders' }) : 'No matches'}
+                    message={activeOrders.length === 0
+                      ? t('queue.noActiveOrdersMsg', { defaultValue: 'New tickets will show up here automatically.' })
+                      : 'Try a different filter or search term.'}
+                  />
                 )}
-              </div>
-            </LayoutGroup>
-          )}
+              </LayoutGroup>
+            )}
+          </div>
         </div>
 
-        {/* Active Order Detail (Right) */}
-        <div className="w-2/5 lg:w-1/3 bg-card border-l border-border flex flex-col shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)]">
+        {/* Active Order Detail (right) */}
+        <div className="w-2/5 lg:w-1/3 flex flex-col bg-card/60 backdrop-blur-sm relative overflow-hidden">
+          <span aria-hidden className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-primary/40 to-transparent" />
           <AnimatePresence mode="wait">
             {selectedOrder ? (
               <motion.div
@@ -524,130 +824,204 @@ interface PrinterFailureEvent {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
                 className="flex flex-col h-full"
               >
-                <div className="p-6 border-b border-border">
-                  <div className="flex justify-between items-center mb-1">
-                    <PageHeading className="text-2xl">
-                      {selectedOrder.tableNumber ? `Table ${selectedOrder.tableNumber}` : 'Takeout'}
-                    </PageHeading>
-                    <span className="font-mono text-sm text-muted-foreground">
-                      #{selectedOrder.clientOrderId.slice(0, 8)}
-                    </span>
+                {/* Detail header */}
+                <div className="p-6 border-b border-border bg-gradient-to-b from-primary/[0.04] to-transparent">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Hash className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {selectedOrder.clientOrderId.slice(0, 8).toUpperCase()}
+                        </span>
+                      </div>
+                      <h2 className="font-display text-3xl font-bold tracking-tight text-brand-gradient bg-clip-text text-transparent leading-none">
+                        {selectedOrder.tableNumber ? `Table ${selectedOrder.tableNumber}` : 'Takeout'}
+                      </h2>
+                      {selectedOrder.waiter && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {t('orderDetail.orderedBy')}{' '}
+                          <span className="font-semibold text-foreground">{selectedOrder.waiter.name}</span>
+                        </p>
+                      )}
+                    </div>
+                    {selectedOrder.status === 'PAID' && <Badge variant="success">Paid</Badge>}
+                    {selectedOrder.status === 'CANCELLED' && <Badge variant="error">Cancelled</Badge>}
+                    {selectedOrder.status === 'SERVED' && <Badge variant="default">Ready</Badge>}
+                    {selectedOrder.cancellationReason && <Badge variant="warning">Cancel Req</Badge>}
                   </div>
-                  {selectedOrder.waiter && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Ordered by <span className="font-semibold text-foreground">{selectedOrder.waiter.name}</span>
-                    </p>
-                  )}
                   {selectedOrder.cancellationReason && (
-                    <div className="mt-3 p-3 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm">
-                      <strong>Cancel requested:</strong> {selectedOrder.cancellationReason}
+                    <div className="mt-4 p-3 bg-[hsl(var(--warning))]/10 border border-[hsl(var(--warning))]/30 rounded-lg text-[hsl(var(--warning))] text-sm">
+                      <strong className="block text-[10px] uppercase tracking-wider mb-1">
+                        {t('orderDetail.cancelRequested')}
+                      </strong>
+                      {selectedOrder.cancellationReason}
                     </div>
                   )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                {/* Items */}
+                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
                   {selectedOrder.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-start text-sm py-2 border-b border-border/40 last:border-0">
-                      <div className="flex gap-3">
-                        <span className="font-mono font-bold text-primary w-6 text-center">{item.quantity}</span>
-                        <div>
-                          <p className="font-medium text-foreground">{item.name}</p>
-                          {item.notes && <p className="text-muted-foreground italic text-xs mt-0.5">{item.notes}</p>}
+                    <div
+                      key={idx}
+                      className="flex justify-between items-start gap-3 py-2.5 border-b border-border/40 last:border-0"
+                    >
+                      <div className="flex gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-display font-bold text-sm shrink-0">
+                          {item.quantity}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground truncate">{item.name}</p>
+                          {item.notes && (
+                            <p className="text-muted-foreground italic text-xs mt-0.5 line-clamp-2">{item.notes}</p>
+                          )}
                         </div>
                       </div>
-                      <span className="font-mono text-muted-foreground">{formatCurrency(item.unitPrice * item.quantity)}</span>
+                      <span className="font-mono font-semibold text-foreground tabular-nums shrink-0">
+                        {formatCurrency(item.unitPrice * item.quantity)}
+                      </span>
                     </div>
                   ))}
                 </div>
 
-                <div className="p-6 bg-secondary/50 border-t border-border space-y-5">
-                  <div className="flex justify-between items-center text-lg">
-                    <span className="font-medium text-muted-foreground">Total</span>
-                    <StatNumber className="text-2xl text-foreground">
-                      {formatCurrency(selectedOrder.totalAmount)}
-                    </StatNumber>
-                  </div>
+                {/* Pay block */}
+                {selectedOrder.status !== 'PAID' && selectedOrder.status !== 'CANCELLED' ? (
+                  <div className="p-6 bg-gradient-to-b from-secondary/30 to-secondary/60 border-t border-border space-y-4">
+                    <div className="flex items-end justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        {t('orderDetail.total')}
+                      </span>
+                      <span className="font-display text-3xl font-bold tabular-nums text-foreground leading-none">
+                        {formatCurrency(selectedOrder.totalAmount)}
+                      </span>
+                    </div>
 
-                  {selectedOrder.status !== 'PAID' && selectedOrder.status !== 'CANCELLED' && (
-                    <>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['CASH', 'CARD', 'MOBILE'] as PaymentMethod[]).map((pm) => (
-                          <button
-                            key={pm}
-                            onClick={() => setPaymentMethod(pm)}
-                            className={`py-3 px-2 rounded-lg font-medium text-sm transition-all border-2 ${
-                              paymentMethod === pm
-                                ? 'border-primary bg-primary/5 text-primary'
-                                : 'border-transparent bg-background text-muted-foreground hover:bg-secondary shadow-sm'
-                            }`}
+                    <div className="grid grid-cols-3 gap-2">
+                      {PAYMENT_TILES.map((meta) => {
+                        const Icon = meta.icon;
+                        const active = paymentMethod === meta.pm;
+                        return (
+                          <motion.button
+                            key={meta.pm}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => setPaymentMethod(meta.pm)}
+                            className={cn(
+                              'relative flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 transition-all py-3 group',
+                              active
+                                ? 'border-primary bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-brand'
+                                : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                            )}
                           >
-                            {pm}
-                          </button>
-                        ))}
-                      </div>
+                            {active && (
+                              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-brand">
+                                <CheckCircle2 className="w-3 h-3" />
+                              </span>
+                            )}
+                            <Icon className={cn('w-5 h-5', active && 'text-primary')} />
+                            <span className="text-xs font-bold">{meta.short}</span>
+                            <kbd className={cn(
+                              'absolute bottom-1 right-1 text-[9px] font-mono px-1 rounded',
+                              active ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground',
+                            )}>
+                              {meta.hotkey}
+                            </kbd>
+                          </motion.button>
+                        );
+                      })}
+                    </div>
 
-                      <motion.div
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                    <motion.div
+                      whileTap={!isPrinting && !printed ? { scale: 0.98 } : undefined}
+                      transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                    >
+                      <Button
+                        size="lg"
+                        className={cn(
+                          'relative w-full h-14 text-base font-bold overflow-hidden',
+                          !printed && 'bg-brand-gradient hover:opacity-95 shadow-brand-lg',
+                          printed && 'bg-emerald-500 hover:bg-emerald-500 shadow-[0_8px_24px_-8px_rgba(16,185,129,0.5)]',
+                        )}
+                        onClick={() => handleMarkPaid(selectedOrder.id)}
+                        disabled={isPrinting || printed}
                       >
-                        <Button
-                          size="lg"
-                          className="w-full h-14 text-base font-bold"
-                          onClick={() => handleMarkPaid(selectedOrder.id)}
-                          disabled={isPrinting || printed}
-                        >
-                          {isPrinting ? (
-                            <motion.span
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              className="flex items-center gap-2"
-                            >
-                              <motion.div
-                                animate={{ rotate: 360 }}
-                                transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                                className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
-                              />
-                              Processing…
-                            </motion.span>
-                          ) : printed ? (
-                            <motion.span
-                              initial={{ scale: 0.8 }}
-                              animate={{ scale: [0.8, 1.05, 1] }}
-                              transition={{ duration: 0.6, ease: "easeOut" }}
-                              className="flex items-center gap-2"
-                            >
-                              ✓ Printed
-                            </motion.span>
-                          ) : (
-                            'Mark Paid'
-                          )}
-                        </Button>
-                      </motion.div>
+                        {isPrinting ? (
+                          <span className="flex items-center gap-2 text-white">
+                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            {t('orderDetail.processing')}
+                          </span>
+                        ) : printed ? (
+                          <motion.span
+                            initial={{ scale: 0.6, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ type: 'spring', stiffness: 380, damping: 16 }}
+                            className="flex items-center gap-2 text-white"
+                          >
+                            <CheckCircle2 className="w-5 h-5" />
+                            {t('orderDetail.printed', { defaultValue: 'Receipt printed' })}
+                            <Sparkles className="w-4 h-4" />
+                          </motion.span>
+                        ) : (
+                          <span className="flex items-center gap-2 text-white">
+                            {t('orderDetail.markPaid')}
+                            <ChevronRight className="w-4 h-4" />
+                          </span>
+                        )}
+                      </Button>
+                    </motion.div>
 
-                      <div className="pt-2 border-t border-border flex justify-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => setShowCancelModal(true)}
-                        >
-                          Cancel Order
-                        </Button>
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Keyboard className="w-3 h-3" />
+                        <span>
+                          <kbd className="px-1 py-0.5 rounded bg-secondary border border-border font-mono text-[10px]">1</kbd>
+                          <kbd className="px-1 py-0.5 rounded bg-secondary border border-border font-mono text-[10px] ml-1">2</kbd>
+                          <kbd className="px-1 py-0.5 rounded bg-secondary border border-border font-mono text-[10px] ml-1">3</kbd>
+                          <span className="ml-1.5">method</span>
+                          <kbd className="px-1 py-0.5 rounded bg-secondary border border-border font-mono text-[10px] ml-2">↵</kbd>
+                          <span className="ml-1.5">settle</span>
+                        </span>
                       </div>
-                    </>
-                  )}
-                </div>
+                      <button
+                        onClick={() => setShowCancelModal(true)}
+                        className="text-xs font-semibold text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded-md hover:bg-destructive/10"
+                      >
+                        {t('orderDetail.cancelOrder')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 bg-secondary/30 border-t border-border">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      {selectedOrder.status === 'PAID' ? 'This ticket is settled.' : 'This ticket was cancelled.'}
+                    </div>
+                  </div>
+                )}
               </motion.div>
             ) : (
               <motion.div
+                key="empty"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex-1 flex items-center justify-center text-muted-foreground p-6 text-center"
+                exit={{ opacity: 0 }}
+                className="flex-1 flex flex-col items-center justify-center p-8 text-center"
               >
-                Select an order from the queue to view details and collect payment.
+                <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/15 to-cyan-500/10 border border-primary/20 flex items-center justify-center mb-5">
+                  <Receipt className="w-9 h-9 text-primary" />
+                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-cyan-500 animate-pulse" />
+                </div>
+                <h3 className="font-display text-lg font-semibold text-foreground">Pick a ticket to get started</h3>
+                <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">
+                  {t('queue.selectOrder', { defaultValue: 'Select an order from the queue to take payment.' })}
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+                  <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border font-mono">↑</kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border font-mono">↓</kbd>
+                  <span>navigate</span>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -661,29 +1035,53 @@ interface PrinterFailureEvent {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => setShowCancelModal(false)}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md"
             >
-              <Card className="w-full max-w-md p-6 bg-card shadow-xl">
-                <h3 className="font-display text-xl font-bold mb-2">Cancel Order</h3>
-                <p className="text-sm text-muted-foreground mb-4">Please provide a reason for cancelling this order.</p>
+              <Card className="p-6 shadow-2xl border-border">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="font-display text-xl font-bold text-foreground">
+                      {t('cancelModal.title')}
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1.5">
+                      {t('cancelModal.description')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowCancelModal(false)}
+                    className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="e.g. Customer walked out"
-                  className="w-full p-3 border border-input bg-background rounded-lg focus:ring-2 focus:ring-ring focus:border-transparent outline-none mb-6 text-sm"
+                  placeholder={t('cancelModal.placeholder')}
+                  className="w-full h-11 px-3.5 rounded-lg bg-secondary/50 border border-transparent hover:border-border focus:border-primary focus:bg-background focus:shadow-[0_0_0_4px_hsl(217_91%_60%/0.12)] text-sm outline-none transition-all mb-5"
                   autoFocus
                 />
-                <div className="flex justify-end gap-3">
-                  <Button variant="ghost" onClick={() => setShowCancelModal(false)}>Go Back</Button>
-                  <Button variant="destructive" onClick={handleConfirmCancel} disabled={!cancelReason.trim()}>
-                    Confirm Cancel
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" onClick={() => setShowCancelModal(false)}>
+                    {t('cancelModal.goBack')}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleConfirmCancel}
+                    disabled={!cancelReason.trim()}
+                    className="shadow-sm"
+                  >
+                    {t('cancelModal.confirmCancel')}
                   </Button>
                 </div>
               </Card>
@@ -691,7 +1089,6 @@ interface PrinterFailureEvent {
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 };
