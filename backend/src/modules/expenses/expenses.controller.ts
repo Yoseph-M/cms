@@ -39,7 +39,7 @@ export async function createExpense(req: AuthenticatedRequest, res: Response) {
     return res.status(400).json({ error: 'category, amount, description, and date are required.' });
   }
 
-  const parsedAmount = parseFloat(amount);
+  const parsedAmount = Math.round(parseFloat(amount) * 100);
   if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
     return res.status(400).json({ error: 'amount must be a non-negative number.' });
   }
@@ -81,7 +81,7 @@ export async function updateExpense(req: AuthenticatedRequest, res: Response) {
   if (description !== undefined) data.description = description;
   if (date !== undefined) data.date = new Date(date);
   if (amount !== undefined) {
-    const parsedAmount = parseFloat(amount);
+    const parsedAmount = Math.round(parseFloat(amount) * 100);
     if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
       return res.status(400).json({ error: 'amount must be a non-negative number.' });
     }
