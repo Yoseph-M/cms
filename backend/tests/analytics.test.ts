@@ -149,7 +149,7 @@ describe('Audit log API', () => {
     const createRes = await request(app)
       .post('/api/menu')
       .set('Authorization', `Bearer ${owner.accessToken}`)
-      .send({ name: 'Latte', category: 'DRINK', price: 4.5 });
+      .send({ name: 'Latte', category: 'DRINK', price: 450 });
 
     expect(createRes.status).toBe(201);
 
@@ -172,8 +172,8 @@ describe('Payroll adjustments', () => {
         userId: owner.id,
         periodMonth: 3,
         periodYear: 2026,
-        baseSalary: 3000,
-        paidAmount: 3000,
+        baseSalary: 300000,
+        paidAmount: 300000,
         processedById: owner.id,
       },
     });
@@ -184,14 +184,14 @@ describe('Payroll adjustments', () => {
       .send({
         originalPaymentId: payment.id,
         reason: 'Bonus for extra shift',
-        adjustmentAmount: 150,
+        adjustmentAmount: 15000,
       });
 
     expect(adjRes.status).toBe(201);
-    expect(adjRes.body.adjustmentAmount).toBe(150);
+    expect(adjRes.body.adjustmentAmount).toBe(15000);
 
     const original = await p.userPayment.findUnique({ where: { id: payment.id } });
-    expect(original?.paidAmount).toBe(3000);
+    expect(original?.paidAmount).toBe(300000);
 
     const ledgerRes = await request(app)
       .get('/api/payroll')
@@ -215,8 +215,8 @@ describe('Profit & loss + expenses', () => {
         clientOrderId: 'ord-pnl-1',
         tableNumber: '1',
         waiterId: waiter.id,
-        items: [{ menuItemId: waiter.id, name: 'Tea', unitPrice: 100, quantity: 2, notes: '' }],
-        totalAmount: 200,
+        items: [{ menuItemId: waiter.id, name: 'Tea', unitPrice: 10000, quantity: 2, notes: '' }],
+        totalAmount: 20000,
         status: OrderStatus.PAID,
         isPaid: true,
         paymentMethod: PaymentMethod.CASH,
@@ -229,8 +229,8 @@ describe('Profit & loss + expenses', () => {
         userId: waiter.id,
         periodMonth: 6,
         periodYear: 2026,
-        baseSalary: 12000,
-        paidAmount: 50,
+        baseSalary: 1200000,
+        paidAmount: 5000,
         processedById: owner.id,
         paymentDate: paidAt,
       },
@@ -239,7 +239,7 @@ describe('Profit & loss + expenses', () => {
     await p.expense.create({
       data: {
         category: 'RENT',
-        amount: 30,
+        amount: 3000,
         description: 'June rent share',
         date: paidAt,
         recordedById: owner.id,
@@ -251,10 +251,10 @@ describe('Profit & loss + expenses', () => {
       .set('Authorization', `Bearer ${owner.accessToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.revenue).toBe(200);
-    expect(res.body.payrollCost).toBe(50);
-    expect(res.body.otherExpenses).toBe(30);
-    expect(res.body.netProfit).toBe(120);
+    expect(res.body.revenue).toBe(20000);
+    expect(res.body.payrollCost).toBe(5000);
+    expect(res.body.otherExpenses).toBe(3000);
+    expect(res.body.netProfit).toBe(12000);
   });
 
   it('POST /expenses creates an expense for Owner', async () => {
@@ -264,14 +264,14 @@ describe('Profit & loss + expenses', () => {
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .send({
         category: 'UTILITIES',
-        amount: 450.5,
+        amount: 45050,
         description: 'Electricity',
         date: '2026-06-10',
       });
 
     expect(res.status).toBe(201);
     expect(res.body.category).toBe('UTILITIES');
-    expect(res.body.amount).toBe(450.5);
+    expect(res.body.amount).toBe(45050);
   });
 });
 
