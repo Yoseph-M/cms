@@ -157,7 +157,13 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
     expect(loginRes.status).toBe(200);
     const { refreshToken: rt1 } = loginRes.body;
 
-    // Use refresh token
+    // Login should set an HttpOnly refresh_token cookie
+    const setCookieHeader = loginRes.headers['set-cookie'] as string[] | string | undefined;
+    const cookieStr = Array.isArray(setCookieHeader) ? setCookieHeader.join('; ') : (setCookieHeader ?? '');
+    expect(cookieStr).toMatch(/refresh_token=/i);
+    expect(cookieStr).toMatch(/HttpOnly/i);
+
+    // Use refresh token via body (backward-compat)
     const refreshRes = await request(app)
       .post('/api/auth/refresh')
       .send({ refreshToken: rt1 });
@@ -172,6 +178,30 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
     const storedToken = await p.refreshToken.findUnique({ where: { tokenHash: hash1 } });
     expect(storedToken).not.toBeNull();
     expect(storedToken!.revoked).toBe(true);
+  });
+
+  it('cookie-based refresh: reads token from HttpOnly cookie, not body', async () => {
+    const user = await seedTestUser({ role: 'OWNER' as any, email: 'cookie-refresh@pos.com' });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user.email, password: 'password123' });
+    expect(loginRes.status).toBe(200);
+
+    // Extract the Set-Cookie value to replay it as a Cookie header
+    const setCookieHeader = loginRes.headers['set-cookie'] as unknown as string[] | undefined;
+    expect(setCookieHeader).toBeDefined();
+    const refreshCookieLine = setCookieHeader!.find((c) => c.startsWith('refresh_token='));
+    expect(refreshCookieLine).toBeDefined();
+    const cookieValue = refreshCookieLine!.split(';')[0]; // e.g. "refresh_token=<token>"
+
+    // Use cookie-based refresh (empty body)
+    const cookieRefreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', cookieValue)
+      .send({});
+    expect(cookieRefreshRes.status).toBe(200);
+    expect(cookieRefreshRes.body.accessToken).toBeDefined();
   });
 
   it('reuse detection: replaying a rotated-out token revokes the entire family', async () => {
