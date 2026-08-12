@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { axiosClient } from '../../api/axiosClient';
+import { useTranslation } from 'react-i18next';
 import {
   Activity,
   DollarSign,
@@ -112,6 +113,7 @@ export const OwnerDashboard: React.FC = () => {
   );
 
   const [isLoading, setIsLoading] = useState(true);
+  const { t } = useTranslation('owner');
 
   useEffect(() => {
     fetchDashboardData();
@@ -185,7 +187,7 @@ export const OwnerDashboard: React.FC = () => {
   if (isLoading) {
     return (
       <div className="h-[60vh] flex items-center justify-center">
-        <LoadingState message="Loading analytics…" />
+        <LoadingState message={t('dashboard.loading', { defaultValue: 'Loading analytics…' })} />
       </div>
     );
   }
@@ -196,10 +198,10 @@ export const OwnerDashboard: React.FC = () => {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-            Owner Console
+            {t('nav.consoleSubtitle', { defaultValue: 'Owner Console' })}
           </p>
           <PageHeading className="mt-1">
-            Analytics Overview
+            {t('dashboard.title', { defaultValue: 'Analytics Overview' })}
           </PageHeading>
         </div>
         <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-card border border-border shadow-sm">
@@ -212,37 +214,37 @@ export const OwnerDashboard: React.FC = () => {
       {/* Stat tiles */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatTile
-          label="Today's Revenue"
+          label={t('dashboard.stats.todayRevenue', { defaultValue: "Today's Revenue" })}
           value={<AnimatedCurrency value={dailySales?.totalRevenue ?? 0} />}
           badge={
             isNewRecord ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] text-[10px] font-bold animate-fade-in">
-                🎉 New Record
+                {t('dashboard.stats.newRecord', { defaultValue: '🎉 New Record' })}
               </span>
             ) : null
           }
-          hint={`${dailySales?.orderCount ?? 0} orders settled`}
+          hint={t('dashboard.stats.ordersSettled', { count: dailySales?.orderCount ?? 0, defaultValue: '{{count}} orders settled' })}
           icon={<DollarSign className="w-4 h-4" />}
           tone="primary"
         />
         <StatTile
-          label="Average Ticket"
+          label={t('dashboard.stats.avgTicket', { defaultValue: 'Average Ticket' })}
           value={<AnimatedCurrency value={dailySales?.avgTicket ?? 0} />}
-          hint="per table"
+          hint={t('dashboard.stats.perTable', { defaultValue: 'per table' })}
           icon={<TrendingUp className="w-4 h-4" />}
           tone="accent"
         />
         <StatTile
-          label="Kitchen Queue"
+          label={t('dashboard.stats.kitchenQueue', { defaultValue: 'Kitchen Queue' })}
           value={<AnimatedNumber value={dailySales?.activeOrdersCount ?? 0} />}
-          hint="active orders"
+          hint={t('dashboard.stats.activeOrders', { defaultValue: 'active orders' })}
           icon={<ShoppingBag className="w-4 h-4" />}
           tone="success"
         />
         <StatTile
-          label="Active Staff"
+          label={t('dashboard.stats.activeStaff', { defaultValue: 'Active Staff' })}
           value={<AnimatedNumber value={staffCount} />}
-          hint="registered users"
+          hint={t('dashboard.stats.registeredUsers', { defaultValue: 'registered users' })}
           icon={<Users className="w-4 h-4" />}
           tone="muted"
         />
@@ -253,7 +255,7 @@ export const OwnerDashboard: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Calendar className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-wider">Range</span>
+            <span className="text-xs font-bold uppercase tracking-wider">{t('dashboard.trend.range', { defaultValue: 'Range' })}</span>
           </div>
           <input
             type="date"
@@ -275,7 +277,7 @@ export const OwnerDashboard: React.FC = () => {
           leftIcon={<Download className="w-3.5 h-3.5" />}
           onClick={() => downloadCSV(trendData, 'revenue_trend')}
         >
-          Export CSV
+          {t('dashboard.trend.exportBtn', { defaultValue: 'Export CSV' })}
         </Button>
       </div>
 
@@ -283,16 +285,16 @@ export const OwnerDashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <h3 className="text-base font-semibold">Revenue Trend</h3>
+            <h3 className="text-base font-semibold">{t('dashboard.trend.revenueTitle', { defaultValue: 'Revenue Trend' })}</h3>
             <span className="text-[11px] text-muted-foreground font-mono">
-              {trendData.length} days
+              {t('dashboard.trend.days', { count: trendData.length, defaultValue: '{{count}} days' })}
             </span>
           </CardHeader>
           <CardContent>
             {trendData.length === 0 ? (
               <EmptyState
-                title="Quiet in this window"
-                message="No orders came through yet. Once they do, you'll see daily revenue trends here."
+                title={t('dashboard.trend.quietTitle', { defaultValue: 'Quiet in this window' })}
+                message={t('dashboard.trend.quietMsg', { defaultValue: "No orders came through yet. Once they do, you'll see daily revenue trends here." })}
                 icon={<TrendingUp className="w-7 h-7" />}
                 className="min-h-[12rem]"
               />
@@ -327,8 +329,8 @@ export const OwnerDashboard: React.FC = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-            <h3 className="text-base font-semibold">Top Selling Items</h3>
-            <span className="text-[11px] text-muted-foreground">Last {trendData.length} days</span>
+            <h3 className="text-base font-semibold">{t('dashboard.topItems.title', { defaultValue: 'Top Selling Items' })}</h3>
+            <span className="text-[11px] text-muted-foreground">{t('dashboard.topItems.lastDays', { count: trendData.length, defaultValue: 'Last {{count}} days' })}</span>
           </CardHeader>
           <CardContent>
             {trendData.length > 0 && trendData[0].topItems ? (
@@ -346,7 +348,7 @@ export const OwnerDashboard: React.FC = () => {
                           {item.name}
                         </span>
                         <span className="font-mono text-muted-foreground tabular-nums">
-                          {item.count} sold
+                          {t('dashboard.topItems.sold', { count: item.count, defaultValue: '{{count}} sold' })}
                         </span>
                       </div>
                       <div className="h-1.5 rounded-full bg-secondary/60 overflow-hidden">
@@ -361,8 +363,8 @@ export const OwnerDashboard: React.FC = () => {
               </ul>
             ) : (
               <EmptyState
-                title="Not enough orders yet to crown a favorite."
-                message="Once orders are placed, your best-sellers will appear here ranked by volume."
+                title={t('dashboard.topItems.emptyTitle', { defaultValue: 'Not enough orders yet to crown a favorite.' })}
+                message={t('dashboard.topItems.emptyMsg', { defaultValue: 'Once orders are placed, your best-sellers will appear here ranked by volume.' })}
                 icon={<Activity className="w-7 h-7" />}
                 className="min-h-[10rem]"
               />
