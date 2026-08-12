@@ -2,16 +2,22 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 
-// PINs (SHA-256 with per-user salt)
+// PINs (scrypt with per-user salt for memory-hard offline brute-force resistance)
 export function hashPin(pin: string, customSalt?: string): { salt: string; hash: string } {
   const salt = customSalt || crypto.randomBytes(16).toString('hex');
-  const hash = crypto.createHmac('sha256', salt).update(pin).digest('hex');
+  // N=16384, r=8, p=1 are reasonable defaults for interactive logins
+  const hash = crypto.scryptSync(pin, salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
   return { salt, hash };
 }
 
 export function comparePin(pin: string, storedSalt: string, storedHash: string): boolean {
-  const computedHash = crypto.createHmac('sha256', storedSalt).update(pin).digest('hex');
-  return computedHash === storedHash;
+  try {
+    const computedHash = crypto.scryptSync(pin, storedSalt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
+    // Constant-time comparison to prevent timing attacks
+    return crypto.timingSafeEqual(Buffer.from(computedHash, 'hex'), Buffer.from(storedHash, 'hex'));
+  } catch (e) {
+    return false;
+  }
 }
 
 // Passwords (bcrypt for Owner/Manager/Cashier)
