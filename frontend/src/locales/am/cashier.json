@@ -1,0 +1,115 @@
+{
+  "console": "የጥሬ ገንዘብ ሠራተኛ ኮንሶል",
+  "header": {
+    "orders": "ትዕዛዞች",
+    "today": "ዛሬ"
+  },
+  "queue": {
+    "loadingQueue": "ቀጥታ ወረፋ በመጫን ላይ...",
+    "noActiveOrders": "ንቁ ትዕዛዞች የሉም",
+    "noActiveOrdersMsg": "አዲስ ትዕዛዞች በራስ-ሰር ይታያሉ።",
+    "selectOrder": "ዝርዝሮችን ለማየት እና ክፍያ ለመሰብሰብ ከወረፋ ውስጥ ትዕዛዝ ይምረጡ።",
+    "orderLabel": "ትዕዛዝ",
+    "table": "ጠረጴዛ",
+    "takeout": "ለወጭ",
+    "items": "ዕቃዎች",
+    "by": "በ",
+    "status": {
+      "paid": "ተከፍሏል",
+      "cancelled": "ተሰርዟል",
+      "cancelReq": "ሰርዝ ጥያቄ",
+      "active": "ንቁ"
+    }
+  },
+  "orderDetail": {
+    "orderedBy": "የታዘዘው",
+    "cancelRequested": "መሰረዝ ተጠይቋል:",
+    "total": "ድምር",
+    "markPaid": "ተከፍሏል ምልክት ያድርጉ",
+    "processing": "በሂደት ላይ…",
+    "printed": "✓ ታትሟል",
+    "cancelOrder": "ትዕዛዝ ሰርዝ"
+  },
+  "payment": {
+    "cash": "ጥሬ ገንዘብ",
+    "card": "ካርድ",
+    "mobile": "ሞባይል"
+  },
+  "cancelModal": {
+    "title": "ትዕዛዝ ሰርዝ",
+    "description": "ይህን ትዕዛዝ ለምን እንደሚሰርዙ ምክንያት ያስቀምጡ።",
+    "placeholder": "ለምሳሌ፡ ደንበኛ ሄደ",
+    "goBack": "ተመለስ",
+    "confirmCancel": "ሰርዝ አረጋግጥ"
+  },
+  "printer": {
+    "failureBanner": "የፕሪንተር ብልሽት ተገኝቷል! አንዳንድ ደረሰኞች አልታተሙም።",
+    "dismiss": "ዝጋ"
+  },
+  "tables": {
+    "title": "የጠረጴዛ ካርታ",
+    "chooseTable": "ትዕዛዝ ለመጀመር ወይም ያለውን ቲኬት ለማየት ጠረጴዛ ይምረጡ።",
+    "tableLabel": "ጠረጴዛ",
+    "empty": "ባዶ",
+    "occupied": "ተይዟል",
+    "needsPayment": "ክፍያ ያስፈልጋል"
+  },
+  "ordering": {
+    "title": "አዲስ ትዕዛዝ",
+    "searchPlaceholder": "ምናሌ ፈልግ...",
+    "loadingMenu": "ምናሌ በመጫን ላይ...",
+    "noItems": "የሚታዩ ዕቃዎች የሉም",
+    "noItemsMenu": "ምናሌ ዕቃዎች ገና አልተጨመሩም። ባለቤቱ ወይም አስተዳዳሪ ምናሌ እንዲያዘጋጁ ይጠይቁ።",
+    "noItemsFilter": "ከፍተርዎ ጋር የሚዛመዱ ዕቃዎች የሉም።",
+    "categories": {
+      "all": "ሁሉም",
+      "food": "ምግብ",
+      "drinks": "መጠጦች",
+      "desserts": "ጣፋጮች",
+      "other": "ሌሎች"
+    },
+    "cart": {
+      "title": "አዲስ ትዕዛዝ",
+      "line_one": "{{count}} መስመር",
+      "line_other": "{{count}} መስመሮች",
+      "tableNumber": "የጠረጴዛ ቁጥር",
+      "tablePlaceholder": "ለምሳሌ፡ 12 ወይም ለወጭ",
+      "emptyCart": "ዕቃዎቹን ይጫኑ ከዚህ ለማስቀመጥ።",
+      "each": "ለእያ",
+      "notesPlaceholder": "ማሳሰቢያ (አማራጭ)",
+      "items": "ዕቃዎች",
+      "total": "ድምር",
+      "placeOrder": "ትዕዛዝ ላክ",
+      "placingOrder": "ትዕዛዝ በመላክ ላይ…",
+      "sentToKitchen": "ወደ ወጥ ቤት ተልኳል",
+      "clearCart": "ሻንጣ አጽዳ",
+      "remove": "መስመር አስወግድ",
+      "decreaseQty": "ቁጥር ቀንስ",
+      "increaseQty": "ቁጥር ጨምር"
+    },
+    "toasts": {
+      "tableRequired": "ጠረጴዛ ያስፈልጋል",
+      "tableRequiredMsg": "ትዕዛዝ ከመላክዎ በፊት የጠረጴዛ ቁጥር ያስቀምጡ።",
+      "emptyCart": "ሻንጣ ባዶ ነው",
+      "emptyCartMsg": "ቢያንስ አንድ ዕቃ ወደ ትዕዛዙ ያስቀምጡ።",
+      "orderPlaced": "ትዕዛዝ ተልኳል",
+      "orderPlacedMsg": "ጠረጴዛ {{table}} — {{count}} ዕቃ ወደ ወጥ ቤት ተልኳል።",
+      "orderPlacedMsg_other": "ጠረጴዛ {{table}} — {{count}} ዕቃዎች ወደ ወጥ ቤት ተልከዋል።",
+      "orderFailed": "ትዕዛዝ አልተሳካም",
+      "orderFailedMsg": "ትዕዛዙን መላክ አልተቻለም። እንደገና ሞክር።"
+    }
+  },
+  "toasts": {
+    "settled": "ጥሩ — {{tableText}} ተሟልቷል",
+    "tableText": "የጠረጴዛ {{table}}",
+    "takeoutText": "ለወጭ ትዕዛዝ",
+    "paymentFailed": "ክፍያ አልተሳካም",
+    "cancelFailed": "መሰረዝ አልተሳካም"
+  },
+  "shortcuts": {
+    "navigate": "↑↓ / J K — ወረፋ ዳስስ",
+    "payment": "1 2 3 — ጥሬ ገንዘብ / ካርድ / ሞባይል",
+    "pay": "Enter — ተከፍሏል ምልክት ያድርጉ",
+    "close": "Esc — ዝጋ / ምርጫ ሰርዝ"
+  }
+}
