@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OwnerLayout } from '../components/layout/OwnerLayout';
 import { ManagerLayout } from '../components/layout/ManagerLayout';
 import { AppRoutes } from '../App';
@@ -14,9 +15,17 @@ vi.mock('../store/authStore', () => ({
 vi.mock('../store/socketStore', () => ({
   useSocketStore: () => ({ connect: vi.fn(), disconnect: vi.fn(), isConnected: false }),
 }));
+// Mock offlineSyncStore
 vi.mock('../store/offlineSyncStore', () => ({
   useOfflineSyncStore: () => ({ initListeners: vi.fn(), isOnline: true, pendingCount: 0 }),
 }));
+
+const renderWithQueryClient = (ui: React.ReactElement) => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 0 } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+};
 
 describe('Layout Architecture Regression Tests', () => {
   beforeEach(() => {
@@ -31,7 +40,7 @@ describe('Layout Architecture Regression Tests', () => {
         isAuthenticated: true,
       });
 
-      render(
+      renderWithQueryClient(
         <MemoryRouter initialEntries={['/owner']}>
           <OwnerLayout />
         </MemoryRouter>
@@ -51,7 +60,7 @@ describe('Layout Architecture Regression Tests', () => {
         isAuthenticated: true,
       });
 
-      render(
+      renderWithQueryClient(
         <MemoryRouter initialEntries={['/manager']}>
           <ManagerLayout />
         </MemoryRouter>
@@ -72,7 +81,7 @@ describe('Layout Architecture Regression Tests', () => {
         isAuthenticated: true,
       });
 
-      const { container } = render(
+      const { container } = renderWithQueryClient(
         <MemoryRouter initialEntries={['/owner']}>
           <OwnerLayout />
         </MemoryRouter>
@@ -90,7 +99,7 @@ describe('Layout Architecture Regression Tests', () => {
         isAuthenticated: true,
       });
 
-      const { container } = render(
+      const { container } = renderWithQueryClient(
         <MemoryRouter initialEntries={['/manager']}>
           <ManagerLayout />
         </MemoryRouter>
@@ -108,7 +117,7 @@ describe('Layout Architecture Regression Tests', () => {
         isAuthenticated: true,
       });
 
-      render(
+      renderWithQueryClient(
         <MemoryRouter initialEntries={['/owner/printers']}>
           <AppRoutes />
         </MemoryRouter>
@@ -128,7 +137,7 @@ describe('Layout Architecture Regression Tests', () => {
         isAuthenticated: true,
       });
 
-      render(
+      renderWithQueryClient(
         <MemoryRouter initialEntries={['/manager/people']}>
           <AppRoutes />
         </MemoryRouter>
