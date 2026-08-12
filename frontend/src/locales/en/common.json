@@ -1,0 +1,41 @@
+{
+  "nav": {
+    "backToQueue": "Back to queue",
+    "tableMap": "Table map"
+  },
+  "buttons": {
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "save": "Save",
+    "cancel": "Cancel",
+    "goBack": "Go Back",
+    "dismiss": "Dismiss",
+    "retry": "Retry",
+    "confirm": "Confirm"
+  },
+  "status": {
+    "paid": "Paid",
+    "cancelled": "Cancelled",
+    "cancelRequested": "Cancel Req",
+    "active": "Active",
+    "present": "Present",
+    "absent": "Absent",
+    "leave": "Leave",
+    "holiday": "Holiday",
+    "halfDay": "Half Day"
+  },
+  "loading": "Loading...",
+  "error": {
+    "generic": "Something went wrong.",
+    "tryAgain": "Please try again."
+  },
+  "empty": {
+    "noData": "No data to display."
+  },
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "amharic": "አማርኛ",
+    "description": "Your language preference is saved to your account and restored on any device."
+  }
+}
