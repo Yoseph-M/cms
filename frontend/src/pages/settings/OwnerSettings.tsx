@@ -2,12 +2,12 @@ import React from 'react';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { BusinessProfileSection } from '../../components/settings/BusinessProfileSection';
 import { CashierOrderingToggle } from '../../components/settings/CashierOrderingToggle';
-import { TableCountSetting } from '../../components/settings/TableCountSetting';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { ShoppingCart, RotateCcw, CalendarCheck } from 'lucide-react';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { OwnerAttendanceToggle } from '../../components/settings/OwnerAttendanceToggle';
+import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 
 /**
  * Owner Settings page — Phase 14, §3.2.
@@ -37,6 +37,8 @@ export const OwnerSettings: React.FC = () => {
 
       <NotificationPreferencesSection />
 
+      <LanguagePreferenceSection />
+
       <BusinessProfileSection />
 
       <Card>
@@ -48,7 +50,6 @@ export const OwnerSettings: React.FC = () => {
         </CardHeader>
         <CardContent>
           <CashierOrderingToggle />
-          <TableCountSetting />
         </CardContent>
       </Card>
 
