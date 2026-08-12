@@ -1,0 +1,80 @@
+{
+  "nav": {
+    "overview": "Overview",
+    "staff": "Staff Directory",
+    "menu": "Menu Config",
+    "finance": "Finance",
+    "expenses": "Expenses",
+    "attendance": "Attendance",
+    "payroll": "Payroll",
+    "audit": "Audit Logs",
+    "printers": "LAN Printers",
+    "settings": "Settings",
+    "consoleSubtitle": "Owner Console",
+    "openSidebar": "Open sidebar",
+    "closeSidebar": "Close sidebar",
+    "groups": {
+      "core": "Insights",
+      "people": "People & HR",
+      "ops": "Operations",
+      "system": "System"
+    }
+  },
+  "dashboard": {
+    "title": "Analytics Overview",
+    "loading": "Loading analytics…",
+    "stats": {
+      "todayRevenue": "Today's Revenue",
+      "avgTicket": "Average Ticket",
+      "kitchenQueue": "Kitchen Queue",
+      "activeStaff": "Active Staff",
+      "newRecord": "🎉 New Record",
+      "ordersSettled": "{{count}} orders settled",
+      "perTable": "per table",
+      "activeOrders": "active orders",
+      "registeredUsers": "registered users"
+    },
+    "trend": {
+      "range": "Range",
+      "exportBtn": "Export CSV",
+      "revenueTitle": "Revenue Trend",
+      "days": "{{count}} days",
+      "quietTitle": "Quiet in this window",
+      "quietMsg": "No orders came through yet. Once they do, you'll see daily revenue trends here."
+    },
+    "topItems": {
+      "title": "Top Selling Items",
+      "lastDays": "Last {{count}} days",
+      "sold": "{{count}} sold",
+      "emptyTitle": "Not enough orders yet to crown a favorite.",
+      "emptyMsg": "Once orders are placed, your best-sellers will appear here ranked by volume."
+    }
+  },
+  "finance": {
+    "title": "Finance",
+    "totalRevenue": "Total Revenue",
+    "noData": "No financial data."
+  },
+  "staff": {
+    "title": "Staff Roster"
+  },
+  "payroll": {
+    "title": "Payroll"
+  },
+  "expenses": {
+    "title": "Expenses"
+  },
+  "attendance": {
+    "title": "Attendance"
+  },
+  "audit": {
+    "title": "Audit Log",
+    "noLogs": "No audit logs found."
+  },
+  "printers": {
+    "title": "Printers"
+  },
+  "settings": {
+    "title": "Settings"
+  }
+}
