@@ -13,7 +13,8 @@ export const pinLoginSchema = z.object({
 });
 
 export const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
+  // Prefer the HttpOnly cookie; body token is accepted only for backward-compat (e.g. mobile)
+  refreshToken: z.string().optional(),
 });
 
 // ---------- User / Staff Schemas ----------
