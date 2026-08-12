@@ -21,14 +21,14 @@ const ManagerLayoutInner: React.FC = () => {
   const { collapsed, toggle } = useSidebar();
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="min-h-screen bg-app-gradient text-foreground flex flex-col">
       <Header />
 
       <div className="flex flex-1 overflow-hidden">
         <motion.aside
           initial={false}
           animate={{ width: collapsed ? 72 : 256 }}
-          className="shrink-0 border-r border-border bg-sidebar flex flex-col z-10 sticky top-0 h-[calc(100vh-3rem)]"
+          className="shrink-0 border-r border-border bg-sidebar/95 backdrop-blur-sm flex flex-col z-10 sticky top-0 h-[calc(100vh-3rem)]"
         >
           <div className={`px-4 py-4 border-b border-border flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
             {!collapsed && (
@@ -55,12 +55,10 @@ const ManagerLayoutInner: React.FC = () => {
           <nav className="flex-1 px-3 py-5 overflow-y-auto space-y-1 overflow-x-hidden">
             {MANAGER_NAV.map((link) => {
               const Icon = link.icon;
-              return (
+              const navLink = (
                 <NavLink
-                  key={link.to}
                   to={link.to}
                   end={link.end}
-                  title={collapsed ? link.label : undefined}
                   className={({ isActive }) =>
                     `group relative flex items-center ${collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2'} rounded-lg text-sm font-medium transition-colors ${
                       isActive
@@ -74,7 +72,7 @@ const ManagerLayoutInner: React.FC = () => {
                       {isActive && (
                         <motion.span
                           layoutId="manager-nav-active"
-                          className="absolute inset-0 bg-primary/10 border border-primary/20 rounded-lg"
+                          className="absolute inset-0 bg-gradient-to-r from-primary/15 via-primary/10 to-transparent border border-primary/25 rounded-lg shadow-brand"
                           initial={false}
                           transition={{ type: 'spring', stiffness: 500, damping: 32 }}
                         />
@@ -82,7 +80,7 @@ const ManagerLayoutInner: React.FC = () => {
                       {isActive && (
                         <motion.span
                           layoutId="manager-nav-pill"
-                          className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r-full bg-primary"
+                          className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r-full bg-brand-gradient"
                           initial={false}
                           transition={{ type: 'spring', stiffness: 500, damping: 32 }}
                         />
@@ -102,6 +100,13 @@ const ManagerLayoutInner: React.FC = () => {
                     </>
                   )}
                 </NavLink>
+              );
+              return collapsed ? (
+                <Tooltip key={link.to} label={link.label} side="right" className="block w-full">
+                  {navLink}
+                </Tooltip>
+              ) : (
+                <React.Fragment key={link.to}>{navLink}</React.Fragment>
               );
             })}
           </nav>
