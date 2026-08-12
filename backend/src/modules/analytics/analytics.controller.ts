@@ -56,20 +56,25 @@ async function aggregateSales(
 }
 
 export async function getDailySales(req: AuthenticatedRequest, res: Response) {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  const offsetHours = 3; // East Africa Time
+  const now = new Date();
+  now.setUTCHours(now.getUTCHours() + offsetHours);
+  
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const d = now.getUTCDate();
 
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  const todayStart = new Date(Date.UTC(y, m, d, -offsetHours, 0, 0, 0));
+  const todayEnd = new Date(Date.UTC(y, m, d, 23 - offsetHours, 59, 59, 999));
 
   const yesterdayStart = new Date(todayStart);
-  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
   const yesterdayEnd = new Date(todayEnd);
-  yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+  yesterdayEnd.setUTCDate(yesterdayEnd.getUTCDate() - 1);
 
-  const mtdStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-  const priorMtdStart = new Date(todayStart.getFullYear(), todayStart.getMonth() - 1, 1);
-  const priorMtdEnd = new Date(todayStart.getFullYear(), todayStart.getMonth(), 0, 23, 59, 59, 999);
+  const mtdStart = new Date(Date.UTC(y, m, 1, -offsetHours, 0, 0, 0));
+  const priorMtdStart = new Date(Date.UTC(y, m - 1, 1, -offsetHours, 0, 0, 0));
+  const priorMtdEnd = new Date(Date.UTC(y, m, 0, 23 - offsetHours, 59, 59, 999));
 
   const [today, yesterday, mtd, priorMtd] = await Promise.all([
     aggregateSales(todayStart, todayEnd),
@@ -92,7 +97,7 @@ export async function getDailySales(req: AuthenticatedRequest, res: Response) {
   });
 
   return res.json({
-    date: todayStart.toISOString().split('T')[0],
+    date: new Date(todayStart.getTime() + offsetHours * 3600000).toISOString().split('T')[0],
     totalRevenue,
     mtdRevenue: Math.round(mtdRevenue * 100) / 100,
     orderCount,
@@ -111,8 +116,11 @@ export async function getDailySales(req: AuthenticatedRequest, res: Response) {
 }
 
 export async function getMonthlySales(req: AuthenticatedRequest, res: Response) {
-  const currentYear = new Date().getFullYear();
-  const yearStart = new Date(`${currentYear}-01-01T00:00:00.000Z`);
+  const offsetHours = 3;
+  const now = new Date();
+  now.setUTCHours(now.getUTCHours() + offsetHours);
+  const currentYear = now.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(currentYear, 0, 1, -offsetHours, 0, 0, 0));
 
   const pipeline = [
     {
