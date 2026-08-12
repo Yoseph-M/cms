@@ -12,6 +12,7 @@ import { LoadingState } from '../common/LoadingState';
 import { EmptyState } from '../common/EmptyState';
 import { formatCurrency } from '../../utils/currency';
 import { MenuItem } from '../../types';
+import { useTranslation } from 'react-i18next';
 
 interface CartLine {
   menuItemId: string;
@@ -26,14 +27,6 @@ interface CashierOrderingPanelProps {
   onOrderCreated?: (order: unknown) => void;
   initialTableNumber?: string;
 }
-
-const CATEGORIES: Array<{ key: 'ALL' | 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER'; label: string }> = [
-  { key: 'ALL', label: 'All' },
-  { key: 'FOOD', label: 'Food' },
-  { key: 'DRINK', label: 'Drinks' },
-  { key: 'DESSERT', label: 'Desserts' },
-  { key: 'OTHER', label: 'Other' },
-];
 
 const CATEGORY_BADGE: Record<string, 'success' | 'default' | 'warning' | 'neutral'> = {
   FOOD: 'success',
@@ -57,8 +50,17 @@ const CATEGORY_BADGE: Record<string, 'success' | 'default' | 'warning' | 'neutra
  */
 export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOrderCreated, initialTableNumber = '' }) => {
   const { addToast } = useToastStore();
+  const { t } = useTranslation('cashier');
   const menuQuery = useMenuQuery();
   const items: MenuItem[] = menuQuery.data ?? [];
+
+  const CATEGORIES: Array<{ key: 'ALL' | 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER'; label: string }> = [
+    { key: 'ALL', label: t('ordering.categories.all') },
+    { key: 'FOOD', label: t('ordering.categories.food') },
+    { key: 'DRINK', label: t('ordering.categories.drinks') },
+    { key: 'DESSERT', label: t('ordering.categories.desserts') },
+    { key: 'OTHER', label: t('ordering.categories.other') },
+  ];
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'ALL' | 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER'>('ALL');
@@ -119,11 +121,11 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
 
   const handleSubmit = async () => {
     if (!tableNumber.trim()) {
-      addToast({ type: 'error', title: 'Table required', message: 'Enter a table number before placing the order.' });
+      addToast({ type: 'error', title: t('ordering.toasts.tableRequired'), message: t('ordering.toasts.tableRequiredMsg') });
       return;
     }
     if (cart.length === 0) {
-      addToast({ type: 'error', title: 'Empty cart', message: 'Add at least one item to the order.' });
+      addToast({ type: 'error', title: t('ordering.toasts.emptyCart'), message: t('ordering.toasts.emptyCartMsg') });
       return;
     }
 
@@ -143,8 +145,11 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       });
       addToast({
         type: 'success',
-        title: 'Order placed',
-        message: `Table ${tableNumber} — ${totalQty} item${totalQty === 1 ? '' : 's'} sent to kitchen.`,
+        title: t('ordering.toasts.orderPlaced'),
+        message: t(totalQty === 1 ? 'ordering.toasts.orderPlacedMsg' : 'ordering.toasts.orderPlacedMsg_other', {
+          table: tableNumber,
+          count: totalQty,
+        }),
       });
       setCart([]);
       setTableNumber('');
@@ -154,8 +159,8 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Order failed',
-        message: err.response?.data?.error || 'Could not place the order. Try again.',
+        title: t('ordering.toasts.orderFailed'),
+        message: err.response?.data?.error || t('ordering.toasts.orderFailedMsg'),
       });
     } finally {
       setIsSubmitting(false);
@@ -174,7 +179,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search menu..."
+                placeholder={t('ordering.searchPlaceholder')}
                 className="pl-9"
               />
             </div>
@@ -198,15 +203,15 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
 
         <div className="flex-1 overflow-y-auto p-6">
           {menuQuery.isLoading ? (
-            <LoadingState message="Loading menu..." />
+            <LoadingState message={t('ordering.loadingMenu')} />
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<UtensilsCrossed className="w-8 h-8 text-muted-foreground" />}
-              title="No items to show"
+              title={t('ordering.noItems')}
               message={
                 items.length === 0
-                  ? 'No menu items have been added yet. Ask an Owner or Manager to set up the menu.'
-                  : 'No items match your filter.'
+                  ? t('ordering.noItemsMenu')
+                  : t('ordering.noItemsFilter')
               }
             />
           ) : (
@@ -256,20 +261,20 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display text-lg font-semibold flex items-center gap-2">
               <ShoppingCart className="w-4 h-4 text-primary" />
-              New Order
+              {t('ordering.cart.title')}
             </h2>
             <span className="text-xs font-mono text-muted-foreground">
-              {cart.length} line{cart.length === 1 ? '' : 's'}
+              {t('ordering.cart.line', { count: cart.length })}
             </span>
           </div>
           <label htmlFor="order-table" className="text-xs text-muted-foreground mb-1 block">
-            Table number
+            {t('ordering.cart.tableNumber')}
           </label>
           <Input
             id="order-table"
             value={tableNumber}
             onChange={(e) => setTableNumber(e.target.value)}
-            placeholder="e.g. 12 or Takeout"
+            placeholder={t('ordering.cart.tablePlaceholder')}
             className="font-mono"
           />
         </div>
@@ -278,7 +283,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground py-12">
               <ShoppingCart className="w-10 h-10 mb-3 opacity-30" />
-              <p className="text-sm">Tap menu items to add them here.</p>
+              <p className="text-sm">{t('ordering.cart.emptyCart')}</p>
             </div>
           ) : (
             <AnimatePresence initial={false}>
@@ -295,13 +300,13 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm text-foreground truncate">{line.name}</p>
                       <p className="text-xs font-mono text-muted-foreground mt-0.5">
-                        {formatCurrency(line.unitPrice)} ea
+                        {formatCurrency(line.unitPrice)} {t('ordering.cart.each')}
                       </p>
                     </div>
                     <button
                       onClick={() => removeLine(line.menuItemId)}
                       className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      aria-label="Remove line"
+                      aria-label={t('ordering.cart.remove')}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -311,7 +316,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                       <button
                         onClick={() => setQuantity(line.menuItemId, line.quantity - 1)}
                         className="p-1.5 hover:text-primary transition-colors"
-                        aria-label="Decrease quantity"
+                        aria-label={t('ordering.cart.decreaseQty')}
                       >
                         <Minus className="w-3 h-3" />
                       </button>
@@ -321,7 +326,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                       <button
                         onClick={() => setQuantity(line.menuItemId, line.quantity + 1)}
                         className="p-1.5 hover:text-primary transition-colors"
-                        aria-label="Increase quantity"
+                        aria-label={t('ordering.cart.increaseQty')}
                       >
                         <Plus className="w-3 h-3" />
                       </button>
@@ -333,7 +338,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                   <Input
                     value={line.notes ?? ''}
                     onChange={(e) => setLineNotes(line.menuItemId, e.target.value)}
-                    placeholder="Notes (optional)"
+                    placeholder={t('ordering.cart.notesPlaceholder')}
                     className="mt-2 h-8 text-xs"
                   />
                 </motion.div>
@@ -344,11 +349,11 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
 
         <div className="border-t border-border p-5 space-y-3 bg-card">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Items</span>
+            <span className="text-muted-foreground">{t('ordering.cart.items')}</span>
             <span className="font-mono tabular-nums">{totalQty}</span>
           </div>
           <div className="flex justify-between items-center text-lg font-display font-semibold">
-            <span>Total</span>
+            <span>{t('ordering.cart.total')}</span>
             <span className="font-mono tabular-nums text-primary">{formatCurrency(total)}</span>
           </div>
           <Button
@@ -368,7 +373,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                   transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
                   className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
                 />
-                Placing order…
+                {t('ordering.cart.placingOrder')}
               </motion.span>
             ) : justSubmitted ? (
               <motion.span
@@ -377,12 +382,12 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                 className="flex items-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                Sent to kitchen
+                {t('ordering.cart.sentToKitchen')}
               </motion.span>
             ) : (
               <>
                 <ShoppingCart className="w-4 h-4 mr-2" />
-                Place Order
+                {t('ordering.cart.placeOrder')}
               </>
             )}
           </Button>
@@ -394,7 +399,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
               className="w-full text-muted-foreground"
             >
               <Trash2 className="w-3.5 h-3.5 mr-2" />
-              Clear cart
+              {t('ordering.cart.clearCart')}
             </Button>
           )}
         </div>
