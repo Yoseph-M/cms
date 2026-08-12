@@ -24,6 +24,7 @@ router.patch(
   validate(changeOwnPasswordSchema),
   UsersController.changeOwnPassword
 );
+router.patch('/me/language', UsersController.changeLanguage);
 
 // Admin staff management — Owner and Manager only
 router.use(requireRole([Role.OWNER, Role.MANAGER]));
