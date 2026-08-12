@@ -49,7 +49,34 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Legacy Aliases
+        // Explicit brand blue scale (mirrors login #3B82F6 = brand-500)
+        brand: {
+          50:  '#EFF6FF',
+          100: '#DBEAFE',
+          200: '#BFDBFE',
+          300: '#93C5FD',
+          400: '#60A5FA',
+          500: '#3B82F6',
+          600: '#2563EB',
+          700: '#1D4ED8',
+          800: '#1E40AF',
+          900: '#1E3A8A',
+          950: '#172554',
+        },
+        // Cyan accent scale — eye-catching complement
+        cyan: {
+          50:  '#ECFEFF',
+          100: '#CFFAFE',
+          200: '#A5F3FC',
+          300: '#67E8F9',
+          400: '#22D3EE',
+          500: '#06B6D4',
+          600: '#0891B2',
+          700: '#0E7490',
+          800: '#155E75',
+          900: '#164E63',
+        },
+        // Legacy Aliases (re-mapped to brand-aligned tokens)
         surface: {
           DEFAULT: 'hsl(var(--background))',
           warm: 'hsl(var(--card))',
@@ -65,8 +92,8 @@ export default {
         'gold-line': 'hsl(var(--accent))',
       },
       fontFamily: {
-        display: ['Fraunces', 'serif'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['var(--font-display)'],
+        sans: ['var(--font-sans)'],
         mono: ['"IBM Plex Mono"', 'monospace'],
       },
       keyframes: {
@@ -103,6 +130,13 @@ export default {
         'slide-in-from-bottom-4': 'slide-in-from-bottom-4 320ms ease-out',
         'slide-in-from-top-2': 'slide-in-from-top-2 200ms ease-out',
         'scale-in': 'scale-in 180ms ease-out',
+      },
+      boxShadow: {
+        // Soft brand-blue glow used on hover for primary CTAs / nav pills
+        brand: '0 8px 24px -8px rgba(59,130,246,0.45), 0 2px 6px -2px rgba(59,130,246,0.25)',
+        'brand-lg': '0 18px 40px -16px rgba(59,130,246,0.55), 0 4px 12px -4px rgba(59,130,246,0.30)',
+        // Cyan accent glow
+        cyan: '0 8px 24px -8px rgba(6,182,212,0.45), 0 2px 6px -2px rgba(6,182,212,0.25)',
       },
     },
   },
