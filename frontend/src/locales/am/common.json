@@ -1,0 +1,41 @@
+{
+  "nav": {
+    "backToQueue": "ወደ ወረፋ ተመለስ",
+    "tableMap": "የጠረጴዛ ካርታ"
+  },
+  "buttons": {
+    "signIn": "ግባ",
+    "signOut": "ውጣ",
+    "save": "አስቀምጥ",
+    "cancel": "ሰርዝ",
+    "goBack": "ተመለስ",
+    "dismiss": "ዝጋ",
+    "retry": "እንደገና ሞክር",
+    "confirm": "አረጋግጥ"
+  },
+  "status": {
+    "paid": "ተከፍሏል",
+    "cancelled": "ተሰርዟል",
+    "cancelRequested": "ሰርዝ ጥያቄ",
+    "active": "ንቁ",
+    "present": "ተገኝቷል",
+    "absent": "ቀርቷል",
+    "leave": "ፈቃድ",
+    "holiday": "ዕረፍት",
+    "halfDay": "ግማሽ ቀን"
+  },
+  "loading": "በመጫን ላይ...",
+  "error": {
+    "generic": "ችግር ተፈጥሯል።",
+    "tryAgain": "እባክዎ እንደገና ሞክሩ።"
+  },
+  "empty": {
+    "noData": "የሚታይ ውሂብ የለም።"
+  },
+  "language": {
+    "label": "ቋንቋ",
+    "english": "English",
+    "amharic": "አማርኛ",
+    "description": "የቋንቋ ምርጫዎ ወደ መለያዎ ይቀመጣል እናም ሁሉም መሳሪያዎ ላይ ይወሰናል።"
+  }
+}
