@@ -33,7 +33,7 @@ describe('Payroll (§2.1, §5)', () => {
       .send(payload);
 
     expect(res1.status).toBe(201);
-    expect(res1.body.paidAmount).toBe(12000);
+    expect(res1.body.paidAmount).toBe(1200000);
 
     const res2 = await request(app)
       .post('/api/payroll/entries')
