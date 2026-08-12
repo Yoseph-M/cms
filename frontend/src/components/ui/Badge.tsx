@@ -17,7 +17,7 @@ const badgeVariants = cva(
         success:
           "border-transparent bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]",
         warning:
-          "border-transparent bg-[hsl(var(--accent))] text-[hsl(24,15%,8%)]",
+          "border-transparent bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))]",
         error:
           "border-transparent bg-destructive text-destructive-foreground",
         neutral:
