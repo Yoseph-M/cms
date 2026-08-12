@@ -294,20 +294,28 @@ export const OwnerStaff: React.FC = () => {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" title="Edit">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors" title={isWaiter(user.role) ? 'Reset PIN' : 'Reset Password'}>
-                        <KeyRound className="w-3.5 h-3.5" />
-                      </button>
+                      <Tooltip label="Edit">
+                        <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </Tooltip>
+                      <Tooltip label={isWaiter(user.role) ? 'Reset PIN' : 'Reset Password'}>
+                        <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
+                      </Tooltip>
                       {user.isActive ? (
-                        <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Deactivate">
-                          <ShieldOff className="w-3.5 h-3.5" />
-                        </button>
+                        <Tooltip label="Deactivate">
+                          <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                            <ShieldOff className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
                       ) : (
-                        <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors" title="Reactivate">
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                        </button>
+                        <Tooltip label="Reactivate">
+                          <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
                       )}
                     </div>
                   </td>
