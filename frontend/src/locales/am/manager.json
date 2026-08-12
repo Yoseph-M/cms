@@ -1,0 +1,62 @@
+{
+  "dashboard": {
+    "subtitle": "ሥራ አስኪያጅ",
+    "title": "የሰራተኞች ዝርዝር",
+    "description": "የዛሬን ወይም ያለፉትን ቀናት ክትትል ይመዝግቡ።",
+    "date": "ቀን",
+    "loading": "የሰራተኞችን ዝርዝር በማምጣት ላይ…",
+    "emptyTitle": "ለአሁን እርስዎ ብቻ ነዎት",
+    "emptyMsg": "ባለቤቱ ቡድንዎን ሲያክል፣ እዚህ የሁሉንም ሰው የእለት ክትትል መመዝገብ ይችላሉ።",
+    "active": "ንቁ",
+    "inactive": "ያልተንቀሳቀሰ",
+    "markAttendance": "ክትትል ይመዝግቡ",
+    "attendance": {
+      "present": "ተገኝቷል",
+      "absent": "ቀሪ",
+      "halfDay": "ግማሽ ቀን",
+      "leave": "ፈቃድ"
+    }
+  },
+  "payroll": {
+    "title": "የደመወዝ ክፍያ ይመዝግቡ",
+    "subtitle": "ለሰራተኞችዎ በትክክል የተከፈለውን ይመዝግቡ።",
+    "newEntry": "አዲስ መዝግብ",
+    "ledgerTitle": "የደመወዝ ክፍያ መዝገብ",
+    "emptyTitle": "ምንም የደመወዝ ክፍያ አልተመዘገበም",
+    "emptyMsg": "ለቡድንዎ በትክክል የተከፈለውን ለመመዝገብ የመጀመሪያዎን ያስገቡ።",
+    "emptyAction": "የመጀመሪያዎን የደመወዝ ክፍያ ይመዝግቡ",
+    "columns": {
+      "staff": "ሰራተኛ",
+      "period": "ጊዜ",
+      "paid": "የተከፈለው",
+      "date": "ቀን"
+    },
+    "formDesc": "ለአንድ ሰራተኛ እና ለተወሰነ ጊዜ በትክክል የተከፈለውን ይመዝግቡ።",
+    "form": {
+      "cancel": "ሰርዝ",
+      "saving": "በማስቀመጥ ላይ...",
+      "record": "ይመዝግቡ",
+      "staff": "ሰራተኛ",
+      "selectStaff": "ሰራተኛ ይምረጡ",
+      "month": "የወር ጊዜ",
+      "year": "ዓመት",
+      "amount": "የተከፈለው መጠን (ብር)",
+      "loadingRef": "የመነሻ ደመወዝ በማምጣት ላይ…",
+      "refSuggested": "የተጠቆመ መነሻ ደመወዝ — በትክክል ወደ ከፈሉት ይቀይሩ ({{amount}})",
+      "refSuggestedFallback": "የተጠቆመ መነሻ ደመወዝ — በትክክል ወደ ከፈሉት ይቀይሩ",
+      "note": "ማስታወሻ",
+      "optional": "አማራጭ",
+      "notePlaceholder": "ለምሳሌ፦ በ28ኛው ቀን በጥሬ ገንዘብ ተከፍሏል"
+    }
+  },
+  "toasts": {
+    "fetchStaffError": "የሰራተኞችን ዝርዝር ማምጣት አልተቻለም",
+    "attendanceLogged": "ክትትል ተመዝግቧል",
+    "attendanceFailed": "ክትትል መመዝገብ አልተቻለም",
+    "refSalaryError": "የመነሻ ደመወዝ ማምጣት አልተቻለም",
+    "staffAmountRequired": "ሰራተኛ እና የተከፈለው መጠን ያስፈልጋል።",
+    "invalidAmount": "የተከፈለው መጠን አዎንታዊ ቁጥር መሆን አለበት።",
+    "payrollRecorded": "የደመወዝ ክፍያ ተመዝግቧል",
+    "payrollRecordError": "መመዝገብ አልተቻለም"
+  }
+}
