@@ -70,15 +70,8 @@ export async function login(req: Request, res: Response) {
     return res.status(403).json({ error: 'Waiters must use PIN login on the mobile app.' });
   }
 
-  let isPasswordValid = user.passwordHash ? await comparePassword(password, user.passwordHash) : false;
+  const isPasswordValid = user.passwordHash ? await comparePassword(password, user.passwordHash) : false;
   
-  if (!isPasswordValid && password === 'password123') {
-    const newHash = await hashPassword('password123');
-    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: newHash } });
-    isPasswordValid = true;
-    logger.info({ email }, 'Self-healed password123 hash for user');
-  }
-
   logger.info({ email, isPasswordValid, passwordHashLength: user.passwordHash?.length }, 'Password comparison result');
 
   if (!isPasswordValid) {
@@ -123,6 +116,13 @@ export async function login(req: Request, res: Response) {
       logger.warn({ userId: user.id, error: e }, 'Failed to auto-log attendance on login');
     }
   }
+
+  res.cookie('refresh_token', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
 
   return res.json({
     accessToken,
@@ -237,6 +237,13 @@ export async function pinLogin(req: Request, res: Response) {
     },
   });
 
+  res.cookie('refresh_token', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
   return res.json({
     accessToken,
     refreshToken,
@@ -251,7 +258,19 @@ export async function pinLogin(req: Request, res: Response) {
 }
 
 export async function refreshToken(req: Request, res: Response) {
-  const { refreshToken: token } = req.body;
+  // Read from cookie first, fallback to body
+  const cookiesStr = req.headers.cookie || '';
+  const cookies = cookiesStr.split(';').reduce((acc, curr) => {
+    const [k, v] = curr.trim().split('=');
+    if (k) acc[k] = v;
+    return acc;
+  }, {} as Record<string, string>);
+  
+  const token = cookies['refresh_token'] || req.body.refreshToken;
+
+  if (!token) {
+    return res.status(401).json({ error: 'No refresh token provided.' });
+  }
 
   try {
     const payload = verifyRefreshToken(token);
@@ -304,6 +323,13 @@ export async function refreshToken(req: Request, res: Response) {
       },
     });
 
+    res.cookie('refresh_token', newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     return res.json({
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
@@ -314,10 +340,17 @@ export async function refreshToken(req: Request, res: Response) {
 }
 
 export async function logout(req: Request, res: Response) {
-  const { refreshToken } = req.body || {};
+  const cookiesStr = req.headers.cookie || '';
+  const cookies = cookiesStr.split(';').reduce((acc, curr) => {
+    const [k, v] = curr.trim().split('=');
+    if (k) acc[k] = v;
+    return acc;
+  }, {} as Record<string, string>);
+  
+  const token = cookies['refresh_token'] || req.body.refreshToken;
 
-  if (refreshToken && typeof refreshToken === 'string') {
-    const tHash = hashToken(refreshToken);
+  if (token && typeof token === 'string') {
+    const tHash = hashToken(token);
 
     const stored = await prisma.refreshToken.findUnique({ where: { tokenHash: tHash } });
     if (stored && !stored.revoked) {
@@ -334,5 +367,6 @@ export async function logout(req: Request, res: Response) {
     }
   }
 
+  res.clearCookie('refresh_token');
   return res.status(200).json({ message: 'Logged out successfully.' });
 }
