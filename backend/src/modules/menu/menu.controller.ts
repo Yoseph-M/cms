@@ -54,7 +54,7 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
     data: {
       name,
       category,
-      price: parseFloat(price),
+      price: Math.round(parseFloat(price) * 100),
       isAvailable: isAvailable !== undefined ? isAvailable : true,
       imageUrl,
     },
@@ -87,7 +87,7 @@ export async function updateMenuItem(req: AuthenticatedRequest, res: Response) {
     data: {
       name: req.body.name,
       category: req.body.category,
-      price: req.body.price ? parseFloat(req.body.price) : undefined,
+      price: req.body.price ? Math.round(parseFloat(req.body.price) * 100) : undefined,
       isAvailable: req.body.isAvailable,
       imageUrl: req.body.imageUrl,
     },
@@ -116,17 +116,32 @@ export async function toggleAvailability(req: AuthenticatedRequest, res: Respons
     return res.status(404).json({ error: 'Menu item not found.' });
   }
 
-  const updatedItem = await prisma.menuItem.update({
-    where: { id },
-    data: { isAvailable },
-  });
+  // Retry up to 3 times on P2034 write-conflict / deadlock (MongoDB)
+  let updatedItem;
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      updatedItem = await prisma.menuItem.update({
+        where: { id },
+        data: { isAvailable },
+      });
+      break; // success — exit loop
+    } catch (err: any) {
+      if (err?.code === 'P2034' && attempt < MAX_RETRIES) {
+        // Exponential backoff: 50ms, 100ms
+        await new Promise((r) => setTimeout(r, 50 * attempt));
+        continue;
+      }
+      throw err; // re-throw on non-conflict errors or exhausted retries
+    }
+  }
 
   invalidateMenuCache();
 
   emitToLiveOrders('menu:availabilityChanged', {
-    id: updatedItem.id,
-    name: updatedItem.name,
-    isAvailable: updatedItem.isAvailable,
+    id: updatedItem!.id,
+    name: updatedItem!.name,
+    isAvailable: updatedItem!.isAvailable,
   });
 
   await recordAudit({
@@ -134,7 +149,7 @@ export async function toggleAvailability(req: AuthenticatedRequest, res: Respons
     actionType: 'MENU_AVAILABILITY_CHANGED',
     targetType: 'MenuItem',
     targetId: id,
-    details: { name: updatedItem.name, isAvailable: updatedItem.isAvailable },
+    details: { name: updatedItem!.name, isAvailable: updatedItem!.isAvailable },
   });
 
   return res.json(updatedItem);
