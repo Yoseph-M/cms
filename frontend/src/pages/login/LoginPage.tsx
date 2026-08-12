@@ -5,11 +5,14 @@ import { useToastStore } from '../../store/toastStore';
 import { axiosClient } from '../../api/axiosClient';
 import { Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { setAuth, isAuthenticated, user } = useAuthStore();
   const { addToast } = useToastStore();
+  const { t } = useTranslation('auth');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,12 +48,18 @@ export const LoginPage: React.FC = () => {
       const res = await axiosClient.post('/auth/login', { email, password });
       const { user: authUser, accessToken, refreshToken } = res.data;
 
+      // Restore user's preferred language on login
+      if (authUser.preferredLanguage && authUser.preferredLanguage !== i18n.language) {
+        await i18n.changeLanguage(authUser.preferredLanguage);
+        document.documentElement.lang = authUser.preferredLanguage;
+      }
+
       setAuth(authUser, accessToken, refreshToken);
       addToast({ type: 'success', title: `Welcome back, ${authUser.name}!` });
       redirectByRole(authUser.role);
     } catch (err: any) {
       const data = err.response?.data;
-      setErrorMsg(data?.error || 'Invalid email or password.');
+      setErrorMsg(data?.error || t('errors.invalidCredentials'));
     } finally {
       setIsLoading(false);
     }
@@ -107,10 +116,10 @@ export const LoginPage: React.FC = () => {
               </svg>
             </div>
             <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
-              CMS
+              {t('title')}
             </h1>
             <p className="mt-2 text-sm text-gray-500">
-              Sign in to your account
+              {t('subtitle')}
             </p>
           </div>
 
@@ -126,7 +135,7 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {/* Email Input — single pill, fully curved */}
+            {/* Email Input */}
             <div
               className={cn(
                 'group relative flex items-center w-full rounded-full transition-all duration-200 overflow-hidden',
@@ -151,7 +160,7 @@ export const LoginPage: React.FC = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 onFocus={() => setFocusedField('email')}
                 onBlur={() => setFocusedField(null)}
-                placeholder="Username"
+                placeholder={t('fields.email')}
                 autoComplete="off"
                 required
                 className="login-input flex-1 min-w-0 bg-transparent text-gray-900 placeholder:text-gray-400 text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
@@ -159,7 +168,7 @@ export const LoginPage: React.FC = () => {
               <div className="pr-5 w-2 shrink-0" aria-hidden="true" />
             </div>
 
-            {/* Password Input — single pill, fully curved */}
+            {/* Password Input */}
             <div
               className={cn(
                 'group relative flex items-center w-full rounded-full transition-all duration-200 overflow-hidden',
@@ -184,7 +193,7 @@ export const LoginPage: React.FC = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 onFocus={() => setFocusedField('password')}
                 onBlur={() => setFocusedField(null)}
-                placeholder="Password"
+                placeholder={t('fields.password')}
                 autoComplete="off"
                 required
                 className="login-input flex-1 min-w-0 bg-transparent text-gray-900 placeholder:text-gray-400 text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
@@ -218,11 +227,11 @@ export const LoginPage: React.FC = () => {
               {isLoading ? (
                 <span className="inline-flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Signing in…
+                  {t('actions.signingIn')}
                 </span>
               ) : (
                 <>
-                  Sign In
+                  {t('actions.signIn')}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -230,8 +239,8 @@ export const LoginPage: React.FC = () => {
           </form>
 
           {/* Footer */}
-          <p className="mt-8 text-center text-xs text-gray-400">
-            Need help? Contact your manager
+          <p className="mt-4 text-center text-xs text-gray-400">
+            {t('footer')}
           </p>
         </div>
       </div>
