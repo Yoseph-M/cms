@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
@@ -37,6 +38,7 @@ const SCOPED_ROLES = ['CASHIER', 'WAITER', 'COOKER', 'BARISTA'];
 
 export const ManagerPayroll: React.FC = () => {
   const { addToast } = useToastStore();
+  const { t } = useTranslation('manager');
 
   const [ledger, setLedger] = useState<PayrollRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,7 +110,7 @@ export const ManagerPayroll: React.FC = () => {
       setRefSalary(salary);
       setPaidAmount(String(salary));
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Could not load salary reference', message: err.response?.data?.error });
+      addToast({ type: 'error', title: t('toasts.refSalaryError', { defaultValue: 'Could not load salary reference' }), message: err.response?.data?.error });
     } finally {
       setIsLoadingRef(false);
     }
@@ -116,12 +118,12 @@ export const ManagerPayroll: React.FC = () => {
 
   const handleRecordEntry = async () => {
     if (!userId || !paidAmount) {
-      addToast({ type: 'error', title: 'Staff and paid amount are required.' });
+      addToast({ type: 'error', title: t('toasts.staffAmountRequired', { defaultValue: 'Staff and paid amount are required.' }) });
       return;
     }
     const amount = parseFloat(paidAmount);
     if (!Number.isFinite(amount) || amount < 0) {
-      addToast({ type: 'error', title: 'Paid amount must be a non-negative number.' });
+      addToast({ type: 'error', title: t('toasts.invalidAmount', { defaultValue: 'Paid amount must be a non-negative number.' }) });
       return;
     }
     setIsSubmitting(true);
@@ -133,7 +135,7 @@ export const ManagerPayroll: React.FC = () => {
         paidAmount: amount,
         note: note.trim() || undefined,
       });
-      addToast({ type: 'success', title: 'Payroll entry recorded' });
+      addToast({ type: 'success', title: t('toasts.payrollRecorded', { defaultValue: 'Payroll entry recorded' }) });
       setFormOpen(false);
       resetForm();
       fetchLedger();
@@ -141,7 +143,7 @@ export const ManagerPayroll: React.FC = () => {
       const detail = err.response?.data?.details?.[0]?.error;
       addToast({
         type: 'error',
-        title: 'Could not record entry',
+        title: t('toasts.payrollRecordError', { defaultValue: 'Could not record entry' }),
         message: detail || err.response?.data?.error,
       });
     } finally {
@@ -155,13 +157,13 @@ export const ManagerPayroll: React.FC = () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-base font-bold">Record Payroll Entry</CardTitle>
+              <CardTitle className="text-base font-bold">{t('payroll.title', { defaultValue: 'Record Payroll Entry' })}</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Log what was actually paid for your staff roster.
+                {t('payroll.subtitle', { defaultValue: 'Log what was actually paid for your staff roster.' })}
               </p>
             </div>
             <Button id="manager-record-payroll-btn" onClick={openForm}>
-              <Plus className="w-4 h-4 mr-2" />New Entry
+              <Plus className="w-4 h-4 mr-2" />{t('payroll.newEntry', { defaultValue: 'New Entry' })}
             </Button>
           </div>
         </CardHeader>
@@ -169,7 +171,7 @@ export const ManagerPayroll: React.FC = () => {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold">Payroll Ledger</CardTitle>
+          <CardTitle className="text-base font-bold">{t('payroll.ledgerTitle', { defaultValue: 'Payroll Ledger' })}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -180,11 +182,11 @@ export const ManagerPayroll: React.FC = () => {
             </div>
           ) : ledger.length === 0 ? (
             <EmptyState
-              title="No payroll entries yet"
-              message="Record your first entry to log what was actually paid to your team roster."
+              title={t('payroll.emptyTitle', { defaultValue: 'No payroll entries yet' })}
+              message={t('payroll.emptyMsg', { defaultValue: 'Record your first entry to log what was actually paid to your team roster.' })}
               icon={<DollarSign className="w-7 h-7" />}
               action={{
-                label: 'Record your first payroll entry',
+                label: t('payroll.emptyAction', { defaultValue: 'Record your first payroll entry' }),
                 onClick: openForm,
                 icon: <Plus className="w-4 h-4 mr-1.5" />,
               }}
@@ -193,10 +195,10 @@ export const ManagerPayroll: React.FC = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
-                  <th className="px-4 py-3 text-left font-semibold">Staff</th>
-                  <th className="px-4 py-3 text-left font-semibold">Period</th>
-                  <th className="px-4 py-3 text-right font-semibold">Paid</th>
-                  <th className="px-4 py-3 text-right font-semibold">Date</th>
+                  <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.staff', { defaultValue: 'Staff' })}</th>
+                  <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.period', { defaultValue: 'Period' })}</th>
+                  <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.paid', { defaultValue: 'Paid' })}</th>
+                  <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.date', { defaultValue: 'Date' })}</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,6 +209,7 @@ export const ManagerPayroll: React.FC = () => {
                   >
                     <td className="px-4 py-3 font-medium">{row.user?.name}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {/* TODO: translate month names if desired, for now use standard abbreviation mapping or keep English fallback */}
                       {MONTHS[row.periodMonth - 1]} {row.periodYear}
                     </td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-primary">
@@ -226,17 +229,17 @@ export const ManagerPayroll: React.FC = () => {
       <Sheet
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        title="Record Payroll Entry"
-        description="Log what was actually paid for a staff member and period."
+        title={t('payroll.title', { defaultValue: 'Record Payroll Entry' })}
+        description={t('payroll.formDesc', { defaultValue: 'Log what was actually paid for a staff member and period.' })}
         footer={
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setFormOpen(false)} className="flex-1">Cancel</Button>
+            <Button variant="outline" onClick={() => setFormOpen(false)} className="flex-1">{t('payroll.form.cancel', { defaultValue: 'Cancel' })}</Button>
             <Button
               onClick={handleRecordEntry}
               disabled={isSubmitting || !userId || !paidAmount}
               className="flex-1"
             >
-              {isSubmitting ? 'Saving...' : 'Record Entry'}
+              {isSubmitting ? t('payroll.form.saving', { defaultValue: 'Saving...' }) : t('payroll.form.record', { defaultValue: 'Record Entry' })}
             </Button>
           </div>
         }
@@ -244,14 +247,14 @@ export const ManagerPayroll: React.FC = () => {
         <div className="space-y-5">
           <div>
             <label htmlFor="mgr-payroll-staff" className="text-sm font-medium text-foreground block mb-1.5">
-              Staff <span className="text-destructive">*</span>
+              {t('payroll.form.staff', { defaultValue: 'Staff' })} <span className="text-destructive">*</span>
             </label>
             <Select
               id="mgr-payroll-staff"
               value={userId}
               onChange={(e) => handleStaffChange(e.target.value)}
             >
-              <option value="">Select staff member</option>
+              <option value="">{t('payroll.form.selectStaff', { defaultValue: 'Select staff member' })}</option>
               {staff.map((s) => (
                 <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
               ))}
@@ -261,7 +264,7 @@ export const ManagerPayroll: React.FC = () => {
           <div className="flex gap-3">
             <div className="flex-1">
               <label htmlFor="mgr-payroll-month" className="text-sm font-medium text-foreground block mb-1.5">
-                Period Month
+                {t('payroll.form.month', { defaultValue: 'Period Month' })}
               </label>
               <Select
                 id="mgr-payroll-month"
@@ -275,7 +278,7 @@ export const ManagerPayroll: React.FC = () => {
             </div>
             <div className="w-28">
               <label htmlFor="mgr-payroll-year" className="text-sm font-medium text-foreground block mb-1.5">
-                Year
+                {t('payroll.form.year', { defaultValue: 'Year' })}
               </label>
               <Select
                 id="mgr-payroll-year"
@@ -291,15 +294,15 @@ export const ManagerPayroll: React.FC = () => {
 
           <div>
             <label htmlFor="mgr-payroll-amount" className="text-sm font-medium text-foreground block mb-1.5">
-              Paid Amount (ETB) <span className="text-destructive">*</span>
+              {t('payroll.form.amount', { defaultValue: 'Paid Amount (ETB)' })} <span className="text-destructive">*</span>
             </label>
             {userId && (
               <p className="text-xs text-muted-foreground mb-1.5">
                 {isLoadingRef
-                  ? 'Loading reference salary…'
+                  ? t('payroll.form.loadingRef', { defaultValue: 'Loading reference salary…' })
                   : refSalary !== null
-                    ? `Suggested reference salary — edit to what you actually paid (${formatCurrency(refSalary)})`
-                    : 'Suggested reference salary — edit to what you actually paid'}
+                    ? t('payroll.form.refSuggested', { defaultValue: `Suggested reference salary — edit to what you actually paid (${formatCurrency(refSalary)})`, amount: formatCurrency(refSalary) })
+                    : t('payroll.form.refSuggestedFallback', { defaultValue: 'Suggested reference salary — edit to what you actually paid' })}
               </p>
             )}
             <Input
@@ -317,13 +320,13 @@ export const ManagerPayroll: React.FC = () => {
 
           <div>
             <label htmlFor="mgr-payroll-note" className="text-sm font-medium text-foreground block mb-1.5">
-              Note <span className="text-muted-foreground font-normal">(optional)</span>
+              {t('payroll.form.note', { defaultValue: 'Note' })} <span className="text-muted-foreground font-normal">({t('payroll.form.optional', { defaultValue: 'optional' })})</span>
             </label>
             <Input
               id="mgr-payroll-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Paid in cash on the 28th"
+              placeholder={t('payroll.form.notePlaceholder', { defaultValue: 'e.g. Paid in cash on the 28th' })}
             />
           </div>
         </div>
