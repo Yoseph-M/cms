@@ -21,7 +21,7 @@ export function canTransition(current: OrderStatus, next: OrderStatus): boolean 
     case OrderStatus.SERVED:
       return next === OrderStatus.PAID || next === OrderStatus.CANCELLED;
     case OrderStatus.PAID:
-      return false; // Terminal
+      return next === OrderStatus.CANCELLED; // Allow cancellation for refunds
     case OrderStatus.CANCELLED:
       return false; // Terminal
     default:
