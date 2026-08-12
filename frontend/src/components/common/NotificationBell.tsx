@@ -120,7 +120,7 @@ export const NotificationBell: React.FC = () => {
 
   return (
     <div className="relative" ref={ref}>
-      <Tooltip label="Notifications" side="bottom">
+      <Tooltip label="Notifications" side="bottom" align="end">
         <button
           onClick={() => setOpen((o) => !o)}
           className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
