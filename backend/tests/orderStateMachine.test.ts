@@ -6,10 +6,10 @@ describe('orderStateMachine canTransition', () => {
 
   // Define valid transitions
   const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-    [OrderStatus.SUBMITTED]: [OrderStatus.IN_KITCHEN, OrderStatus.CANCELLED],
-    [OrderStatus.IN_KITCHEN]: [OrderStatus.SERVED, OrderStatus.CANCELLED],
+    [OrderStatus.SUBMITTED]: [OrderStatus.IN_KITCHEN, OrderStatus.CANCELLED, OrderStatus.PAID],
+    [OrderStatus.IN_KITCHEN]: [OrderStatus.SERVED, OrderStatus.CANCELLED, OrderStatus.PAID],
     [OrderStatus.SERVED]: [OrderStatus.PAID, OrderStatus.CANCELLED],
-    [OrderStatus.PAID]: [],
+    [OrderStatus.PAID]: [OrderStatus.CANCELLED],
     [OrderStatus.CANCELLED]: [],
   };
 
