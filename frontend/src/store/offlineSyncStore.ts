@@ -42,7 +42,8 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
       for (const order of pendingOrders) {
         try {
           // Idempotent POST call echoing clientOrderId (UUID v4)
-          await axiosClient.post('/api/orders', {
+          // axiosClient baseURL is /api, so the path here is relative
+          await axiosClient.post('/orders', {
             clientOrderId: order.clientOrderId,
             tableNumber: order.tableNumber,
             items: order.items,
