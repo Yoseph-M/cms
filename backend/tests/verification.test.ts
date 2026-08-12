@@ -20,7 +20,7 @@ afterAll(async () => {
 
 describe('Currency formatCurrency', () => {
   it('renders as "1,234.50 ETB"', () => {
-    expect(formatCurrency(1234.5)).toBe('1,234.50 ETB');
+    expect(formatCurrency(123450)).toBe('1,234.50 ETB');
     expect(formatCurrency(0)).toBe('0.00 ETB');
   });
 });
@@ -48,8 +48,8 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         clientOrderId: 'v-ord-from',
         tableNumber: '1',
         waiterId: waiter.id,
-        items: [{ menuItemId: waiter.id, name: 'A', unitPrice: 100, quantity: 1, notes: '' }],
-        totalAmount: 100,
+        items: [{ menuItemId: waiter.id, name: 'A', unitPrice: 10000, quantity: 1, notes: '' }],
+        totalAmount: 10000,
         status: OrderStatus.PAID,
         isPaid: true,
         paymentMethod: PaymentMethod.CASH,
@@ -61,8 +61,8 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         clientOrderId: 'v-ord-mid',
         tableNumber: '2',
         waiterId: waiter.id,
-        items: [{ menuItemId: waiter.id, name: 'B', unitPrice: 125, quantity: 2, notes: '' }],
-        totalAmount: 250,
+        items: [{ menuItemId: waiter.id, name: 'B', unitPrice: 12500, quantity: 2, notes: '' }],
+        totalAmount: 25000,
         status: OrderStatus.PAID,
         isPaid: true,
         paymentMethod: PaymentMethod.CARD,
@@ -74,8 +74,8 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         clientOrderId: 'v-ord-to',
         tableNumber: '3',
         waiterId: waiter.id,
-        items: [{ menuItemId: waiter.id, name: 'C', unitPrice: 50, quantity: 1, notes: '' }],
-        totalAmount: 50,
+        items: [{ menuItemId: waiter.id, name: 'C', unitPrice: 5000, quantity: 1, notes: '' }],
+        totalAmount: 5000,
         status: OrderStatus.PAID,
         isPaid: true,
         paymentMethod: PaymentMethod.MOBILE,
@@ -88,8 +88,8 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         clientOrderId: 'v-ord-cancel',
         tableNumber: '4',
         waiterId: waiter.id,
-        items: [{ menuItemId: waiter.id, name: 'X', unitPrice: 999, quantity: 1, notes: '' }],
-        totalAmount: 999,
+        items: [{ menuItemId: waiter.id, name: 'X', unitPrice: 99900, quantity: 1, notes: '' }],
+        totalAmount: 99900,
         status: OrderStatus.CANCELLED,
         isPaid: false,
         paymentMethod: PaymentMethod.NONE,
@@ -103,8 +103,8 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         clientOrderId: 'v-ord-out',
         tableNumber: '5',
         waiterId: waiter.id,
-        items: [{ menuItemId: waiter.id, name: 'Y', unitPrice: 10, quantity: 1, notes: '' }],
-        totalAmount: 10,
+        items: [{ menuItemId: waiter.id, name: 'Y', unitPrice: 1000, quantity: 1, notes: '' }],
+        totalAmount: 1000,
         status: OrderStatus.PAID,
         isPaid: true,
         paymentMethod: PaymentMethod.CASH,
@@ -118,7 +118,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         periodMonth: 6,
         periodYear: 2026,
         baseSalary: 12000,
-        paidAmount: 80,
+        paidAmount: 8000,
         processedById: owner.id,
         paymentDate: mid,
       },
@@ -126,7 +126,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
     await p.payrollAdjustment.create({
       data: {
         originalPaymentId: payment.id,
-        adjustmentAmount: 20,
+        adjustmentAmount: 2000,
         reason: 'Bonus',
         processedById: owner.id,
       },
@@ -135,7 +135,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
     await p.expense.create({
       data: {
         category: 'RENT',
-        amount: 30,
+        amount: 3000,
         description: 'June rent',
         date: fromBoundary,
         recordedById: owner.id,
@@ -144,7 +144,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
     await p.expense.create({
       data: {
         category: 'UTILITIES',
-        amount: 20,
+        amount: 2000,
         description: 'Power',
         date: toBoundary,
         recordedById: owner.id,
@@ -154,7 +154,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
     await p.expense.create({
       data: {
         category: 'PAYROLL',
-        amount: 5000,
+        amount: 500000,
         description: 'Should be ignored in otherExpenses',
         date: mid,
         recordedById: owner.id,
@@ -167,10 +167,10 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
 
     expect(res.status).toBe(200);
     // Hand-computed — do not re-derive aggregation logic here
-    expect(res.body.revenue).toBe(400);
-    expect(res.body.payrollCost).toBe(100);
-    expect(res.body.otherExpenses).toBe(50);
-    expect(res.body.netProfit).toBe(250);
+    expect(res.body.revenue).toBe(40000);
+    expect(res.body.payrollCost).toBe(10000);
+    expect(res.body.otherExpenses).toBe(5000);
+    expect(res.body.netProfit).toBe(25000);
   });
 
   it('returns clean zeros for an empty date range', async () => {
@@ -198,7 +198,7 @@ describe('Expenses RBAC & CRUD (§3)', () => {
       .set('Authorization', `Bearer ${cashier.accessToken}`)
       .send({
         category: 'RENT',
-        amount: 100,
+        amount: 10000,
         description: 'Nope',
         date: '2026-06-01',
       });
@@ -213,7 +213,7 @@ describe('Expenses RBAC & CRUD (§3)', () => {
       .set('Authorization', `Bearer ${manager.accessToken}`)
       .send({
         category: 'SUPPLIES',
-        amount: 75.25,
+        amount: 7525,
         description: 'Napkins',
         date: '2026-06-10',
       });
@@ -228,9 +228,9 @@ describe('Expenses RBAC & CRUD (§3)', () => {
     const patched = await request(app)
       .patch(`/api/expenses/${created.body.id}`)
       .set('Authorization', `Bearer ${manager.accessToken}`)
-      .send({ amount: 80 });
+      .send({ amount: 8000 });
     expect(patched.status).toBe(200);
-    expect(patched.body.amount).toBe(80);
+    expect(patched.body.amount).toBe(8000);
 
     const deleted = await request(app)
       .delete(`/api/expenses/${created.body.id}`)
@@ -251,7 +251,7 @@ describe('Payroll adjustment against manual entry (§2)', () => {
         userId: waiter.id,
         periodMonth: 3,
         periodYear: 2026,
-        paidAmount: 11000,
+        paidAmount: 1100000,
         note: 'Bank transfer',
       });
     expect(entry.status).toBe(201);
@@ -262,13 +262,13 @@ describe('Payroll adjustment against manual entry (§2)', () => {
       .send({
         originalPaymentId: entry.body.id,
         reason: 'Missed tip pool',
-        adjustmentAmount: 500,
+        adjustmentAmount: 50000,
       });
     expect(adj.status).toBe(201);
 
     const p = getPrisma();
     const original = await p.userPayment.findUnique({ where: { id: entry.body.id } });
-    expect(original?.paidAmount).toBe(11000);
+    expect(original?.paidAmount).toBe(1100000);
   });
 });
 
@@ -314,7 +314,7 @@ describe('Notification triggers (§6)', () => {
       data: {
         name: 'Stale Soup',
         category: 'FOOD',
-        price: 50,
+        price: 5000,
         isAvailable: false,
         createdAt: new Date(), // created recently
         updatedAt: old, // unavailable for > 7 days
@@ -336,6 +336,10 @@ describe('Notification triggers (§6)', () => {
 
     await p.attendance.create({
       data: { userId: waiter.id, date: '2026-06-01', status: 'PRESENT', note: '' },
+    });
+
+    await p.systemSetting.create({
+      data: { key: 'ownerCanEditAttendance', value: 'true' },
     });
 
     const res = await request(app)
