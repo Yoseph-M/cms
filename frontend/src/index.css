@@ -3,73 +3,86 @@
 @tailwind utilities;
 
 @layer base {
-  /* ─── Light Theme (Default) ─── */
+  :root[lang="en"], :root {
+    --font-display: 'Fraunces', serif;
+    --font-sans: 'Inter', system-ui, sans-serif;
+  }
+  
+  :root[lang="am"] {
+    --font-display: 'Noto Serif Ethiopic', serif;
+    --font-sans: 'Noto Sans Ethiopic', system-ui, sans-serif;
+  }
+
+  /* ─── Light Theme (Default) — Brand Blue identity, mirrors login #3B82F6 ─── */
   :root {
     --background: 0 0% 100%;
-    --foreground: 24 10% 10%;
+    --foreground: 222 47% 11%;
 
-    --card: 30 10% 98%;
-    --card-foreground: 24 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 24 10% 10%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 22 68% 52%;
+    /* Brand blue — same #3B82F6 used on the login page */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 30 12% 94%;
-    --secondary-foreground: 24 10% 10%;
+    --secondary: 214 100% 97%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 30 8% 55%;
-    --muted-foreground: 30 8% 55%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 38 60% 50%;
+    /* Cyan accent — eye-catching complement to the primary blue */
+    --accent: 187 95% 43%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 8 65% 55%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 145 40% 42%;
+    --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 36 90% 50%;
-    --warning-foreground: 24 15% 8%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
 
-    --border: 30 12% 90%;
-    --input: 30 12% 90%;
-    --ring: 22 68% 52%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
 
     --radius: 0.75rem;
 
-    --sidebar: 30 10% 97%;
+    /* Subtle blue-tinted sidebar surface so the shell feels brand-cohesive */
+    --sidebar: 220 100% 99%;
   }
 
   /* ─── Dark Theme (opt-in via .dark class) ─── */
   .dark {
-    --background: 24 15% 8%;
-    --foreground: 30 25% 92%;
-    --card: 24 15% 12%;
-    --card-foreground: 30 25% 92%;
-    --popover: 24 15% 12%;
-    --popover-foreground: 30 25% 92%;
-    --primary: 22 68% 58%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 24 15% 15%;
-    --secondary-foreground: 30 25% 92%;
-    --muted: 25 12% 60%;
-    --muted-foreground: 25 12% 60%;
-    --accent: 38 68% 68%;
-    --accent-foreground: 30 25% 92%;
-    --destructive: 8 65% 60%;
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 213 94% 68%;
+    --primary-foreground: 222 47% 7%;
+    --secondary: 217 33% 14%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 70%;
+    --accent: 187 95% 55%;
+    --accent-foreground: 222 47% 7%;
+    --destructive: 0 75% 60%;
     --destructive-foreground: 0 0% 100%;
-    --success: 130 15% 58%;
-    --success-foreground: 0 0% 100%;
-    --warning: 36 90% 60%;
-    --warning-foreground: 24 15% 8%;
-    --border: 24 12% 20%;
-    --input: 24 12% 20%;
-    --ring: 22 68% 58%;
-    --sidebar: 24 15% 10%;
+    --success: 160 70% 50%;
+    --success-foreground: 222 47% 7%;
+    --warning: 38 90% 60%;
+    --warning-foreground: 222 47% 7%;
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 213 94% 68%;
+    --sidebar: 222 47% 9%;
   }
 
   * {
@@ -100,8 +113,8 @@
   input:-webkit-autofill:focus,
   input:-webkit-autofill:active {
     -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
-    -webkit-text-fill-color: #111827 !important;
-    caret-color: #111827;
+    -webkit-text-fill-color: hsl(var(--foreground)) !important;
+    caret-color: hsl(var(--foreground));
     transition: background-color 5000s ease-in-out 0s;
   }
 
@@ -146,20 +159,84 @@
 }
 
 @layer components {
+  /* App-shell ambient — soft brand-blue wash that ties every page to the login */
+  .bg-app-gradient {
+    background:
+      radial-gradient(
+        ellipse 70% 60% at 0% 0%,
+        hsl(var(--primary) / 0.10),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 100% 0%,
+        hsl(var(--accent) / 0.08),
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60% 60% at 50% 100%,
+        hsl(var(--primary) / 0.06),
+        transparent 60%
+      ),
+      hsl(var(--background));
+  }
+
   /* Subtle ambient gradient for hero/login backgrounds */
   .bg-surface-gradient {
     background:
       radial-gradient(
         ellipse 60% 50% at 20% 0%,
-        hsl(var(--primary) / 0.06),
+        hsl(var(--primary) / 0.08),
         transparent 60%
       ),
       radial-gradient(
         ellipse 60% 50% at 80% 100%,
-        hsl(var(--accent) / 0.04),
+        hsl(var(--accent) / 0.06),
         transparent 60%
       ),
       hsl(var(--background));
+  }
+
+  /* Brand gradient bar — for headers, hero strips, buttons, anything visual */
+  .bg-brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--primary)) 0%,
+      hsl(217 91% 50%) 45%,
+      hsl(var(--accent)) 100%
+    );
+  }
+
+  /* Gradient text — for premium page titles */
+  .text-brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--accent)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Soft blue glow — use on hover for primary CTAs / nav active states */
+  .brand-glow {
+    box-shadow:
+      0 0 0 1px hsl(var(--primary) / 0.18),
+      0 8px 24px -8px hsl(var(--primary) / 0.45),
+      0 2px 6px -2px hsl(var(--primary) / 0.25);
+  }
+  .brand-glow:hover {
+    box-shadow:
+      0 0 0 1px hsl(var(--primary) / 0.25),
+      0 12px 32px -8px hsl(var(--primary) / 0.55),
+      0 2px 8px -2px hsl(var(--primary) / 0.30);
+  }
+
+  /* Cyan glow for accent surfaces */
+  .accent-glow {
+    box-shadow:
+      0 0 0 1px hsl(var(--accent) / 0.18),
+      0 8px 24px -8px hsl(var(--accent) / 0.45);
   }
 
   /* Subtle noise/grain for premium surfaces (very low cost, CSS-only) */
@@ -191,7 +268,17 @@
 
   /* Card hover lift used by analytics tiles */
   .card-lift {
-    @apply transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md;
+    @apply transition-all duration-200 ease-out hover:-translate-y-0.5;
+  }
+
+  /* Premium elevated card — blue-tinted border + soft shadow that pops */
+  .card-elevated {
+    @apply bg-card border border-border rounded-xl shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(59,130,246,0.18)];
+  }
+
+  /* Login-style focus ring — matches the pill inputs on the login page */
+  .focus-brand-ring {
+    @apply focus-within:shadow-[0_0_0_4px_hsl(217_91%_60%/0.12)];
   }
 
   /* Pulsing dot used by LivePulse */
@@ -256,7 +343,7 @@
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--primary) / 0.45);
+  background-color: hsl(var(--primary) / 0.55);
 }
 
 /* Firefox */
@@ -265,23 +352,23 @@
   scrollbar-color: hsl(var(--border)) transparent;
 }
 
-/* Selection — light blue theme across the entire app */
+/* Selection — brand blue across the entire app, mirrors the login accent */
 ::selection {
-  background: #93C5FD;
-  color: #1A1D1F;
+  background: hsl(213 94% 78% / 0.55);
+  color: hsl(222 47% 11%);
 }
 
 ::-moz-selection {
-  background: #93C5FD;
-  color: #1A1D1F;
+  background: hsl(213 94% 78% / 0.55);
+  color: hsl(222 47% 11%);
 }
 
 input::selection,
 input::-moz-selection,
 textarea::selection,
 textarea::-moz-selection {
-  background: #93C5FD;
-  color: #1A1D1F;
+  background: hsl(213 94% 78% / 0.55);
+  color: hsl(222 47% 11%);
 }
 
 /*
