@@ -1,56 +1,89 @@
 
-
 services:
   mongo:
     image: mongo:7.0
     container_name: mern_pos_mongo
-    restart: always
+    restart: unless-stopped
     command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"   # Bind to loopback only — never expose DB to internet
     environment:
       MONGO_INITDB_DATABASE: pos_db
     volumes:
       - mongo_data:/data/db
     healthcheck:
       test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]}) }" | mongosh --port 27017 --quiet
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      start_period: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+    security_opt:
+      - no-new-privileges:true
 
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: mern_pos_api
-    restart: always
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env            # Secrets injected at runtime — never bake into image
     ports:
-      - "5001:5001"
+      - "127.0.0.1:5001:5001"    # Bind to loopback — Nginx proxies from outside
     environment:
       PORT: 5001
       NODE_ENV: production
       DATABASE_URL: "mongodb://mongo:27017/pos_db?replicaSet=rs0"
-      JWT_SECRET: "super_secret_jwt_access_key_2026"
-      JWT_REFRESH_SECRET: "super_secret_jwt_refresh_key_2026"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp                      # App needs /tmp for temp files
 
   web:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: mern_pos_web
-    restart: always
+    restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
 
 volumes:
   mongo_data:
+    driver: local
