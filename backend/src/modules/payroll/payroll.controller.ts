@@ -90,7 +90,7 @@ export async function recordPayrollEntry(req: AuthenticatedRequest, res: Respons
     return res.status(403).json({ error: 'Managers can only record payroll for operational staff.' });
   }
 
-  const amount = parseFloat(paidAmount);
+  const amount = Math.round(parseFloat(paidAmount) * 100);
   if (!Number.isFinite(amount) || amount < 0) {
     return res.status(400).json({ error: 'paidAmount must be a non-negative number.' });
   }
@@ -180,7 +180,7 @@ export async function createAdjustment(req: AuthenticatedRequest, res: Response)
     data: {
       originalPaymentId,
       reason,
-      adjustmentAmount: parseFloat(adjustmentAmount),
+      adjustmentAmount: Math.round(parseFloat(adjustmentAmount) * 100),
       processedById,
     },
     include: {
