@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { LoadingState } from '../../components/common/LoadingState';
 import { User, Lock, LogOut, Shield } from 'lucide-react';
+import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 
 export const ProfilePage: React.FC = () => {
   const { user, logout } = useAuthStore();
@@ -171,6 +172,8 @@ export const ProfilePage: React.FC = () => {
               </form>
             </CardContent>
           </Card>
+
+          <LanguagePreferenceSection />
         </>
       )}
     </div>
