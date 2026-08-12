@@ -1,68 +1,139 @@
-# MERN POS System Runbook
+# Operational Runbook
 
-This runbook outlines standard operating procedures for the Point of Sale system.
+## Services
 
-## 1. Local Development
+| Service | Port | Purpose |
+|---------|------|---------|
+| mongo | 27017 (loopback) | MongoDB replica set |
+| api | 5001 (loopback) | Express/Node backend |
+| web | 80, 443 | Nginx SPA + reverse proxy |
 
-Start the full stack via Docker Compose:
+---
+
+## Starting / Stopping
+
 ```bash
+# Start all services
 docker compose up -d
+
+# Stop all services (data preserved)
+docker compose down
+
+# Full tear-down including volumes (DESTROYS DATA)
+docker compose down -v
 ```
-Access the application at `http://localhost:80`.
-The API is available at `http://localhost:5001`.
 
-## 2. Testing & Quality Assurance
+## Viewing Logs
 
-### Backend Tests
 ```bash
-cd backend
-npm install
-npx prisma generate
-npm test
+docker compose logs -f api        # Backend logs (Pino JSON)
+docker compose logs -f mongo      # MongoDB logs
+docker compose logs -f web        # Nginx access/error logs
 ```
 
-### Frontend Tests
+## Health Checks
+
 ```bash
-cd frontend
-npm install
-npm run test
+# API health
+curl http://localhost:5001/api/health
+
+# MongoDB replica set status
+docker exec mern_pos_mongo mongosh --eval "rs.status()"
 ```
 
-### E2E Tests (Playwright)
+---
+
+## Database Operations
+
+### Backup
+
 ```bash
-cd e2e
-npm install
-npx playwright test
+docker exec mern_pos_mongo mongodump \
+  --db pos_db \
+  --out /data/backup/$(date +%Y%m%d_%H%M%S)
 ```
 
-## 3. Operations
+### Restore
 
-### Metrics & Health
-- **Health Check**: `http://localhost:5001/api/health`
-- **Prometheus Metrics**: `http://localhost:5001/api/metrics`
-
-### Logs
-Logs are output in Pino JSON format. In development, `pino-pretty` formats them for readability. All log entries include `reqId` for distributed tracing.
-
-### Error Tracking
-Sentry is configured to capture unhandled exceptions automatically. Ensure `SENTRY_DSN` is set in the `.env` file for the backend.
-
-## 4. Emergency Procedures
-
-### Database Lock/Crash
-If MongoDB fails, restart the container:
 ```bash
-docker compose restart mongo
+docker exec mern_pos_mongo mongorestore \
+  --db pos_db \
+  /data/backup/<timestamp>/pos_db
 ```
-Verify the data volume `mongo_data` is mounted properly.
 
-### Rate Limiting & Auth Lockouts
-Users are locked out after 5 failed PIN attempts. To unlock:
-1. Manager/Owner must log in.
-2. Manager sends a `POST /api/users/:id/unlock` request.
-3. The user can then immediately attempt login again.
+### Run Prisma migrations
 
-## 5. Security Protocols
+```bash
+docker exec mern_pos_api npx prisma db push
+```
 
-- Default queries use soft deletes (`isActive: true`). Ensure admin-level reports override this explicitly if historical data is needed.
-- `JWT_SECRET` and `JWT_REFRESH_SECRET` must be rotated annually or upon compromise.
+---
+
+## Common Incidents
+
+### API container restarting
+
+1. `docker compose logs api` — check for startup errors
+2. Verify all required env vars are set in `./backend/.env`
+3. Confirm MongoDB replica set is healthy: `docker compose ps mongo`
+
+### Printer not responding
+
+1. Check `printer:failed` events in the Socket.IO dashboard
+2. Verify the printer IP/port in `PrinterStation` collection
+3. Test TCP connectivity: `nc -zv <printer-ip> 9100`
+4. Check `notification.service` for `PRINTER_FAILURE` notifications
+
+### Offline orders not syncing
+
+1. Check browser console for IndexedDB errors
+2. Verify network connectivity (`navigator.onLine`)
+3. The sync retries automatically when the browser comes back online
+4. Check `offlineSyncStore.ts` → `processSyncQueue` for manual trigger
+
+### Auth token expired mid-session
+
+- Access tokens expire after 15 minutes; the Axios interceptor auto-refreshes via the `refresh_token` HttpOnly cookie
+- If the refresh cookie is expired (7 days), the user will be redirected to login
+
+---
+
+## Secret Rotation
+
+### Rotate JWT secrets
+
+1. Update `ACCESS_TOKEN_SECRET` and `REFRESH_TOKEN_SECRET` in `./backend/.env`
+2. Restart the API: `docker compose restart api`
+3. All existing refresh tokens become invalid — users must log in again
+
+### Reset a staff member's PIN
+
+```bash
+# Via the Owner UI: Staff → select user → Reset PIN
+# Via API (Owner/Manager auth required):
+curl -X POST http://localhost:5001/api/users/<userId>/reset-pin \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"pinCode":"XXXX"}'
+```
+
+---
+
+## Monitoring
+
+- **Prometheus** metrics: `GET /api/metrics` (restrict access to internal network)
+- **Sentry** errors: configured via `SENTRY_DSN` env variable
+- **Pino** structured JSON logs: pipe to your log aggregator (e.g., Loki, Datadog)
+
+```bash
+# Pretty-print Pino logs locally
+docker compose logs -f api | npx pino-pretty
+```
+
+---
+
+## Scaling Notes
+
+- The API is stateless — horizontal scaling behind a load balancer is safe
+- Socket.IO requires sticky sessions OR a Redis adapter for multi-instance deployments
+- MongoDB replica set must remain at minimum 1 primary + 1 secondary for ACID transactions
