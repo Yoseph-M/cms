@@ -81,10 +81,11 @@ model User {
   passwordHash String?
   pinCodeHash  String?
   pinSalt      String?
-  salaryAmount Float    @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  salaryAmount      Int      @default(0) // Stored in minor units (e.g. cents)
+  isActive          Boolean  @default(true)
+  preferredLanguage String   @default("en")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations (reverse side, no FK column on this model)
   ordersAsWaiter    Order[]        @relation("WaiterOrders")
@@ -107,7 +108,7 @@ model MenuItem {
   id          String       @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   category    MenuCategory
-  price       Float
+  price       Int      // Stored in minor units
   isAvailable Boolean      @default(true)
   imageUrl    String?
   createdAt   DateTime     @default(now())
@@ -121,7 +122,7 @@ model MenuItem {
 type OrderItem {
   menuItemId String @db.ObjectId
   name       String // snapshot at sale time — never re-read from MenuItem later
-  unitPrice  Float // snapshot at sale time
+  unitPrice  Int // snapshot at sale time, stored in minor units
   quantity   Int
   notes      String @default("")
 }
@@ -135,7 +136,7 @@ model Order {
   cashierId          String?       @db.ObjectId
   cashier            User?         @relation("CashierOrders", fields: [cashierId], references: [id])
   items              OrderItem[]
-  totalAmount        Float
+  totalAmount        Int
   status             OrderStatus   @default(SUBMITTED)
   isPaid             Boolean       @default(false)
   paymentMethod      PaymentMethod @default(NONE)
@@ -175,8 +176,8 @@ model UserPayment {
   paymentDate   DateTime @default(now())
   periodMonth   Int // 1–12, validate in application layer
   periodYear    Int
-  baseSalary    Float // reference figure only — what we generally pay them
-  paidAmount    Float // amount actually recorded as paid outside the system
+  baseSalary    Int // reference figure only
+  paidAmount    Int // actual amount paid, minor units
   note          String   @default("")
   processedById String   @db.ObjectId
   processedBy   User     @relation("PayrollProcessor", fields: [processedById], references: [id])
@@ -242,7 +243,7 @@ model PayrollAdjustment {
   id               String      @id @default(auto()) @map("_id") @db.ObjectId
   originalPaymentId String      @db.ObjectId
   originalPayment   UserPayment @relation(fields: [originalPaymentId], references: [id])
-  adjustmentAmount Float
+  adjustmentAmount Int
   reason           String
   processedById    String      @db.ObjectId
   processedBy      User        @relation("AdjustmentProcessor", fields: [processedById], references: [id])
@@ -254,7 +255,7 @@ model PayrollAdjustment {
 model Expense {
   id           String          @id @default(auto()) @map("_id") @db.ObjectId
   category     ExpenseCategory
-  amount       Float
+  amount       Int
   description  String
   date         DateTime
   recordedById String          @db.ObjectId
