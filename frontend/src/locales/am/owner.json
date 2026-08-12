@@ -1,0 +1,83 @@
+{
+  "dashboard": {
+    "title": "የባለቤት ዳሽቦርድ",
+    "revenue": "ገቢ",
+    "orders": "ትዕዛዞች",
+    "title": "የትንታኔ አጠቃላይ እይታ",
+    "loading": "ትንታኔዎችን በማምጣት ላይ...",
+    "stats": {
+      "todayRevenue": "የዛሬ ገቢ",
+      "avgTicket": "አማካኝ ትዕዛዝ",
+      "kitchenQueue": "የኩሽና ሰልፍ",
+      "activeStaff": "ንቁ ሰራተኞች",
+      "newRecord": "🎉 አዲስ ክብረወሰን",
+      "ordersSettled": "ትዕዛዞች ተጠናቀዋል",
+      "perTable": "በየጠረጴዛው",
+      "activeOrders": "በስራ ላይ ያሉ ትዕዛዞች",
+      "registeredUsers": "የተመዘገቡ ተጠቃሚዎች"
+    },
+    "trend": {
+      "range": "ጊዜ",
+      "exportBtn": "CSV አውርድ",
+      "revenueTitle": "የገቢ አዝማሚያ",
+      "days": "ቀናት",
+      "quietTitle": "በዚህ ጊዜ ምንም የለም",
+      "quietMsg": "እስካሁን ምንም ትዕዛዞች አልገቡም። አንዴ ከገቡ በኋላ፣ የዕለታዊ ገቢ አዝማሚያዎችን እዚህ ያያሉ።"
+    },
+    "topItems": {
+      "title": "በብዛት የተሸጡ",
+      "lastDays": "ያለፉት ቀናት",
+      "sold": "ተሽጧል",
+      "emptyTitle": "ምንም ትዕዛዞች የሉም",
+      "emptyMsg": "ትዕዛዞች ሲገቡ፣ በብዛት የተሸጡ ዕቃዎችዎን እዚህ ያያሉ።"
+    }
+  },
+  "nav": {
+    "overview": "አጠቃላይ እይታ",
+    "staff": "የሰራተኞች ዝርዝር",
+    "menu": "ማውጫ ማስተካከያ",
+    "finance": "ፋይናንስ",
+    "expenses": "ወጪዎች",
+    "attendance": "የስራ ክትትል",
+    "payroll": "የደመወዝ ክፍያ",
+    "audit": "የኦዲት መዝገቦች",
+    "printers": "ፕሪንተሮች",
+    "settings": "ቅንብሮች",
+    "consoleSubtitle": "የባለቤት መቆጣጠሪያ",
+    "openSidebar": "የጎን አሞሌ ክፈት",
+    "closeSidebar": "የጎን አሞሌ ዝጋ",
+    "groups": {
+      "core": "አጠቃላይ እይታ",
+      "people": "ሰው ሃብት",
+      "ops": "ኦፕሬሽኖች",
+      "system": "ስርዓት"
+    }
+  },
+  "finance": {
+    "title": "ፋይናንስ",
+    "totalRevenue": "ጠቅላላ ገቢ",
+    "noData": "ምንም የፋይናንስ ውሂብ የለም።"
+  },
+  "staff": {
+    "title": "የሠራተኛ ዝርዝር"
+  },
+  "payroll": {
+    "title": "ደሞዝ"
+  },
+  "expenses": {
+    "title": "ወጪዎች"
+  },
+  "attendance": {
+    "title": "መገኘት"
+  },
+  "audit": {
+    "title": "የኦዲት መዝገብ",
+    "noLogs": "ምንም የኦዲት መዝገቦች አልተገኙም።"
+  },
+  "printers": {
+    "title": "አታሚዎች"
+  },
+  "settings": {
+    "title": "ቅንብሮች"
+  }
+}
