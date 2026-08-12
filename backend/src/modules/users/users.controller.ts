@@ -4,6 +4,7 @@ import { prisma } from '../../services/prisma.service';
 import { comparePassword, hashPassword, hashPin, isValidPinFormat } from '../../utils/security';
 import { recordAudit } from '../../services/audit.service';
 import { Role } from '@prisma/client';
+import crypto from 'crypto';
 
 export async function getUsers(req: AuthenticatedRequest, res: Response) {
   const { role, isActive } = req.query;
@@ -90,7 +91,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
       passwordHash: passHash,
       pinCodeHash: pinHash,
       pinSalt: pinSalt,
-      salaryAmount: salaryAmount || 0,
+      salaryAmount: salaryAmount ? Math.round(parseFloat(salaryAmount) * 100) : 0,
     },
     select: {
       id: true,
@@ -131,7 +132,10 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
 
   const updatedUser = await prisma.user.update({
     where: { id },
-    data: req.body,
+    data: {
+      ...req.body,
+      ...(req.body.salaryAmount !== undefined && { salaryAmount: Math.round(parseFloat(req.body.salaryAmount) * 100) })
+    },
     select: {
       id: true,
       name: true,
@@ -201,8 +205,11 @@ export async function resetPin(req: AuthenticatedRequest, res: Response) {
 
   // Auto-generate a valid PIN if none was supplied by caller
   if (!pinCode) {
-    const SAFE_PINS = ['2580', '3691', '5274', '8163', '4729', '6385', '9147', '7312'];
-    pinCode = SAFE_PINS[Math.floor(Math.random() * SAFE_PINS.length)];
+    pinCode = crypto.randomInt(0, 10000).toString().padStart(4, '0');
+    // Ensure it's not a trivial PIN
+    while (!isValidPinFormat(pinCode)) {
+      pinCode = crypto.randomInt(0, 10000).toString().padStart(4, '0');
+    }
   }
 
   if (!isValidPinFormat(pinCode)) {
@@ -219,6 +226,7 @@ export async function resetPin(req: AuthenticatedRequest, res: Response) {
   });
 
   await prisma.loginAttempt.deleteMany({ where: { userId: id } });
+  await prisma.refreshToken.deleteMany({ where: { userId: id } }); // Revoke sessions
 
   return res.json({ message: `PIN reset successfully for staff member ${targetUser.name}.`, pin: pinCode });
 }
@@ -239,8 +247,7 @@ export async function resetPassword(req: AuthenticatedRequest, res: Response) {
 
   // Auto-generate a temporary password if none supplied
   if (!password) {
-    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    password = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    password = crypto.randomBytes(8).toString('hex');
   }
 
   const hash = await hashPassword(password);
@@ -251,6 +258,7 @@ export async function resetPassword(req: AuthenticatedRequest, res: Response) {
   });
 
   await prisma.loginAttempt.deleteMany({ where: { userId: id } });
+  await prisma.refreshToken.deleteMany({ where: { userId: id } }); // Revoke sessions
 
   return res.json({ message: `Password reset successfully for staff member ${targetUser.name}.`, password });
 }
@@ -288,6 +296,7 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
       phone: true,
       salaryAmount: true,
       isActive: true,
+      preferredLanguage: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -329,4 +338,20 @@ export async function changeOwnPassword(req: AuthenticatedRequest, res: Response
   });
 
   return res.json({ message: 'Password updated successfully.' });
+}
+
+export async function changeLanguage(req: AuthenticatedRequest, res: Response) {
+  const userId = req.user!.userId;
+  const { preferredLanguage } = req.body;
+
+  if (!['en', 'am'].includes(preferredLanguage)) {
+    return res.status(400).json({ error: 'Invalid language preference.' });
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { preferredLanguage },
+  });
+
+  return res.json({ message: 'Language preference updated.' });
 }
