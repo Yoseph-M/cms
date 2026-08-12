@@ -27,6 +27,12 @@ vi.mock('../components/receipt/ReceiptModal', () => ({
   ReceiptModal: () => <div data-testid="receipt-modal">Receipt Modal</div>,
 }));
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: any) => options?.defaultValue || key,
+  }),
+}));
+
 // Phase 14, §1.3 — the dashboard now reads `cashierOrderingEnabled` via
 // useSystemSettingQuery and uses useQueryClient for the live socket update.
 // Tests need a QueryClientProvider or those hooks throw.
@@ -60,26 +66,29 @@ describe('CashierDashboard', () => {
         return Promise.reject({ response: { status: 404 } });
       }
       return Promise.resolve({
-        data: [
-          {
-            id: 'order-1',
-            clientOrderId: 'ref-1',
-            tableNumber: '1',
-            status: 'SERVED',
-            totalAmount: 50,
-            createdAt: new Date().toISOString(),
-            items: [{ name: 'Espresso', quantity: 1, unitPrice: 50 }],
-          },
-          {
-            id: 'order-2',
-            clientOrderId: 'ref-2',
-            tableNumber: '2',
-            status: 'PAID',
-            totalAmount: 100,
-            createdAt: new Date().toISOString(),
-            items: [],
-          },
-        ],
+        data: {
+          data: [
+            {
+              id: 'order-1',
+              clientOrderId: 'ref-1',
+              tableNumber: '1',
+              status: 'SERVED',
+              totalAmount: 50,
+              createdAt: new Date().toISOString(),
+              items: [{ name: 'Espresso', quantity: 1, unitPrice: 50 }],
+            },
+            {
+              id: 'order-2',
+              clientOrderId: 'ref-2',
+              tableNumber: '2',
+              status: 'PAID',
+              totalAmount: 100,
+              createdAt: new Date().toISOString(),
+              items: [],
+            },
+          ],
+          pagination: { page: 1, limit: 50, total: 2, totalPages: 1 },
+        },
       });
     });
   });
@@ -88,7 +97,7 @@ describe('CashierDashboard', () => {
     renderWithQueryClient(<CashierDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Mark Paid')).toBeInTheDocument();
+      expect(screen.getByText('orderDetail.markPaid')).toBeInTheDocument();
     });
 
     // Active ticket is in the queue; PAID Table 2 is filtered out
@@ -112,11 +121,11 @@ describe('CashierDashboard', () => {
     renderWithQueryClient(<CashierDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Mark Paid')).toBeInTheDocument();
+      expect(screen.getByText('orderDetail.markPaid')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('CASH'));
-    fireEvent.click(screen.getByText('Mark Paid'));
+    fireEvent.click(screen.getByText('Cash'));
+    fireEvent.click(screen.getByText('orderDetail.markPaid'));
 
     await waitFor(() => {
       expect(axiosClient.patch).toHaveBeenCalledWith('/orders/order-1/pay', { paymentMethod: 'CASH' });
@@ -127,7 +136,7 @@ describe('CashierDashboard', () => {
     renderWithQueryClient(<CashierDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Mark Paid')).toBeInTheDocument();
+      expect(screen.getByText('orderDetail.markPaid')).toBeInTheDocument();
     });
 
     const onPrinterFailed = mockSocket.on.mock.calls.find((call: any) => call[0] === 'printer:failed')?.[1];
