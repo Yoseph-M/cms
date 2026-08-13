@@ -46,7 +46,7 @@ export const LoginPage: React.FC = () => {
 
     try {
       const res = await axiosClient.post('/auth/login', { email, password });
-      const { user: authUser, accessToken, refreshToken } = res.data;
+      const { user: authUser, accessToken } = res.data;
 
       // Restore user's preferred language on login
       if (authUser.preferredLanguage && authUser.preferredLanguage !== i18n.language) {
@@ -54,7 +54,7 @@ export const LoginPage: React.FC = () => {
         document.documentElement.lang = authUser.preferredLanguage;
       }
 
-      setAuth(authUser, accessToken, refreshToken);
+      setAuth(authUser, accessToken);
       addToast({ type: 'success', title: `Welcome back, ${authUser.name}!` });
       redirectByRole(authUser.role);
     } catch (err: any) {
