@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit, { MemoryStore } from 'express-rate-limit';
 import * as AuthController from './auth.controller';
 import { validate } from '../../middleware/validate.middleware';
-import { loginSchema, pinLoginSchema, refreshTokenSchema } from '../schemas';
+import { loginSchema, refreshTokenSchema } from '../schemas';
 
 /** Shared store so tests can reset between cases */
 export const authRateLimitStore = new MemoryStore();
@@ -26,7 +26,6 @@ router.get('/roles', AuthController.getRoles);
 router.get('/users-by-role/:role', AuthController.getUsersByRole);
 
 router.post('/login', authLimiter, validate(loginSchema), AuthController.login);
-router.post('/pin-login', authLimiter, validate(pinLoginSchema), AuthController.pinLogin);
 router.post('/refresh', validate(refreshTokenSchema), AuthController.refreshToken);
 router.post('/logout', AuthController.logout);
 
