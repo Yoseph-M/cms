@@ -58,7 +58,7 @@ const ROUTE_SPECS: RouteSpec[] = [
       name: 'RBAC Test User',
       role: 'WAITER',
       phone: `+1555${Date.now().toString().slice(-7)}`,
-      pinCode: '5555',
+      password: 'testpass123',
     }),
     description: 'Create user',
   },
@@ -74,13 +74,6 @@ const ROUTE_SPECS: RouteSpec[] = [
     path: `/api/users/${fakeId}/deactivate`,
     allowedRoles: [Role.OWNER, Role.MANAGER],
     description: 'Deactivate user',
-  },
-  {
-    method: 'PATCH',
-    path: `/api/users/${fakeId}/reset-pin`,
-    allowedRoles: [Role.OWNER, Role.MANAGER],
-    body: { pinCode: '1111' },
-    description: 'Reset PIN',
   },
   {
     method: 'PATCH',
