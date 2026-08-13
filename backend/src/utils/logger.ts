@@ -10,9 +10,6 @@ export const requestContext = new AsyncLocalStorage<{ requestId: string }>();
  */
 const REDACTED_PATHS = [
   'password',
-  'pinCode',
-  'pinSalt',
-  'pinCodeHash',
   'accessToken',
   'refreshToken',
   'token',
@@ -21,7 +18,6 @@ const REDACTED_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
   'req.body.password',
-  'req.body.pinCode',
   'req.body.refreshToken',
   'res.headers["set-cookie"]',
 ];
