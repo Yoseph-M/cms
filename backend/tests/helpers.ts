@@ -8,7 +8,7 @@
  */
 import { PrismaClient, Role } from '@prisma/client';
 import { app } from '../src/app';
-import { hashPin, hashPassword, generateAccessToken, generateRefreshToken } from '../src/utils/security';
+import { hashPassword, generateAccessToken, generateRefreshToken } from '../src/utils/security';
 import { authRateLimitStore } from '../src/modules/auth/auth.routes';
 
 // Force Prisma to use the in-memory MongoDB URI set by globalSetup
@@ -39,22 +39,20 @@ export interface TestUser {
 
 /**
  * Creates a user in the DB and returns auth tokens for it.
+ * All roles use password authentication.
  */
 export async function seedTestUser(overrides: {
   name?: string;
   role?: Role;
   email?: string;
   phone?: string;
-  pinCode?: string;
 } = {}): Promise<TestUser> {
   const p = getPrisma();
   const name = overrides.name || 'Test User';
   const role = overrides.role || Role.OWNER;
   const email = overrides.email || `test-${Date.now()}-${Math.random().toString(36).slice(2)}@pos.com`;
   const phone = overrides.phone || `+1555${Date.now().toString().slice(-7)}`;
-  const pinCode = overrides.pinCode || '1234';
 
-  const pinCodeHash = hashPin(pinCode);
   const passwordHash = await hashPassword('password123');
 
   const user = await p.user.create({
@@ -63,9 +61,7 @@ export async function seedTestUser(overrides: {
       role,
       phone,
       email,
-      passwordHash: role === Role.WAITER ? null : passwordHash,
-      pinSalt: role === Role.WAITER ? pinCodeHash.salt : null,
-      pinCodeHash: role === Role.WAITER ? pinCodeHash.hash : null,
+      passwordHash,
       salaryAmount: 3000,
     },
   });
@@ -110,6 +106,7 @@ export async function cleanDb() {
   await p.attendance.deleteMany();
   await p.order.deleteMany();
   await p.menuItem.deleteMany();
+  await p.systemSetting.deleteMany();
   await p.user.deleteMany();
 }
 
