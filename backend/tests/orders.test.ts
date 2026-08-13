@@ -91,9 +91,9 @@ describe('Concurrent double-payment (§2.1)', () => {
     const p = getPrisma();
 
     // Create a waiter and cashier
-    const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'pay-waiter@pos.com', pinCode: '1111' });
-    const cashier1 = await seedTestUser({ role: 'CASHIER' as any, email: 'pay-cashier1@pos.com', pinCode: '2222' });
-    const cashier2 = await seedTestUser({ role: 'CASHIER' as any, email: 'pay-cashier2@pos.com', pinCode: '3333' });
+    const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'pay-waiter@pos.com' });
+    const cashier1 = await seedTestUser({ role: 'CASHIER' as any, email: 'pay-cashier1@pos.com' });
+    const cashier2 = await seedTestUser({ role: 'CASHIER' as any, email: 'pay-cashier2@pos.com' });
 
     // Seed a menu item
     const menuItem = await p.menuItem.create({
@@ -113,36 +113,39 @@ describe('Concurrent double-payment (§2.1)', () => {
       },
     });
 
-    // Fire two concurrent payments
+    // Fire two concurrent settlement requests
     const [res1, res2] = await Promise.all([
       request(app)
-        .patch(`/api/orders/${order.id}/pay`)
+        .post(`/api/orders/${order.id}/settlements`)
         .set('Authorization', `Bearer ${cashier1.accessToken}`)
-        .send({ paymentMethod: 'CASH' }),
+        .send({ amountMinor: order.totalAmount, method: 'CASH', note: 'Test settlement 1' }),
       request(app)
-        .patch(`/api/orders/${order.id}/pay`)
+        .post(`/api/orders/${order.id}/settlements`)
         .set('Authorization', `Bearer ${cashier2.accessToken}`)
-        .send({ paymentMethod: 'CARD' }),
+        .send({ amountMinor: order.totalAmount, method: 'CARD', note: 'Test settlement 2' }),
     ]);
 
     const statuses = [res1.status, res2.status].sort();
 
-    // Exactly one 200 and one 409
-    expect(statuses).toEqual([200, 409]);
+    // Exactly one 201 (created) and one 409 (conflict)
+    expect(statuses).toEqual([201, 409]);
 
-    // Verify final DB state — only the winner's data persists
-    const finalOrder = await p.order.findUnique({ where: { id: order.id } });
+    // Verify final DB state — only the winner's settlement persists
+    const finalOrder = await p.order.findUnique({ 
+      where: { id: order.id },
+      include: { settlements: true },
+    });
     expect(finalOrder).not.toBeNull();
-    expect(finalOrder!.status).toBe(OrderStatus.PAID);
-    expect(finalOrder!.isPaid).toBe(true);
+    expect(finalOrder!.settlementStatus).toBe('SETTLED');
+    expect(finalOrder!.settlements.length).toBe(1);
 
-    // The cashierId should match the winner
-    const winner = res1.status === 200 ? cashier1 : cashier2;
-    expect(finalOrder!.cashierId).toBe(winner.id);
+    // The settlement recordedBy should match the winner
+    const winner = res1.status === 201 ? cashier1 : cashier2;
+    expect(finalOrder!.settlements[0].recordedById).toBe(winner.id);
 
-    // paymentMethod should match the winner
-    const expectedMethod = res1.status === 200 ? 'CASH' : 'CARD';
-    expect(finalOrder!.paymentMethod).toBe(expectedMethod);
+    // Settlement method should match the winner
+    const expectedMethod = res1.status === 201 ? 'CASH' : 'CARD';
+    expect(finalOrder!.settlements[0].method).toBe(expectedMethod);
   });
 });
 
