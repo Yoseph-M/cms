@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { detectTransactionSupport } from '../utils/transaction';
 
 export const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
@@ -9,6 +10,9 @@ export async function connectDatabase() {
   try {
     await prisma.$connect();
     logger.info('Successfully connected to MongoDB database via Prisma ORM.');
+    
+    // Detect transaction support (replica set vs standalone)
+    await detectTransactionSupport(prisma);
   } catch (error) {
     logger.error({ error }, 'Failed to connect to MongoDB database via Prisma.');
     // Do not start an HTTP server that cannot serve requests.  Continuing here
