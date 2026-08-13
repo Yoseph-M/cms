@@ -495,11 +495,24 @@ export const CashierDashboard: React.FC = () => {
     setIsPrinting(true);
     setPrinted(false);
     try {
-      const res = await axiosClient.patch(`/orders/${orderId}/pay`, { paymentMethod });
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? res.data : o)));
+      // Use new settlements endpoint instead of deprecated /pay endpoint
+      const order = orders.find(o => o.id === orderId);
+      if (!order) {
+        throw new Error('Order not found');
+      }
 
-      const tableText = res.data.tableNumber
-        ? t('toasts.tableText', { table: res.data.tableNumber })
+      const res = await axiosClient.post(`/orders/${orderId}/settlements`, {
+        amountMinor: order.totalAmount,
+        method: paymentMethod,
+        reference: '', // External transaction reference (optional)
+        note: 'Settlement recorded via Cashier Dashboard',
+      });
+      
+      // Update orders list with the returned order object
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? res.data.order : o)));
+
+      const tableText = res.data.order.tableNumber
+        ? t('toasts.tableText', { table: res.data.order.tableNumber })
         : t('toasts.takeoutText');
       addToast({ type: 'success', title: t('toasts.settled', { tableText }) });
 
