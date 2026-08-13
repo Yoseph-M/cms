@@ -17,9 +17,11 @@ import expensesRoutes from './modules/expenses/expenses.routes';
 import notificationsRoutes from './modules/notifications/notifications.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import searchRoutes from './modules/search/search.routes';
+import settlementsRoutes from './modules/settlements/settlements.routes';
+import cancellationRoutes from './modules/cancellation/cancellation.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { prisma } from './services/prisma.service';
-import { hashPin, hashPassword } from './utils/security';
+import { hashPassword } from './utils/security';
 import { Role, MenuCategory } from '@prisma/client';
 import { logger, requestContext } from './utils/logger';
 import { ensureDefaultPrinters } from './services/printer.service';
@@ -101,6 +103,8 @@ app.use('/api/expenses', expensesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api', settlementsRoutes); // Settlements routes include /orders/:orderId/settlements
+app.use('/api', cancellationRoutes); // Cancellation routes include /orders/:orderId/cancellation-request
 
 // Liveness probe — always responds 200 if the process is up
 app.get('/api/health', (req: Request, res: Response) => {
@@ -141,7 +145,6 @@ export async function seedInitialData() {
 
       const defaultPasswordHash = await hashPassword('password123');
 
-      const ownerPin = hashPin('1111');
       const owner = await prisma.user.create({
         data: {
           name: 'Alice Owner',
@@ -149,13 +152,10 @@ export async function seedInitialData() {
           email: 'owner@pos.com',
           phone: '+251911000001',
           passwordHash: defaultPasswordHash,
-          pinCodeHash: ownerPin.hash,
-          pinSalt: ownerPin.salt,
           salaryAmount: 45000,
         },
       });
 
-      const managerPin = hashPin('2222');
       const manager = await prisma.user.create({
         data: {
           name: 'Bob Manager',
@@ -163,13 +163,10 @@ export async function seedInitialData() {
           email: 'manager@pos.com',
           phone: '+251911000002',
           passwordHash: defaultPasswordHash,
-          pinCodeHash: managerPin.hash,
-          pinSalt: managerPin.salt,
           salaryAmount: 30000,
         },
       });
 
-      const cashierPin = hashPin('3333');
       const cashier = await prisma.user.create({
         data: {
           name: 'Charlie Cashier',
@@ -177,21 +174,17 @@ export async function seedInitialData() {
           email: 'cashier@pos.com',
           phone: '+251911000003',
           passwordHash: defaultPasswordHash,
-          pinCodeHash: cashierPin.hash,
-          pinSalt: cashierPin.salt,
           salaryAmount: 18000,
         },
       });
 
-      const waiterPin = hashPin('4444');
       const waiter = await prisma.user.create({
         data: {
           name: 'David Waiter',
           role: Role.WAITER,
           email: 'waiter@pos.com',
           phone: '+251911000004',
-          pinCodeHash: waiterPin.hash,
-          pinSalt: waiterPin.salt,
+          passwordHash: defaultPasswordHash,
           salaryAmount: 12000,
         },
       });
