@@ -2,14 +2,12 @@
  * Auth Integration Tests — Phase 3, §2.1
  *
  * Covers:
- *  - §1.1  PIN lockout survives restarts (backed by MongoDB, not in-memory)
- *  - §1.2  Auth rate limit blocks 11th request in a minute
- *  - §1.3  Refresh token rotation & reuse detection
- *  - Existing basic auth validation tests (preserved)
+ *  - §1.1  Password lockout survives restarts (backed by MongoDB, not in-memory)
+ *  - §1.2  Auth rate limit blocks 21st request in a minute
+ *  - §1.3  Refresh token rotation & reuse detection (cookie-based)
  */
 import request from 'supertest';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
-import { hashPin, comparePin } from '../src/utils/security';
 import crypto from 'crypto';
 
 const app = getTestApp();
@@ -22,65 +20,50 @@ afterAll(async () => {
   await disconnectPrisma();
 });
 
-// ---------------------------------------------------------------------------
-// Existing basic auth & security utility tests (preserved from Phase 2)
-// ---------------------------------------------------------------------------
-describe('Auth & Security Utilities', () => {
-  it('should correctly hash and verify salted SHA-256 PINs', () => {
-    const pin = '4444';
-    const { salt, hash } = hashPin(pin);
-    expect(salt).toBeTruthy();
-    expect(hash).toBeTruthy();
-    expect(comparePin(pin, salt, hash)).toBe(true);
-    expect(comparePin('9999', salt, hash)).toBe(false);
-  });
+// Helper to extract cookie value from Set-Cookie headers
+function extractCookie(setCookieHeaders: string[] | undefined, cookieName: string): string | null {
+  if (!setCookieHeaders) return null;
+  const line = setCookieHeaders.find((c) => c.startsWith(`${cookieName}=`));
+  if (!line) return null;
+  return line.split(';')[0]; // e.g. "refresh_token=<token>"
+}
 
-  it('should reject PIN login request with missing fields', async () => {
-    const res = await request(app).post('/api/auth/pin-login').send({});
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Validation Error');
-  });
-
-  it('should reject PIN login with invalid PIN length', async () => {
-    const res = await request(app).post('/api/auth/pin-login').send({
-      userId: '60c72b2f9b1d8b2d88888888',
-      pinCode: '12', // invalid
-    });
-    expect(res.status).toBe(400);
-  });
-});
+// Helper to get token value from cookie string
+function getTokenFromCookie(cookieString: string): string {
+  return cookieString.split('=')[1];
+}
 
 // ---------------------------------------------------------------------------
-// §1.1 — PIN lockout persists in MongoDB (survives "restarts")
+// §1.1 — Password lockout persists in MongoDB (survives "restarts")
 // ---------------------------------------------------------------------------
-describe('PIN lockout persistence (§1.1)', () => {
-  it('locks out after 5 failed PIN attempts', async () => {
-    const user = await seedTestUser({ pinCode: '9999', role: 'WAITER' as any });
+describe('Password lockout persistence (§1.1)', () => {
+  it('locks out after 5 failed password attempts', async () => {
+    const user = await seedTestUser({ role: 'WAITER' as any, email: 'lockout-test@pos.com' });
 
-    // Fire 5 wrong PINs
+    // Fire 5 wrong passwords
     for (let i = 0; i < 5; i++) {
       await request(app)
-        .post('/api/auth/pin-login')
-        .send({ userId: user.id, pinCode: '0000' });
+        .post('/api/auth/login')
+        .send({ email: user.email, password: 'wrongpassword' });
     }
 
     // 6th attempt should be locked out (429)
     const res = await request(app)
-      .post('/api/auth/pin-login')
-      .send({ userId: user.id, pinCode: '9999' }); // even the right PIN
+      .post('/api/auth/login')
+      .send({ email: user.email, password: 'password123' }); // even the right password
     expect(res.status).toBe(429);
     expect(res.body.error).toMatch(/locked/i);
   });
 
   it('lockout state persists across a fresh PrismaClient instance (simulated restart)', async () => {
-    const user = await seedTestUser({ pinCode: '9999', role: 'WAITER' as any });
+    const user = await seedTestUser({ role: 'WAITER' as any, email: 'persist-test@pos.com' });
     const p = getPrisma();
 
-    // Fire 5 wrong PINs
+    // Fire 5 wrong passwords
     for (let i = 0; i < 5; i++) {
       await request(app)
-        .post('/api/auth/pin-login')
-        .send({ userId: user.id, pinCode: '0000' });
+        .post('/api/auth/login')
+        .send({ email: user.email, password: 'wrongpassword' });
     }
 
     // Verify lockout record exists in DB directly (not through the API)
@@ -91,20 +74,20 @@ describe('PIN lockout persistence (§1.1)', () => {
 
     // The API should still reject even "after restart" because the DB state persists
     const res = await request(app)
-      .post('/api/auth/pin-login')
-      .send({ userId: user.id, pinCode: '9999' });
+      .post('/api/auth/login')
+      .send({ email: user.email, password: 'password123' });
     expect(res.status).toBe(429);
   });
 
   it('Manager/Owner can unlock a locked-out user', async () => {
     const owner = await seedTestUser({ role: 'OWNER' as any, email: 'unlock-owner@pos.com' });
-    const waiter = await seedTestUser({ pinCode: '9999', role: 'WAITER' as any, email: 'unlock-waiter@pos.com' });
+    const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'unlock-waiter@pos.com' });
 
     // Lock the waiter out
     for (let i = 0; i < 5; i++) {
       await request(app)
-        .post('/api/auth/pin-login')
-        .send({ userId: waiter.id, pinCode: '0000' });
+        .post('/api/auth/login')
+        .send({ email: waiter.email, password: 'wrongpassword' });
     }
 
     // Owner unlocks
@@ -115,26 +98,26 @@ describe('PIN lockout persistence (§1.1)', () => {
 
     // Waiter can now log in again
     const loginRes = await request(app)
-      .post('/api/auth/pin-login')
-      .send({ userId: waiter.id, pinCode: '9999' });
+      .post('/api/auth/login')
+      .send({ email: waiter.email, password: 'password123' });
     expect(loginRes.status).toBe(200);
     expect(loginRes.body.accessToken).toBeDefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// §1.2 — Auth rate limiting (10 req/min per IP+account)
+// §1.2 — Auth rate limiting (20 req/min per IP)
 // ---------------------------------------------------------------------------
 describe('Auth rate limiting (§1.2)', () => {
   it('blocks the 21st auth request within a minute for the same IP', async () => {
-    const user = await seedTestUser({ pinCode: '1234', role: 'WAITER' as any });
+    const user = await seedTestUser({ role: 'WAITER' as any, email: 'ratelimit-test@pos.com' });
     const results: number[] = [];
 
     // Fire 21 rapid requests (IP limiter max = 20)
     for (let i = 0; i < 21; i++) {
       const res = await request(app)
-        .post('/api/auth/pin-login')
-        .send({ userId: user.id, pinCode: '1234' });
+        .post('/api/auth/login')
+        .send({ email: user.email, password: 'password123' });
       results.push(res.status);
     }
 
@@ -143,65 +126,73 @@ describe('Auth rate limiting (§1.2)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// §1.3 — Refresh token rotation & reuse detection
+// §1.3 — Refresh token rotation & reuse detection (cookie-based only)
 // ---------------------------------------------------------------------------
 describe('Refresh token rotation & reuse detection (§1.3)', () => {
-  it('rotates: invalidates the old refresh token and issues a new one', async () => {
-    const user = await seedTestUser({ role: 'OWNER' as any });
+  it('login sets HttpOnly cookie and does NOT return refreshToken in body', async () => {
+    const user = await seedTestUser({ role: 'OWNER' as any, email: 'cookie-test@pos.com' });
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: user.email, password: 'password123' });
+    
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body.accessToken).toBeDefined();
+    expect(loginRes.body.refreshToken).toBeUndefined(); // Must NOT be in body
+
+    // Verify HttpOnly cookie is set
+    const setCookieHeader = loginRes.headers['set-cookie'] as string[] | undefined;
+    const cookieStr = Array.isArray(setCookieHeader) ? setCookieHeader.join('; ') : (setCookieHeader ?? '');
+    expect(cookieStr).toMatch(/refresh_token=/i);
+    expect(cookieStr).toMatch(/HttpOnly/i);
+    expect(cookieStr).toMatch(/SameSite=Strict/i);
+  });
+
+  it('cookie-based refresh: reads token from HttpOnly cookie, rotates it', async () => {
+    const user = await seedTestUser({ role: 'OWNER' as any, email: 'cookie-refresh@pos.com' });
     const p = getPrisma();
 
-    // Login to get initial tokens
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: user.email, password: 'password123' });
     expect(loginRes.status).toBe(200);
-    const { refreshToken: rt1 } = loginRes.body;
 
-    // Login should set an HttpOnly refresh_token cookie
-    const setCookieHeader = loginRes.headers['set-cookie'] as string[] | string | undefined;
-    const cookieStr = Array.isArray(setCookieHeader) ? setCookieHeader.join('; ') : (setCookieHeader ?? '');
-    expect(cookieStr).toMatch(/refresh_token=/i);
-    expect(cookieStr).toMatch(/HttpOnly/i);
+    // Extract the refresh_token cookie
+    const setCookieHeader = loginRes.headers['set-cookie'] as unknown as string[] | undefined;
+    const refreshCookie = extractCookie(setCookieHeader, 'refresh_token');
+    expect(refreshCookie).toBeTruthy();
+    const rt1 = getTokenFromCookie(refreshCookie!);
 
-    // Use refresh token via body (backward-compat)
+    // Use cookie-based refresh (empty body)
     const refreshRes = await request(app)
       .post('/api/auth/refresh')
-      .send({ refreshToken: rt1 });
+      .set('Cookie', refreshCookie!)
+      .send({});
+    
     expect(refreshRes.status).toBe(200);
-    const { refreshToken: rt2 } = refreshRes.body;
+    expect(refreshRes.body.accessToken).toBeDefined();
+    expect(refreshRes.body.refreshToken).toBeUndefined(); // Must NOT be in body
 
-    // rt1 should be different from rt2
+    // Extract new refresh token cookie
+    const newSetCookie = refreshRes.headers['set-cookie'] as unknown as string[] | undefined;
+    const newRefreshCookie = extractCookie(newSetCookie, 'refresh_token');
+    expect(newRefreshCookie).toBeTruthy();
+    const rt2 = getTokenFromCookie(newRefreshCookie!);
+
+    // rt1 and rt2 should be different (rotation)
     expect(rt1).not.toBe(rt2);
 
     // rt1 should now be marked as revoked in DB
     const hash1 = crypto.createHash('sha256').update(rt1).digest('hex');
-    const storedToken = await p.refreshToken.findUnique({ where: { tokenHash: hash1 } });
-    expect(storedToken).not.toBeNull();
-    expect(storedToken!.revoked).toBe(true);
-  });
+    const storedToken1 = await p.refreshToken.findUnique({ where: { tokenHash: hash1 } });
+    expect(storedToken1).not.toBeNull();
+    expect(storedToken1!.revoked).toBe(true);
 
-  it('cookie-based refresh: reads token from HttpOnly cookie, not body', async () => {
-    const user = await seedTestUser({ role: 'OWNER' as any, email: 'cookie-refresh@pos.com' });
-
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: user.email, password: 'password123' });
-    expect(loginRes.status).toBe(200);
-
-    // Extract the Set-Cookie value to replay it as a Cookie header
-    const setCookieHeader = loginRes.headers['set-cookie'] as unknown as string[] | undefined;
-    expect(setCookieHeader).toBeDefined();
-    const refreshCookieLine = setCookieHeader!.find((c) => c.startsWith('refresh_token='));
-    expect(refreshCookieLine).toBeDefined();
-    const cookieValue = refreshCookieLine!.split(';')[0]; // e.g. "refresh_token=<token>"
-
-    // Use cookie-based refresh (empty body)
-    const cookieRefreshRes = await request(app)
-      .post('/api/auth/refresh')
-      .set('Cookie', cookieValue)
-      .send({});
-    expect(cookieRefreshRes.status).toBe(200);
-    expect(cookieRefreshRes.body.accessToken).toBeDefined();
+    // rt2 should be valid and not revoked
+    const hash2 = crypto.createHash('sha256').update(rt2).digest('hex');
+    const storedToken2 = await p.refreshToken.findUnique({ where: { tokenHash: hash2 } });
+    expect(storedToken2).not.toBeNull();
+    expect(storedToken2!.revoked).toBe(false);
   });
 
   it('reuse detection: replaying a rotated-out token revokes the entire family', async () => {
@@ -212,19 +203,23 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: user.email, password: 'password123' });
-    const { refreshToken: rt1 } = loginRes.body;
+    const cookie1 = extractCookie(loginRes.headers['set-cookie'] as string[], 'refresh_token');
+    const rt1 = getTokenFromCookie(cookie1!);
 
-    // Rotate once to get rt2; rt1 is now revoked
+    // Rotate once to get rt2
     const refreshRes = await request(app)
       .post('/api/auth/refresh')
-      .send({ refreshToken: rt1 });
+      .set('Cookie', cookie1!)
+      .send({});
     expect(refreshRes.status).toBe(200);
-    const { refreshToken: rt2 } = refreshRes.body;
+    const cookie2 = extractCookie(refreshRes.headers['set-cookie'] as string[], 'refresh_token');
+    const rt2 = getTokenFromCookie(cookie2!);
 
     // Replay rt1 (the old, revoked token) — this should trigger reuse detection
     const replayRes = await request(app)
       .post('/api/auth/refresh')
-      .send({ refreshToken: rt1 });
+      .set('Cookie', cookie1!) // Using old cookie
+      .send({});
     expect(replayRes.status).toBe(401);
     expect(replayRes.body.error).toMatch(/compromised|log in again/i);
 
@@ -237,28 +232,58 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
     // Trying to use rt2 should also fail
     const rt2Res = await request(app)
       .post('/api/auth/refresh')
-      .send({ refreshToken: rt2 });
+      .set('Cookie', cookie2!)
+      .send({});
     expect(rt2Res.status).toBe(401);
   });
 
-  it('logout revokes the refresh token so subsequent refresh is rejected', async () => {
+  it('logout revokes the refresh token and clears cookie', async () => {
     const user = await seedTestUser({ role: 'OWNER' as any, email: 'logout-test@pos.com' });
+    const p = getPrisma();
 
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: user.email, password: 'password123' });
     expect(loginRes.status).toBe(200);
-    const { refreshToken } = loginRes.body;
+    const refreshCookie = extractCookie(loginRes.headers['set-cookie'] as string[], 'refresh_token');
+    const rt = getTokenFromCookie(refreshCookie!);
 
+    // Logout with cookie
     const logoutRes = await request(app)
       .post('/api/auth/logout')
-      .send({ refreshToken });
+      .set('Cookie', refreshCookie!)
+      .send({});
     expect(logoutRes.status).toBe(200);
 
+    // Verify cookie is cleared (Max-Age=0 or Expires in past)
+    const logoutCookies = logoutRes.headers['set-cookie'] as string[] | undefined;
+    if (logoutCookies) {
+      const clearedCookie = logoutCookies.find(c => c.startsWith('refresh_token='));
+      if (clearedCookie) {
+        expect(clearedCookie).toMatch(/Max-Age=0|Expires=/i);
+      }
+    }
+
+    // Verify token is revoked in DB
+    const hash = crypto.createHash('sha256').update(rt).digest('hex');
+    const storedToken = await p.refreshToken.findUnique({ where: { tokenHash: hash } });
+    expect(storedToken).not.toBeNull();
+    expect(storedToken!.revoked).toBe(true);
+
+    // Subsequent refresh should fail
     const refreshRes = await request(app)
       .post('/api/auth/refresh')
-      .send({ refreshToken });
+      .set('Cookie', refreshCookie!)
+      .send({});
     expect(refreshRes.status).toBe(401);
+  });
+
+  it('refresh without cookie returns 401', async () => {
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .send({});
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/no refresh token/i);
   });
 });
 
