@@ -17,7 +17,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
-
+.qodo
 # Logs
 *.log
 npm-debug.log*
