@@ -230,10 +230,21 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
   return res.json(updated);
 }
 
+/**
+ * @deprecated Use POST /api/orders/:orderId/settlements instead
+ * This endpoint is kept for backward compatibility but will be removed in a future version.
+ * 
+ * PATCH /api/orders/:id/pay
+ * Legacy payment endpoint - marks order as paid
+ */
 export async function payOrder(req: AuthenticatedRequest, res: Response) {
   const { id } = req.params;
   const { paymentMethod } = req.body;
   const cashierId = req.user!.userId;
+
+  // Add deprecation warning header
+  res.setHeader('X-Deprecated', 'true');
+  res.setHeader('X-Deprecated-Replacement', 'POST /api/orders/:orderId/settlements');
 
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) {
@@ -257,6 +268,7 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
       paymentMethod: paymentMethod as PaymentMethod,
       cashierId,
       paidAt: new Date(),
+      settlementStatus: 'SETTLED', // Update new field for consistency
     },
   });
 
@@ -278,7 +290,7 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
     actionType: 'ORDER_PAID',
     targetType: 'Order',
     targetId: id,
-    details: { paymentMethod, totalAmount: updated?.totalAmount },
+    details: { paymentMethod, totalAmount: updated?.totalAmount, note: 'Legacy payment endpoint used' },
   });
 
   emitToLiveOrders('order:updated', updated);
@@ -286,9 +298,21 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
   return res.json(updated);
 }
 
+/**
+ * @deprecated Use POST /api/orders/:orderId/cancellation-request instead
+ * This endpoint is kept for backward compatibility but will be removed in a future version.
+ * The new workflow requires formal request/approval flow for better control and audit trail.
+ * 
+ * POST /api/orders/:id/cancel-request
+ * Legacy cancellation request endpoint
+ */
 export async function requestCancelOrder(req: AuthenticatedRequest, res: Response) {
   const { id } = req.params;
   const { reason } = req.body;
+
+  // Add deprecation warning header
+  res.setHeader('X-Deprecated', 'true');
+  res.setHeader('X-Deprecated-Replacement', 'POST /api/orders/:orderId/cancellation-request');
 
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) {
@@ -309,19 +333,46 @@ export async function requestCancelOrder(req: AuthenticatedRequest, res: Respons
     },
   });
 
+  await recordAudit({
+    actorId: req.user!.userId,
+    actionType: 'ORDER_CANCEL_REQUESTED_LEGACY',
+    targetType: 'Order',
+    targetId: id,
+    details: { reason, note: 'Legacy cancel request endpoint used' },
+  });
+
   emitToLiveOrders('order:updated', updated);
 
   return res.json({ message: 'Cancellation request logged.', order: updated });
 }
 
+/**
+ * @deprecated Use PATCH /api/cancellation-requests/:requestId/approve instead
+ * This endpoint is kept for backward compatibility but will be removed in a future version.
+ * The new workflow provides proper request/approval tracking with audit trail.
+ * 
+ * PATCH /api/orders/:id/cancel-confirm
+ * Legacy cancellation confirmation endpoint
+ */
 export async function confirmCancelOrder(req: AuthenticatedRequest, res: Response) {
   const { id } = req.params;
   const { reason } = req.body;
   const cancelledById = req.user!.userId;
 
+  // Add deprecation warning header
+  res.setHeader('X-Deprecated', 'true');
+  res.setHeader('X-Deprecated-Replacement', 'PATCH /api/cancellation-requests/:requestId/approve');
+
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) {
     return res.status(404).json({ error: 'Order not found.' });
+  }
+
+  // Prevent cancellation of settled orders (Phase 3 integration)
+  if (order.settlementStatus !== 'UNSETTLED') {
+    return res.status(400).json({ 
+      error: 'Cannot cancel orders that have been settled or partially settled. Please use the new cancellation request workflow.' 
+    });
   }
 
   if (!canTransition(order.status, OrderStatus.CANCELLED)) {
@@ -362,7 +413,7 @@ export async function confirmCancelOrder(req: AuthenticatedRequest, res: Respons
     actionType: 'ORDER_CANCELLED',
     targetType: 'Order',
     targetId: id,
-    details: { reason: reason || order.cancellationReason || 'Cancelled by staff', wasPaid: order.isPaid },
+    details: { reason: reason || order.cancellationReason || 'Cancelled by staff', wasPaid: order.isPaid, note: 'Legacy cancel confirm endpoint used' },
   });
 
   emitToLiveOrders('order:cancelled', updated);
