@@ -106,8 +106,6 @@ export const OwnerStaff: React.FC = () => {
     setSlideOverOpen(true);
   };
 
-  const isWaiter = (role: string) => role === 'WAITER';
-
   const handleSave = async () => {
     if (!form.name.trim() || !form.phone.trim()) {
       addToast({ type: 'error', title: 'Name and phone are required.' });
@@ -127,8 +125,7 @@ export const OwnerStaff: React.FC = () => {
         salaryAmount: parseFloat(form.salaryAmount) || 0,
       };
       if (!editingUser && form.credential) {
-        if (isWaiter(form.role)) payload.pin = form.credential;
-        else payload.password = form.credential;
+        payload.password = form.credential;
       }
       if (editingUser) {
         const res = await axiosClient.patch(`/users/${editingUser.id}`, payload);
@@ -195,9 +192,8 @@ export const OwnerStaff: React.FC = () => {
   const handleReset = async (user: User) => {
     setIsResetting(true);
     try {
-      const endpoint = isWaiter(user.role) ? `/users/${user.id}/reset-pin` : `/users/${user.id}/reset-password`;
-      const res = await axiosClient.patch(endpoint);
-      const newCred = res.data?.pin || res.data?.password || '(see response)';
+      const res = await axiosClient.patch(`/users/${user.id}/reset-password`);
+      const newCred = res.data?.password || '(see response)';
       setResetResult({ name: user.name, credential: newCred });
     } catch (err: any) {
       addToast({ type: 'error', title: 'Reset failed', message: err.response?.data?.error });
@@ -299,7 +295,7 @@ export const OwnerStaff: React.FC = () => {
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                       </Tooltip>
-                      <Tooltip label={isWaiter(user.role) ? 'Reset PIN' : 'Reset Password'}>
+                      <Tooltip label="Reset Password">
                         <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                           <KeyRound className="w-3.5 h-3.5" />
                         </button>
@@ -375,7 +371,7 @@ export const OwnerStaff: React.FC = () => {
                 {!editingUser && (
                   <div>
                     <label htmlFor="sf-cred" className="text-sm font-medium text-foreground block mb-1.5">
-                      {isWaiter(form.role) ? 'Initial PIN (4-digit)' : 'Initial Password'}
+                      Initial Password
                     </label>
                     <div className="relative">
                       <Input
@@ -383,8 +379,7 @@ export const OwnerStaff: React.FC = () => {
                         type={showCredential ? 'text' : 'password'}
                         value={form.credential}
                         onChange={e => setForm(f => ({ ...f, credential: e.target.value }))}
-                        placeholder={isWaiter(form.role) ? '4-digit PIN' : 'Temporary password'}
-                        maxLength={isWaiter(form.role) ? 4 : 100}
+                        placeholder="Temporary password"
                         className="pr-10"
                       />
                       <button type="button" onClick={() => setShowCredential(v => !v)}
