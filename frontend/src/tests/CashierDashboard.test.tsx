@@ -128,7 +128,12 @@ describe('CashierDashboard', () => {
     fireEvent.click(screen.getByText('orderDetail.markPaid'));
 
     await waitFor(() => {
-      expect(axiosClient.patch).toHaveBeenCalledWith('/orders/order-1/pay', { paymentMethod: 'CASH' });
+      expect(axiosClient.post).toHaveBeenCalledWith('/orders/order-1/settlements', {
+        amountMinor: expect.any(Number),
+        method: 'CASH',
+        reference: '',
+        note: 'Settlement recorded via Cashier Dashboard',
+      });
     });
   });
 
