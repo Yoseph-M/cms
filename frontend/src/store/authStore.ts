@@ -5,10 +5,9 @@ import { axiosClient } from '../api/axiosClient';
 interface AuthState {
   user: User | null;
   accessToken: string | null;
-  refreshToken: string | null;
   isAuthenticated: boolean;
-  setAuth: (user: User, accessToken: string, refreshToken: string) => void;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  setAuth: (user: User, accessToken: string) => void;
+  setAccessToken: (accessToken: string) => void;
   logout: () => void;
 }
 
@@ -18,24 +17,23 @@ const SAVED_ACCESS = localStorage.getItem('pos_access_token');
 function clearLocalAuth(set: (partial: Partial<AuthState>) => void) {
   localStorage.removeItem('pos_user');
   localStorage.removeItem('pos_access_token');
-  set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false });
+  set({ user: null, accessToken: null, isAuthenticated: false });
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: SAVED_USER ? JSON.parse(SAVED_USER) : null,
   accessToken: SAVED_ACCESS || null,
-  refreshToken: null,
   isAuthenticated: !!SAVED_ACCESS,
 
-  setAuth: (user, accessToken, refreshToken) => {
+  setAuth: (user, accessToken) => {
     localStorage.setItem('pos_user', JSON.stringify(user));
     localStorage.setItem('pos_access_token', accessToken);
-    set({ user, accessToken, refreshToken, isAuthenticated: true });
+    set({ user, accessToken, isAuthenticated: true });
   },
 
-  setTokens: (accessToken, refreshToken) => {
+  setAccessToken: (accessToken) => {
     localStorage.setItem('pos_access_token', accessToken);
-    set({ accessToken, refreshToken, isAuthenticated: true });
+    set({ accessToken, isAuthenticated: true });
   },
 
   logout: () => {
