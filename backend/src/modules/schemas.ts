@@ -7,13 +7,8 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
-export const pinLoginSchema = z.object({
-  userId: z.string().min(1, 'User ID is required'),
-  pinCode: z.string().length(4, 'PIN code must be exactly 4 digits'),
-});
-
 export const refreshTokenSchema = z.object({
-  // Prefer the HttpOnly cookie; body token is accepted only for backward-compat (e.g. mobile)
+  // Prefer the HttpOnly cookie; body is ignored (kept for schema compat)
   refreshToken: z.string().optional(),
 });
 
@@ -24,7 +19,6 @@ export const createUserSchema = z.object({
   email: z.string().email().optional().nullable(),
   phone: z.string().min(5, 'Valid phone number is required'),
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
-  pinCode: z.string().length(4, 'PIN code must be 4 digits').optional(),
   salaryAmount: z.number().nonnegative().default(0),
 });
 
@@ -35,10 +29,6 @@ export const updateUserSchema = z.object({
   phone: z.string().min(5).optional(),
   salaryAmount: z.number().nonnegative().optional(),
   isActive: z.boolean().optional(),
-});
-
-export const resetPinSchema = z.object({
-  pinCode: z.string().length(4, 'PIN code must be 4 digits').optional(),
 });
 
 export const resetPasswordSchema = z.object({
@@ -92,8 +82,25 @@ export const payOrderSchema = z.object({
   paymentMethod: z.enum(['CASH', 'CARD', 'MOBILE']),
 });
 
+export const createSettlementSchema = z.object({
+  amountMinor: z.number().int().positive('Amount must be greater than zero'),
+  method: z.enum(['CASH', 'CARD', 'MOBILE'], {
+    errorMap: () => ({ message: 'Payment method must be CASH, CARD, or MOBILE' }),
+  }),
+  reference: z.string().optional(),
+  note: z.string().optional(),
+});
+
 export const cancelRequestSchema = z.object({
   reason: z.string().min(2, 'Cancellation reason is required'),
+});
+
+export const createCancellationRequestSchema = z.object({
+  reason: z.string().min(2, 'Cancellation reason is required'),
+});
+
+export const rejectCancellationRequestSchema = z.object({
+  rejectedReason: z.string().min(2, 'Rejection reason is required'),
 });
 
 // ---------- Attendance Schemas ----------
