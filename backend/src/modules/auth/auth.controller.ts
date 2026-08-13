@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../../services/prisma.service';
-import { comparePin, comparePassword, hashPassword, generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/security';
+import { comparePassword, hashPassword, generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/security';
 import { logger } from '../../utils/logger';
 import { Role } from '@prisma/client';
 
@@ -28,7 +28,7 @@ export async function getRoles(req: Request, res: Response) {
 /**
  * GET /auth/users-by-role/:role
  * Returns { id, name }[] for active users in that role.
- * NEVER returns pinCodeHash or pinSalt — this is load-bearing for security.
+ * Never returns sensitive credential fields.
  */
 export async function getUsersByRole(req: Request, res: Response) {
   const { role } = req.params;
@@ -49,7 +49,7 @@ export async function getUsersByRole(req: Request, res: Response) {
 
 /**
  * POST /auth/login
- * Password-based authentication for Web App roles (OWNER, MANAGER, CASHIER).
+ * Password-based authentication for ALL roles.
  * Uses standard lockout logic if brute forced.
  */
 export async function login(req: Request, res: Response) {
@@ -65,9 +65,24 @@ export async function login(req: Request, res: Response) {
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
-  // Web roles only
-  if (user.role === Role.WAITER) {
-    return res.status(403).json({ error: 'Waiters must use PIN login on the mobile app.' });
+  // Check lockout state
+  const lockoutState = await prisma.loginAttempt.findUnique({
+    where: { userId: user.id },
+  });
+
+  const now = Date.now();
+  if (lockoutState) {
+    if (lockoutState.lockedUntil > now) {
+      const remainingMinutes = Math.ceil((lockoutState.lockedUntil - now) / 60000);
+      return res.status(429).json({
+        error: `Account locked due to too many failed attempts. Try again in ${remainingMinutes} minutes.`,
+        lockedUntil: lockoutState.lockedUntil,
+        remainingMinutes,
+      });
+    } else if (lockoutState.lockedUntil !== 0) {
+      // Lockout expired, clear it
+      await prisma.loginAttempt.delete({ where: { userId: user.id } });
+    }
   }
 
   const isPasswordValid = user.passwordHash ? await comparePassword(password, user.passwordHash) : false;
@@ -75,7 +90,35 @@ export async function login(req: Request, res: Response) {
   logger.info({ email, isPasswordValid, passwordHashLength: user.passwordHash?.length }, 'Password comparison result');
 
   if (!isPasswordValid) {
+    // Track failed attempts for brute-force protection
+    const currentLockout = await prisma.loginAttempt.findUnique({ where: { userId: user.id } });
+    const attempts = currentLockout ? currentLockout.failedCount + 1 : 1;
+    let lockedUntil = 0;
+
+    if (attempts >= 5) {
+      lockedUntil = now + 15 * 60 * 1000; // 15 mins
+    }
+
+    await prisma.loginAttempt.upsert({
+      where: { userId: user.id },
+      update: { failedCount: attempts, lockedUntil },
+      create: { userId: user.id, failedCount: attempts, lockedUntil },
+    });
+
+    if (attempts >= 5) {
+      return res.status(429).json({
+        error: 'Account locked due to too many failed attempts. Try again in 15 minutes.',
+        lockedUntil,
+        remainingMinutes: 15,
+      });
+    }
+
     return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  // Clear lockout on success
+  if (lockoutState) {
+    await prisma.loginAttempt.delete({ where: { userId: user.id } });
   }
 
   const tokenPayload = {
@@ -124,129 +167,9 @@ export async function login(req: Request, res: Response) {
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
+  // Refresh token is ONLY delivered via HttpOnly cookie — never in JSON
   return res.json({
     accessToken,
-    refreshToken,
-    user: {
-      id: user.id,
-      name: user.name,
-      role: user.role,
-      email: user.email,
-      phone: user.phone,
-    },
-  });
-}
-
-/**
- * POST /auth/pin-login
- * Unified PIN-based authentication for all roles.
- * Applies persistent lockout: 5 failed attempts → 15 minute lockout.
- */
-export async function pinLogin(req: Request, res: Response) {
-  const { userId, pinCode } = req.body;
-
-  const now = Date.now();
-
-  // Check lockout state
-  const lockoutState = await prisma.loginAttempt.findUnique({
-    where: { userId },
-  });
-
-  if (lockoutState) {
-    if (lockoutState.lockedUntil > now) {
-      const remainingMinutes = Math.ceil((lockoutState.lockedUntil - now) / 60000);
-      return res.status(429).json({
-        error: `Account locked due to too many failed PIN attempts. Try again in ${remainingMinutes} minutes.`,
-        lockedUntil: lockoutState.lockedUntil,
-        remainingMinutes,
-      });
-    } else if (lockoutState.lockedUntil !== 0) {
-      // Lockout expired, clear it
-      await prisma.loginAttempt.delete({ where: { userId } });
-    }
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user || !user.isActive) {
-    return res.status(401).json({ error: 'User not found or inactive.' });
-  }
-
-  // Restrict to mobile app (WAITER)
-  if (user.role !== Role.WAITER) {
-    return res.status(403).json({ error: 'Web app users (Owner/Manager/Cashier) must use password login.' });
-  }
-
-  // Ensure pinSalt and pinCodeHash exist
-  if (!user.pinSalt || !user.pinCodeHash) {
-    return res.status(401).json({ error: 'PIN not set for this user.' });
-  }
-
-  const isPinValid = comparePin(pinCode, user.pinSalt, user.pinCodeHash);
-  if (!isPinValid) {
-    const currentLockout = await prisma.loginAttempt.findUnique({ where: { userId } });
-    const attempts = currentLockout ? currentLockout.failedCount + 1 : 1;
-    let lockedUntil = 0;
-
-    if (attempts >= 5) {
-      lockedUntil = now + 15 * 60 * 1000; // 15 mins
-    }
-
-    await prisma.loginAttempt.upsert({
-      where: { userId },
-      update: { failedCount: attempts, lockedUntil },
-      create: { userId, failedCount: attempts, lockedUntil },
-    });
-
-    if (attempts >= 5) {
-      return res.status(429).json({
-        error: 'Account locked due to too many failed PIN attempts. Try again in 15 minutes.',
-        lockedUntil,
-        remainingMinutes: 15,
-      });
-    } else {
-      return res.status(401).json({
-        error: `Invalid PIN code. ${5 - attempts} attempts remaining.`,
-        attemptsRemaining: 5 - attempts,
-      });
-    }
-  }
-
-  // Clear lockout on success
-  if (lockoutState) {
-    await prisma.loginAttempt.delete({ where: { userId } });
-  }
-
-  const tokenPayload = {
-    userId: user.id,
-    role: user.role,
-    name: user.name,
-    email: user.email,
-  };
-
-  const accessToken = generateAccessToken(tokenPayload);
-  const refreshToken = generateRefreshToken(tokenPayload);
-
-  await prisma.refreshToken.create({
-    data: {
-      tokenHash: hashToken(refreshToken),
-      userId: user.id,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    },
-  });
-
-  res.cookie('refresh_token', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  return res.json({
-    accessToken,
-    refreshToken,
     user: {
       id: user.id,
       name: user.name,
@@ -258,7 +181,7 @@ export async function pinLogin(req: Request, res: Response) {
 }
 
 export async function refreshToken(req: Request, res: Response) {
-  // Read from cookie first, fallback to body
+  // Read from HttpOnly cookie only — do not accept body-based refresh tokens
   const cookiesStr = req.headers.cookie || '';
   const cookies = cookiesStr.split(';').reduce((acc, curr) => {
     const [k, v] = curr.trim().split('=');
@@ -266,7 +189,7 @@ export async function refreshToken(req: Request, res: Response) {
     return acc;
   }, {} as Record<string, string>);
   
-  const token = cookies['refresh_token'] || req.body.refreshToken;
+  const token = cookies['refresh_token'];
 
   if (!token) {
     return res.status(401).json({ error: 'No refresh token provided.' });
@@ -281,29 +204,27 @@ export async function refreshToken(req: Request, res: Response) {
     }
 
     const tHash = hashToken(token);
-    const storedToken = await prisma.refreshToken.findUnique({
-      where: { tokenHash: tHash },
+
+    // Atomic revocation: only succeed if the token is currently non-revoked and not expired
+    const revokeResult = await prisma.refreshToken.updateMany({
+      where: {
+        tokenHash: tHash,
+        revoked: false,
+        expiresAt: { gt: new Date() },
+      },
+      data: { revoked: true },
     });
 
-    if (!storedToken) {
-      return res.status(401).json({ error: 'Invalid refresh token.' });
-    }
-
-    if (storedToken.revoked) {
-      // Token reuse detected! Revoke all tokens for this user.
-      logger.warn({ userId: user.id }, 'Refresh token reuse detected. Revoking all tokens.');
+    if (revokeResult.count === 0) {
+      // Token was already revoked (replay/reuse) or expired — revoke all tokens for this user
+      logger.warn({ userId: user.id }, 'Refresh token reuse detected or token expired. Revoking all tokens.');
       await prisma.refreshToken.updateMany({
         where: { userId: user.id },
         data: { revoked: true },
       });
+      res.clearCookie('refresh_token');
       return res.status(401).json({ error: 'Session compromised. Please log in again.' });
     }
-
-    // Mark current token as revoked
-    await prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { revoked: true },
-    });
 
     const tokenPayload = {
       userId: user.id,
@@ -330,9 +251,9 @@ export async function refreshToken(req: Request, res: Response) {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
+    // Refresh token is ONLY delivered via HttpOnly cookie — never in JSON
     return res.json({
       accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
     });
   } catch (error) {
     return res.status(401).json({ error: 'Invalid or expired refresh token.' });
@@ -347,7 +268,7 @@ export async function logout(req: Request, res: Response) {
     return acc;
   }, {} as Record<string, string>);
   
-  const token = cookies['refresh_token'] || req.body.refreshToken;
+  const token = cookies['refresh_token'];
 
   if (token && typeof token === 'string') {
     const tHash = hashToken(token);
