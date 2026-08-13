@@ -108,9 +108,52 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
 
 /** Router-free app shell — use with MemoryRouter in tests, BrowserRouter in production. */
 export const AppRoutes: React.FC = () => {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, setAccessToken, setAuth, logout } = useAuthStore();
   const { connect, disconnect } = useSocketStore();
   const { initListeners } = useOfflineSyncStore();
+
+  // Bootstrap session on app load if we have a refresh token cookie
+  useEffect(() => {
+    const bootstrapSession = async () => {
+      // Only try to bootstrap if we don't have a valid access token
+      const currentToken = useAuthStore.getState().accessToken;
+      if (!currentToken) {
+        try {
+          // First, try to refresh to get a new access token
+          const refreshRes = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          
+          if (refreshRes.ok) {
+            const { accessToken } = await refreshRes.json();
+            
+            // Then fetch user profile using the new token
+            const userRes = await fetch('/api/users/me', {
+              headers: { 
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              credentials: 'include',
+            });
+            
+            if (userRes.ok) {
+              const user = await userRes.json();
+              setAuth(user, accessToken);
+            } else {
+              setAccessToken(accessToken);
+            }
+          }
+        } catch (err) {
+          // No valid refresh token, user needs to login
+          console.debug('Session bootstrap failed, user needs to login');
+        }
+      }
+    };
+
+    bootstrapSession();
+  }, []); // Run once on mount
 
   useEffect(() => {
     initListeners();
