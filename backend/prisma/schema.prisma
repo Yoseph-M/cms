@@ -40,6 +40,12 @@ enum PaymentMethod {
   NONE
 }
 
+enum SettlementStatus {
+  UNSETTLED
+  PARTIALLY_SETTLED
+  SETTLED
+}
+
 enum AttendanceStatus {
   PRESENT
   ABSENT
@@ -70,6 +76,12 @@ enum NotificationType {
   SYSTEM_OVERRIDE
 }
 
+enum CancellationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ---------- Models ----------
 
 model User {
@@ -79,8 +91,6 @@ model User {
   email        String?  @unique
   phone        String
   passwordHash String?
-  pinCodeHash  String?
-  pinSalt      String?
   salaryAmount      Int      @default(0) // Stored in minor units (e.g. cents)
   isActive          Boolean  @default(true)
   preferredLanguage String   @default("en")
@@ -91,6 +101,7 @@ model User {
   ordersAsWaiter    Order[]        @relation("WaiterOrders")
   ordersAsCashier   Order[]        @relation("CashierOrders")
   ordersCancelled   Order[]        @relation("CancelledByUser")
+  settlementsRecorded Settlement[] @relation("SettlementsRecorded")
   attendanceRecords Attendance[]
   paymentsReceived  UserPayment[]  @relation("PaymentRecipient")
   payrollsProcessed UserPayment[]  @relation("PayrollProcessor")
@@ -99,6 +110,8 @@ model User {
   auditLogs         AuditLog[]
   adjustmentsProcessed PayrollAdjustment[] @relation("AdjustmentProcessor")
   expensesRecorded  Expense[]          @relation("ExpenseRecorder")
+  cancellationRequestsCreated OrderCancellationRequest[] @relation("CancellationRequester")
+  cancellationRequestsApproved OrderCancellationRequest[] @relation("CancellationApprover")
 
   @@index([role, isActive])
   @@map("users")
@@ -128,29 +141,76 @@ type OrderItem {
 }
 
 model Order {
-  id                 String        @id @default(auto()) @map("_id") @db.ObjectId
-  clientOrderId      String        @unique
+  id                 String           @id @default(auto()) @map("_id") @db.ObjectId
+  clientOrderId      String           @unique
   tableNumber        String
-  waiterId           String        @db.ObjectId
-  waiter             User          @relation("WaiterOrders", fields: [waiterId], references: [id])
-  cashierId          String?       @db.ObjectId
-  cashier            User?         @relation("CashierOrders", fields: [cashierId], references: [id])
+  waiterId           String           @db.ObjectId
+  waiter             User             @relation("WaiterOrders", fields: [waiterId], references: [id])
+  cashierId          String?          @db.ObjectId
+  cashier            User?            @relation("CashierOrders", fields: [cashierId], references: [id])
   items              OrderItem[]
   totalAmount        Int
-  status             OrderStatus   @default(SUBMITTED)
-  isPaid             Boolean       @default(false)
-  paymentMethod      PaymentMethod @default(NONE)
-  cancellationReason String        @default("")
-  cancelledById      String?       @db.ObjectId
-  cancelledBy        User?         @relation("CancelledByUser", fields: [cancelledById], references: [id])
-  paidAt             DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  status             OrderStatus      @default(SUBMITTED)
+  settlementStatus   SettlementStatus @default(UNSETTLED)
+  isPaid             Boolean          @default(false) // Deprecated: use settlementStatus instead
+  paymentMethod      PaymentMethod    @default(NONE) // Deprecated: check settlements instead
+  cancellationReason String           @default("")
+  cancelledById      String?          @db.ObjectId
+  cancelledBy        User?            @relation("CancelledByUser", fields: [cancelledById], references: [id])
+  paidAt             DateTime?        // Deprecated: check settlements instead
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  // Relations
+  settlements Settlement[]
+  cancellationRequests OrderCancellationRequest[]
 
   @@index([status, createdAt])
+  @@index([settlementStatus, createdAt])
   @@index([waiterId, createdAt])
   @@index([cashierId, createdAt])
   @@map("orders")
+}
+
+model Settlement {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  orderId         String        @db.ObjectId
+  order           Order         @relation(fields: [orderId], references: [id])
+  amountMinor     Int           // Amount in minor units (e.g., cents)
+  method          PaymentMethod
+  reference       String        @default("") // External transaction reference/receipt number
+  note            String        @default("")
+  recordedById    String        @db.ObjectId
+  recordedBy      User          @relation("SettlementsRecorded", fields: [recordedById], references: [id])
+  idempotencyKey  String?       @unique // For idempotent operations
+  recordedAt      DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([recordedById, createdAt])
+  @@index([idempotencyKey])
+  @@map("settlements")
+}
+
+model OrderCancellationRequest {
+  id             String                    @id @default(auto()) @map("_id") @db.ObjectId
+  orderId        String                    @db.ObjectId
+  order          Order                     @relation(fields: [orderId], references: [id])
+  requestedById  String                    @db.ObjectId
+  requestedBy    User                      @relation("CancellationRequester", fields: [requestedById], references: [id])
+  reason         String                    // Why the order needs to be cancelled
+  status         CancellationRequestStatus @default(PENDING)
+  approvedById   String?                   @db.ObjectId
+  approvedBy     User?                     @relation("CancellationApprover", fields: [approvedById], references: [id])
+  approvedAt     DateTime?
+  rejectedReason String?                   // Why the request was rejected (if applicable)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@index([orderId, status, createdAt])
+  @@index([requestedById, createdAt])
+  @@index([status, createdAt])
+  @@map("order_cancellation_requests")
 }
 
 model Attendance {
