@@ -95,6 +95,8 @@ export async function cleanDb() {
 
   const p = getPrisma();
   // Order matters due to relations — delete children first
+  await p.settlement.deleteMany();
+  await p.orderCancellationRequest.deleteMany();
   await p.refreshToken.deleteMany();
   await p.loginAttempt.deleteMany();
   await p.payrollAdjustment.deleteMany();
