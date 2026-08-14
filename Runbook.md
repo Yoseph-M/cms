@@ -114,7 +114,7 @@ docker exec mern_pos_api npx prisma db push
 curl -X POST http://localhost:5001/api/users/<userId>/reset-pin \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"pinCode":"XXXX"}'
+
 ```
 
 ---
