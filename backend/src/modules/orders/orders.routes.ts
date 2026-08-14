@@ -15,11 +15,13 @@ router.get('/', OrdersController.getOrders);
 router.get('/:id', OrdersController.getOrderById);
 
 router.patch('/:id/status', requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]), OrdersController.updateOrderStatus);
+
+// Legacy endpoints - DEPRECATED, use /api/orders/:orderId/settlements instead
 router.patch('/:id/pay', requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]), validate(payOrderSchema), OrdersController.payOrder);
 
+// Legacy endpoints - DEPRECATED, use /api/orders/:orderId/cancellation-request instead
 router.post('/:id/cancel-request', requireRole([Role.WAITER, Role.CASHIER, Role.MANAGER, Role.OWNER]), validate(cancelRequestSchema), OrdersController.requestCancelOrder);
 router.patch('/:id/cancel-confirm', requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]), OrdersController.confirmCancelOrder);
-
 
 router.post('/:id/reprint', requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]), OrdersController.reprintOrder);
 
