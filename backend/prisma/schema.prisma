@@ -182,13 +182,12 @@ model Settlement {
   note            String        @default("")
   recordedById    String        @db.ObjectId
   recordedBy      User          @relation("SettlementsRecorded", fields: [recordedById], references: [id])
-  idempotencyKey  String?       @unique // For idempotent operations
+  idempotencyKey  String?       @unique // For idempotent operations - @unique already creates an index
   recordedAt      DateTime      @default(now())
   createdAt       DateTime      @default(now())
 
   @@index([orderId, createdAt])
   @@index([recordedById, createdAt])
-  @@index([idempotencyKey])
   @@map("settlements")
 }
 
