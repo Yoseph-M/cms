@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../../middleware/auth.middleware';
+import { requireAuth } from '../../middleware/auth.middleware';
 import { requireRole } from '../../middleware/role.middleware';
 import { validate } from '../../middleware/validate.middleware';
 import {
@@ -23,7 +23,7 @@ const router = Router();
  */
 router.post(
   '/orders/:orderId/cancellation-request',
-  authenticate,
+  requireAuth,
   requireRole(['WAITER', 'CASHIER', 'MANAGER', 'OWNER']),
   validate(createCancellationRequestSchema),
   createCancellationRequest
@@ -36,7 +36,7 @@ router.post(
  */
 router.get(
   '/cancellation-requests',
-  authenticate,
+  requireAuth,
   listCancellationRequests
 );
 
@@ -47,7 +47,7 @@ router.get(
  */
 router.get(
   '/cancellation-requests/:requestId',
-  authenticate,
+  requireAuth,
   getCancellationRequest
 );
 
@@ -58,7 +58,7 @@ router.get(
  */
 router.patch(
   '/cancellation-requests/:requestId/approve',
-  authenticate,
+  requireAuth,
   requireRole(['MANAGER', 'OWNER']),
   approveCancellationRequest
 );
@@ -70,7 +70,7 @@ router.patch(
  */
 router.patch(
   '/cancellation-requests/:requestId/reject',
-  authenticate,
+  requireAuth,
   requireRole(['MANAGER', 'OWNER']),
   validate(rejectCancellationRequestSchema),
   rejectCancellationRequest
