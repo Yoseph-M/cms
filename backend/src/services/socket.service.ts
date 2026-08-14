@@ -1,10 +1,20 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { logger } from '../utils/logger';
-
 import { config } from '../config';
 import { verifyAccessToken } from '../utils/security';
 import { Role } from '@prisma/client';
+import { SocketEventName } from '../types/socketEvents';
+
+// Extended socket with user payload
+interface AuthenticatedSocket extends Socket {
+  user?: {
+    userId: string;
+    role: Role;
+    name: string;
+    email?: string | null;
+  };
+}
 
 let ioServer: Server | null = null;
 
@@ -38,7 +48,8 @@ export function initSocketService(httpServer: HttpServer): Server {
     }
     try {
       const payload = verifyAccessToken(token);
-      (socket as any).user = payload;
+      const authSocket = socket as unknown as AuthenticatedSocket;
+      authSocket.user = payload;
       next();
     } catch (err) {
       return next(new Error('Authentication error: Invalid or expired token'));
@@ -46,11 +57,19 @@ export function initSocketService(httpServer: HttpServer): Server {
   });
 
   liveNamespace.on('connection', (socket: Socket) => {
-    const user = (socket as any).user;
+    const authSocket = socket as unknown as AuthenticatedSocket;
+    const user = authSocket.user;
+    
+    if (!user) {
+      logger.warn({ socketId: socket.id }, 'Socket connection without user authentication');
+      socket.disconnect();
+      return;
+    }
+    
     logger.info({ socketId: socket.id, userId: user.userId, role: user.role }, 'Authenticated client connected to /live namespace');
 
     // Restrict orders room to authorized staff
-    const authorizedRolesForOrders = [Role.OWNER, Role.MANAGER, Role.CASHIER, Role.WAITER, Role.COOKER];
+    const authorizedRolesForOrders = [Role.OWNER, Role.MANAGER, Role.CASHIER, Role.WAITER, Role.COOKER, Role.BARISTA];
     if (authorizedRolesForOrders.includes(user.role)) {
       socket.join('orders');
       logger.info({ socketId: socket.id, role: user.role }, 'Socket joined room: orders');
@@ -66,7 +85,13 @@ export function initSocketService(httpServer: HttpServer): Server {
   return ioServer;
 }
 
-export function emitToLiveOrders(event: string, payload: any) {
+/**
+ * Emit an event to all connected clients in the orders room
+ * 
+ * @param event - The event name from SocketEventName type
+ * @param payload - The event payload
+ */
+export function emitToLiveOrders(event: SocketEventName, payload: Record<string, unknown>) {
   if (!ioServer) {
     logger.warn('Socket.io server not initialized; suppressing broadcast.');
     return;
@@ -74,4 +99,17 @@ export function emitToLiveOrders(event: string, payload: any) {
   const liveNamespace = ioServer.of('/live');
   liveNamespace.to('orders').emit(event, payload);
   logger.info({ event, payloadId: payload?.id }, 'Emitted event to /live orders room');
+}
+
+/**
+ * Emit to a specific room
+ */
+export function emitToRoom(room: string, event: SocketEventName, payload: Record<string, unknown>) {
+  if (!ioServer) {
+    logger.warn('Socket.io server not initialized; suppressing broadcast.');
+    return;
+  }
+  const liveNamespace = ioServer.of('/live');
+  liveNamespace.to(room).emit(event, payload);
+  logger.info({ event, room, payloadId: payload?.id }, 'Emitted event to room');
 }
