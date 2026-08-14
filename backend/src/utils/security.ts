@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
+import { Role } from '@prisma/client';
 
 // Passwords (bcrypt for all staff roles)
 import bcrypt from 'bcrypt';
@@ -17,7 +18,7 @@ export async function comparePassword(password: string, hash: string): Promise<b
 // JWT Tokens
 export interface TokenPayload {
   userId: string;
-  role: string;
+  role: Role;
   name: string;
   email?: string | null;
 }
