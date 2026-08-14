@@ -51,6 +51,9 @@ const CashierOrderingPanel = lazy(() =>
 const ManagerDashboard = lazy(() =>
   import('./pages/manager/ManagerDashboard').then((m) => ({ default: m.ManagerDashboard }))
 );
+const CancellationReview = lazy(() =>
+  import('./pages/manager/CancellationReview').then((m) => ({ default: m.CancellationReview }))
+);
 const ManagerPayroll = lazy(() =>
   import('./pages/manager/ManagerPayroll').then((m) => ({ default: m.ManagerPayroll }))
 );
@@ -88,7 +91,12 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
   children,
   allowedRole,
 }) => {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isLoading } = useAuthStore();
+
+  // Show loading while bootstrapping session
+  if (isLoading) {
+    return <PageSkeleton />;
+  }
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
@@ -108,52 +116,14 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
 
 /** Router-free app shell — use with MemoryRouter in tests, BrowserRouter in production. */
 export const AppRoutes: React.FC = () => {
-  const { isAuthenticated, setAccessToken, setAuth, logout } = useAuthStore();
+  const { isAuthenticated, isLoading, bootstrapSession } = useAuthStore();
   const { connect, disconnect } = useSocketStore();
   const { initListeners } = useOfflineSyncStore();
 
-  // Bootstrap session on app load if we have a refresh token cookie
+  // Bootstrap session on app load - uses HttpOnly refresh cookie
   useEffect(() => {
-    const bootstrapSession = async () => {
-      // Only try to bootstrap if we don't have a valid access token
-      const currentToken = useAuthStore.getState().accessToken;
-      if (!currentToken) {
-        try {
-          // First, try to refresh to get a new access token
-          const refreshRes = await fetch('/api/auth/refresh', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-          });
-          
-          if (refreshRes.ok) {
-            const { accessToken } = await refreshRes.json();
-            
-            // Then fetch user profile using the new token
-            const userRes = await fetch('/api/users/me', {
-              headers: { 
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              credentials: 'include',
-            });
-            
-            if (userRes.ok) {
-              const user = await userRes.json();
-              setAuth(user, accessToken);
-            } else {
-              setAccessToken(accessToken);
-            }
-          }
-        } catch (err) {
-          // No valid refresh token, user needs to login
-          console.debug('Session bootstrap failed, user needs to login');
-        }
-      }
-    };
-
     bootstrapSession();
-  }, []); // Run once on mount
+  }, [bootstrapSession]);
 
   useEffect(() => {
     initListeners();
@@ -203,6 +173,7 @@ export const AppRoutes: React.FC = () => {
         >
           <Route index element={<Navigate to="people" replace />} />
           <Route path="people" element={<Lazy><ManagerDashboard /></Lazy>} />
+          <Route path="cancellations" element={<Lazy><CancellationReview /></Lazy>} />
           <Route path="menu" element={<Lazy><MenuCatalog canEdit /></Lazy>} />
           <Route path="attendance" element={<Lazy><AttendanceCalendar isOwner={false} /></Lazy>} />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
