@@ -6,6 +6,7 @@ import { triggerKitchenPrint } from '../../services/printer.service';
 import { OrderStatus, PaymentMethod, Role } from '@prisma/client';
 import { canTransition } from '../../utils/orderStateMachine';
 import { recordAudit } from '../../services/audit.service';
+import { getBusinessDayStart, getBusinessDayEnd, parseBusinessDate } from '../../utils/businessTime';
 
 export async function createOrder(req: AuthenticatedRequest, res: Response) {
   const callerRole = req.user!.role as Role;
@@ -106,7 +107,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   });
 
   // Broadcast live event to Socket.io orders room
-  emitToLiveOrders('order:new', order);
+  emitToLiveOrders('order:new', order as any);
 
   return res.status(201).json({
     isNew: true,
@@ -133,13 +134,9 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
   }
 
   if (date) {
-    // Basic TZ adjustment for East Africa Time (UTC+3)
-    // For a real production app, use a timezone library or business setting
-    const offsetHours = 3;
-    const start = new Date(`${date}T00:00:00.000Z`);
-    start.setUTCHours(start.getUTCHours() - offsetHours);
-    const end = new Date(`${date}T23:59:59.999Z`);
-    end.setUTCHours(end.getUTCHours() - offsetHours);
+    // Use centralized business timezone
+    const start = getBusinessDayStart(parseBusinessDate(date as string));
+    const end = getBusinessDayEnd(parseBusinessDate(date as string));
     whereClause.createdAt = { gte: start, lte: end };
   }
 
@@ -225,7 +222,7 @@ export async function updateOrderStatus(req: AuthenticatedRequest, res: Response
     },
   });
 
-  emitToLiveOrders('order:updated', updated);
+  emitToLiveOrders('order:updated', updated as any);
 
   return res.json(updated);
 }
@@ -293,7 +290,7 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
     details: { paymentMethod, totalAmount: updated?.totalAmount, note: 'Legacy payment endpoint used' },
   });
 
-  emitToLiveOrders('order:updated', updated);
+  emitToLiveOrders('order:updated', updated as any);
 
   return res.json(updated);
 }
@@ -341,7 +338,7 @@ export async function requestCancelOrder(req: AuthenticatedRequest, res: Respons
     details: { reason, note: 'Legacy cancel request endpoint used' },
   });
 
-  emitToLiveOrders('order:updated', updated);
+  emitToLiveOrders('order:updated', updated as any);
 
   return res.json({ message: 'Cancellation request logged.', order: updated });
 }
@@ -416,7 +413,7 @@ export async function confirmCancelOrder(req: AuthenticatedRequest, res: Respons
     details: { reason: reason || order.cancellationReason || 'Cancelled by staff', wasPaid: order.isPaid, note: 'Legacy cancel confirm endpoint used' },
   });
 
-  emitToLiveOrders('order:cancelled', updated);
+  emitToLiveOrders('order:cancelled', updated as any);
 
   return res.json(updated);
 }
