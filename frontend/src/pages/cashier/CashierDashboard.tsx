@@ -467,13 +467,28 @@ export const CashierDashboard: React.FC = () => {
     socket.on('order:cancelled', (cancelledOrder: Order) => {
       setOrders((prev) => prev.map((o) => (o.id === cancelledOrder.id ? cancelledOrder : o)));
     });
-    socket.on('printer:failed', (payload: any) => {
+    // Cancellation request events
+    socket.on('cancellation:requested', (payload: { order: Order }) => {
+      // Update order to show cancellation request
+      setOrders((prev) => prev.map((o) => (o.id === payload.order.id ? payload.order : o)));
+      addToast({ type: 'info', title: 'Cancellation Requested', message: `Order ${payload.order.clientOrderId} cancellation pending approval` });
+    });
+    socket.on('cancellation:rejected', (payload: { request: { orderId: string; rejectedReason: string } }) => {
+      addToast({ type: 'warning', title: 'Cancellation Rejected', message: payload.request.rejectedReason });
+      // Refresh order to clear cancellation status
+      axiosClient.get(`/orders/${payload.request.orderId}`).then((res) => {
+        setOrders((prev) => prev.map((o) => (o.id === payload.request.orderId ? res.data : o)));
+      });
+    });
+    socket.on('printer:failed', (payload: { orderId: string; error: string }) => {
       setPrinterFailures((prev) => [...prev, payload]);
     });
     return () => {
       socket.off('order:new');
       socket.off('order:updated');
       socket.off('order:cancelled');
+      socket.off('cancellation:requested');
+      socket.off('cancellation:rejected');
       socket.off('printer:failed');
     };
   }, [socket]);
@@ -527,15 +542,23 @@ export const CashierDashboard: React.FC = () => {
     }
   };
 
-  const handleConfirmCancel = async () => {
+  // Request cancellation (new workflow)
+  const handleRequestCancellation = async () => {
     if (!selectedOrderId || !cancelReason.trim()) return;
     try {
-      const res = await axiosClient.patch(`/orders/${selectedOrderId}/cancel-confirm`, { reason: cancelReason });
-      setOrders((prev) => prev.map((o) => (o.id === selectedOrderId ? res.data : o)));
+      // Use new cancellation request endpoint
+      await axiosClient.post(`/orders/${selectedOrderId}/cancellation-request`, { 
+        reason: cancelReason 
+      });
+      addToast({ type: 'success', title: t('toasts.cancelRequested'), message: 'Waiting for manager approval' });
       setShowCancelModal(false);
       setCancelReason('');
-    } catch (err: any) {
-      addToast({ type: 'error', title: t('toasts.cancelFailed'), message: err.response?.data?.error });
+      // Refresh order to get updated status
+      const res = await axiosClient.get(`/orders/${selectedOrderId}`);
+      setOrders((prev) => prev.map((o) => (o.id === selectedOrderId ? res.data : o)));
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      addToast({ type: 'error', title: t('toasts.cancelFailed'), message: error.response?.data?.error || 'Failed to request cancellation' });
     }
   };
 
@@ -1090,7 +1113,7 @@ export const CashierDashboard: React.FC = () => {
                   </Button>
                   <Button
                     variant="destructive"
-                    onClick={handleConfirmCancel}
+                    onClick={handleRequestCancellation}
                     disabled={!cancelReason.trim()}
                     className="shadow-sm"
                   >
