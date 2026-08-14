@@ -59,9 +59,8 @@ export async function login(req: Request, res: Response) {
     where: { email },
   });
 
-  logger.info({ email, found: !!user, isActive: user?.isActive, role: user?.role, hasPasswordHash: !!user?.passwordHash }, 'Login attempt debug');
-
   if (!user || !user.isActive) {
+    logger.info({ email, found: !!user, isActive: user?.isActive, role: user?.role, outcome: 'failure' }, 'auth.login.failure');
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
@@ -86,8 +85,6 @@ export async function login(req: Request, res: Response) {
   }
 
   const isPasswordValid = user.passwordHash ? await comparePassword(password, user.passwordHash) : false;
-  
-  logger.info({ email, isPasswordValid, passwordHashLength: user.passwordHash?.length }, 'Password comparison result');
 
   if (!isPasswordValid) {
     // Track failed attempts for brute-force protection
@@ -106,6 +103,7 @@ export async function login(req: Request, res: Response) {
     });
 
     if (attempts >= 5) {
+      logger.info({ email, attempts, outcome: 'locked' }, 'auth.login.locked');
       return res.status(429).json({
         error: 'Account locked due to too many failed attempts. Try again in 15 minutes.',
         lockedUntil,
@@ -113,6 +111,7 @@ export async function login(req: Request, res: Response) {
       });
     }
 
+    logger.info({ email, attempts, outcome: 'failure' }, 'auth.login.failure');
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
@@ -167,6 +166,9 @@ export async function login(req: Request, res: Response) {
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
+  // Structured auth logging
+  logger.info({ userId: user.id, role: user.role, outcome: 'success' }, 'auth.login.success');
+
   // Refresh token is ONLY delivered via HttpOnly cookie — never in JSON
   return res.json({
     accessToken,
@@ -217,7 +219,7 @@ export async function refreshToken(req: Request, res: Response) {
 
     if (revokeResult.count === 0) {
       // Token was already revoked (replay/reuse) or expired — revoke all tokens for this user
-      logger.warn({ userId: user.id }, 'Refresh token reuse detected or token expired. Revoking all tokens.');
+      logger.warn({ userId: user.id, outcome: 'replay_detected' }, 'auth.refresh.replay');
       await prisma.refreshToken.updateMany({
         where: { userId: user.id },
         data: { revoked: true },
@@ -225,6 +227,9 @@ export async function refreshToken(req: Request, res: Response) {
       res.clearCookie('refresh_token');
       return res.status(401).json({ error: 'Session compromised. Please log in again.' });
     }
+
+    // Structured auth logging for successful refresh
+    logger.info({ userId: user.id, role: user.role, outcome: 'success' }, 'auth.refresh.success');
 
     const tokenPayload = {
       userId: user.id,
@@ -254,6 +259,13 @@ export async function refreshToken(req: Request, res: Response) {
     // Refresh token is ONLY delivered via HttpOnly cookie — never in JSON
     return res.json({
       accessToken: newAccessToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        email: user.email,
+        phone: user.phone,
+      },
     });
   } catch (error) {
     return res.status(401).json({ error: 'Invalid or expired refresh token.' });
@@ -269,25 +281,33 @@ export async function logout(req: Request, res: Response) {
   }, {} as Record<string, string>);
   
   const token = cookies['refresh_token'];
+  let userId: string | undefined;
 
   if (token && typeof token === 'string') {
     const tHash = hashToken(token);
 
     const stored = await prisma.refreshToken.findUnique({ where: { tokenHash: tHash } });
-    if (stored && !stored.revoked) {
-      // Revoke this token and the rest of the user's refresh family (full session kill)
-      await prisma.refreshToken.updateMany({
-        where: { userId: stored.userId, revoked: false },
-        data: { revoked: true },
-      });
-    } else if (stored) {
-      await prisma.refreshToken.update({
-        where: { id: stored.id },
-        data: { revoked: true },
-      });
+    if (stored) {
+      userId = stored.userId;
+      if (!stored.revoked) {
+        // Revoke this token and the rest of the user's refresh family (full session kill)
+        await prisma.refreshToken.updateMany({
+          where: { userId: stored.userId, revoked: false },
+          data: { revoked: true },
+        });
+      } else {
+        await prisma.refreshToken.update({
+          where: { id: stored.id },
+          data: { revoked: true },
+        });
+      }
     }
   }
 
   res.clearCookie('refresh_token');
+  
+  // Structured auth logging
+  logger.info({ userId, outcome: 'success' }, 'auth.logout');
+  
   return res.status(200).json({ message: 'Logged out successfully.' });
 }
