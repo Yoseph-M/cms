@@ -97,7 +97,7 @@ describe('Concurrent double-payment (§2.1)', () => {
 
     // Seed a menu item
     const menuItem = await p.menuItem.create({
-      data: { name: 'Test Burger', category: 'FOOD', price: 15.0, isAvailable: true },
+      data: { name: 'Test Burger', category: 'FOOD', price: 1500, isAvailable: true }, // 15.00 in minor units
     });
 
     // Create an order in SERVED status (eligible for payment)
@@ -108,7 +108,7 @@ describe('Concurrent double-payment (§2.1)', () => {
         tableNumber: 'T5',
         waiterId: waiter.id,
         items: [{ menuItemId: menuItem.id, name: menuItem.name, unitPrice: menuItem.price, quantity: 2, notes: '' }],
-        totalAmount: 30.0,
+        totalAmount: menuItem.price * 2, // Minor units (price already in minor units)
         status: OrderStatus.SERVED,
       },
     });
@@ -158,7 +158,7 @@ describe('Idempotent order creation (§2.1)', () => {
     const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'idem-waiter@pos.com' });
 
     const menuItem = await p.menuItem.create({
-      data: { name: 'Idempotent Burger', category: 'FOOD', price: 12.0, isAvailable: true },
+      data: { name: 'Idempotent Burger', category: 'FOOD', price: 1200, isAvailable: true }, // 12.00 in minor units
     });
 
     const clientOrderId = uuid();
