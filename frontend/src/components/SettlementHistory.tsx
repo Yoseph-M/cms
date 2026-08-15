@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { axiosClient } from '../api/axiosClient';
 import { useAuthStore } from '../store/authStore';
 
 interface Settlement {
@@ -49,10 +49,10 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
       setError(null);
 
       const [settlementsRes, remainingRes] = await Promise.all([
-        api.get(`/orders/${orderId}/settlements`, {
+        axiosClient.get(`/orders/${orderId}/settlements`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
-        api.get(`/orders/${orderId}/remaining-amount`, {
+        axiosClient.get(`/orders/${orderId}/remaining-amount`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
       ]);
