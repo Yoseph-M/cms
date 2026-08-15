@@ -31,6 +31,11 @@ export async function listExpenses(req: AuthenticatedRequest, res: Response) {
   return res.json(expenses);
 }
 
+/**
+ * Create a new expense.
+ * 
+ * @param amount - Amount in minor units (cents). E.g., 5000 for $50.00
+ */
 export async function createExpense(req: AuthenticatedRequest, res: Response) {
   const { category, amount, description, date } = req.body;
   const recordedById = req.user!.userId;
@@ -39,15 +44,15 @@ export async function createExpense(req: AuthenticatedRequest, res: Response) {
     return res.status(400).json({ error: 'category, amount, description, and date are required.' });
   }
 
-  const parsedAmount = Math.round(parseFloat(amount) * 100);
-  if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
-    return res.status(400).json({ error: 'amount must be a non-negative number.' });
+  // Amount is already in cents from frontend
+  if (!Number.isInteger(amount) || amount < 0) {
+    return res.status(400).json({ error: 'amount must be a non-negative integer (cents).' });
   }
 
   const expense = await prisma.expense.create({
     data: {
       category,
-      amount: parsedAmount,
+      amount, // Already in cents
       description,
       date: new Date(date),
       recordedById,
@@ -60,12 +65,17 @@ export async function createExpense(req: AuthenticatedRequest, res: Response) {
     actionType: 'EXPENSE_CREATED',
     targetType: 'Expense',
     targetId: expense.id,
-    details: { category, amount: parsedAmount, description, date },
+    details: { category, amount, description, date },
   });
 
   return res.status(201).json(expense);
 }
 
+/**
+ * Update an existing expense.
+ * 
+ * @param amount - Amount in minor units (cents) if provided. E.g., 5000 for $50.00
+ */
 export async function updateExpense(req: AuthenticatedRequest, res: Response) {
   const { id } = req.params;
   const { category, amount, description, date } = req.body;
@@ -81,11 +91,11 @@ export async function updateExpense(req: AuthenticatedRequest, res: Response) {
   if (description !== undefined) data.description = description;
   if (date !== undefined) data.date = new Date(date);
   if (amount !== undefined) {
-    const parsedAmount = Math.round(parseFloat(amount) * 100);
-    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
-      return res.status(400).json({ error: 'amount must be a non-negative number.' });
+    // Amount is already in cents from frontend
+    if (!Number.isInteger(amount) || amount < 0) {
+      return res.status(400).json({ error: 'amount must be a non-negative integer (cents).' });
     }
-    data.amount = parsedAmount;
+    data.amount = amount;
   }
 
   const updated = await prisma.expense.update({
