@@ -90,9 +90,9 @@ export async function recordPayrollEntry(req: AuthenticatedRequest, res: Respons
     return res.status(403).json({ error: 'Managers can only record payroll for operational staff.' });
   }
 
-  const amount = Math.round(parseFloat(paidAmount) * 100);
-  if (!Number.isFinite(amount) || amount < 0) {
-    return res.status(400).json({ error: 'paidAmount must be a non-negative number.' });
+  // paidAmount is already in cents from frontend
+  if (!Number.isInteger(paidAmount) || paidAmount < 0) {
+    return res.status(400).json({ error: 'paidAmount must be a non-negative integer (cents).' });
   }
 
   const existing = await prisma.userPayment.findUnique({
@@ -120,7 +120,7 @@ export async function recordPayrollEntry(req: AuthenticatedRequest, res: Respons
         periodMonth,
         periodYear,
         baseSalary: user.salaryAmount,
-        paidAmount: amount,
+        paidAmount, // Already in cents
         note: note || '',
         processedById,
       },
@@ -180,7 +180,7 @@ export async function createAdjustment(req: AuthenticatedRequest, res: Response)
     data: {
       originalPaymentId,
       reason,
-      adjustmentAmount: Math.round(parseFloat(adjustmentAmount) * 100),
+      adjustmentAmount, // Already in cents
       processedById,
     },
     include: {
