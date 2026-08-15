@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from 'react';
-import { api } from '../api/client';
+import { axiosClient } from '../api/axiosClient';
 import { useAuthStore } from '../store/authStore';
 
 interface RecordSettlementProps {
@@ -56,7 +56,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
       setSubmitting(true);
       const idempotencyKey = generateIdempotencyKey();
 
-      await api.post(
+      await axiosClient.post(
         `/orders/${orderId}/settlements`,
         {
           amountMinor,
