@@ -141,7 +141,7 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
     expect(loginRes.body.refreshToken).toBeUndefined(); // Must NOT be in body
 
     // Verify HttpOnly cookie is set
-    const setCookieHeader = loginRes.headers['set-cookie'] as string[] | undefined;
+    const setCookieHeader = loginRes.headers['set-cookie'] as unknown as string[] | undefined;
     const cookieStr = Array.isArray(setCookieHeader) ? setCookieHeader.join('; ') : (setCookieHeader ?? '');
     expect(cookieStr).toMatch(/refresh_token=/i);
     expect(cookieStr).toMatch(/HttpOnly/i);
@@ -203,7 +203,7 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email: user.email, password: 'password123' });
-    const cookie1 = extractCookie(loginRes.headers['set-cookie'] as string[], 'refresh_token');
+    const cookie1 = extractCookie(loginRes.headers['set-cookie'] as unknown as string[], 'refresh_token');
     const rt1 = getTokenFromCookie(cookie1!);
 
     // Rotate once to get rt2
@@ -212,7 +212,7 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
       .set('Cookie', cookie1!)
       .send({});
     expect(refreshRes.status).toBe(200);
-    const cookie2 = extractCookie(refreshRes.headers['set-cookie'] as string[], 'refresh_token');
+    const cookie2 = extractCookie(refreshRes.headers['set-cookie'] as unknown as string[], 'refresh_token');
     const rt2 = getTokenFromCookie(cookie2!);
 
     // Replay rt1 (the old, revoked token) — this should trigger reuse detection
@@ -245,7 +245,7 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
       .post('/api/auth/login')
       .send({ email: user.email, password: 'password123' });
     expect(loginRes.status).toBe(200);
-    const refreshCookie = extractCookie(loginRes.headers['set-cookie'] as string[], 'refresh_token');
+    const refreshCookie = extractCookie(loginRes.headers['set-cookie'] as unknown as string[], 'refresh_token');
     const rt = getTokenFromCookie(refreshCookie!);
 
     // Logout with cookie
@@ -256,7 +256,7 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
     expect(logoutRes.status).toBe(200);
 
     // Verify cookie is cleared (Max-Age=0 or Expires in past)
-    const logoutCookies = logoutRes.headers['set-cookie'] as string[] | undefined;
+    const logoutCookies = logoutRes.headers['set-cookie'] as unknown as string[] | undefined;
     if (logoutCookies) {
       const clearedCookie = logoutCookies.find(c => c.startsWith('refresh_token='));
       if (clearedCookie) {
@@ -299,7 +299,7 @@ describe('Role Enforcement - POST /orders (§1.4)', () => {
       .send({
         clientOrderId: '123e4567-e89b-12d3-a456-426614174000',
         tableNumber: '5',
-        items: [{ menuItemId: 'menu1', name: 'Pizza', unitPrice: 12.0, quantity: 1 }],
+        items: [{ menuItemId: 'menu1', name: 'Pizza', unitPrice: 1200, quantity: 1 }], // 12.00 in minor units
       });
     expect(res.status).toBe(403);
   });
@@ -313,7 +313,7 @@ describe('Role Enforcement - POST /orders (§1.4)', () => {
       .send({
         clientOrderId: '123e4567-e89b-12d3-a456-426614174001',
         tableNumber: '6',
-        items: [{ menuItemId: '60c72b2f9b1d8b2d88888888', name: 'Burger', unitPrice: 10.0, quantity: 1 }],
+        items: [{ menuItemId: '60c72b2f9b1d8b2d88888888', name: 'Burger', unitPrice: 1000, quantity: 1 }], // 10.00 in minor units
       });
     // Expected either 201 (success) or a validation error, but NOT 403.
     expect(res.status).not.toBe(403);
