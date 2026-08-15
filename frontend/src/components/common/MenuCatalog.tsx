@@ -39,7 +39,7 @@ const CATEGORY_COLORS: Record<string, 'success' | 'default' | 'warning' | 'neutr
 const menuFormSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
   category: z.enum(['FOOD', 'DRINK', 'DESSERT', 'OTHER'], { message: 'Category is required.' }),
-  price: z.coerce.number().positive('Price must be a positive number.'),
+  price: z.coerce.number().positive('Price must be a positive number.'), // User enters dollars (e.g., 15.99)
 });
 
 const EMPTY_FORM = {
@@ -163,7 +163,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     setForm({
       name: item.name,
       category: item.category,
-      price: String(item.price),
+      price: String(item.price / 100), // Convert cents to dollars for display
       imageUrl: item.imageUrl || '',
       isAvailable: item.isAvailable,
     });
@@ -180,7 +180,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       const payload = {
         name: parsed.name,
         category: parsed.category,
-        price: parsed.price,
+        price: Math.round(parsed.price * 100), // Convert dollars to cents
         imageUrl: form.imageUrl || undefined,
         isAvailable: form.isAvailable,
       };
@@ -308,12 +308,16 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
         const cols = lines[i].split(',').map(s => s.trim());
         const name = cols[nameIdx];
         const categoryRaw = (cols[catIdx] || '').toUpperCase();
-        const price = parseFloat(cols[priceIdx]);
-        if (!name || !price || Number.isNaN(price)) continue;
+        const priceDollars = parseFloat(cols[priceIdx]);
+        if (!name || !priceDollars || Number.isNaN(priceDollars)) continue;
         const category = (['FOOD', 'DRINK', 'DESSERT', 'OTHER'].includes(categoryRaw)
           ? categoryRaw
           : 'OTHER') as MenuItem['category'];
-        toCreate.push({ name, category, price });
+        toCreate.push({ 
+          name, 
+          category, 
+          price: Math.round(priceDollars * 100) // Convert dollars to cents
+        });
       }
       if (toCreate.length === 0) throw new Error('No valid rows found.');
       await Promise.all(toCreate.map(payload => axiosClient.post('/menu', payload)));
