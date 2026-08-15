@@ -480,7 +480,7 @@ export const CashierDashboard: React.FC = () => {
         setOrders((prev) => prev.map((o) => (o.id === payload.request.orderId ? res.data : o)));
       });
     });
-    socket.on('printer:failed', (payload: { orderId: string; error: string }) => {
+    socket.on('printer:failed', (payload: PrinterFailureEvent) => {
       setPrinterFailures((prev) => [...prev, payload]);
     });
     return () => {
