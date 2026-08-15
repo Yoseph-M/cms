@@ -2,7 +2,7 @@
  * Phase 13–14 verification suite — hand-computed expectations, RBAC, notifications.
  */
 import request from 'supertest';
-import { OrderStatus, PaymentMethod } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
 import { runScheduledNotificationChecks } from '../src/services/notification.scheduler';
 import { createNotification } from '../src/services/notification.service';
@@ -43,7 +43,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
     const toBoundary = new Date('2026-06-30T23:00:00.000Z');
     const outside = new Date('2026-07-01T00:00:00.000Z');
 
-    await p.order.create({
+    const order1 = await p.order.create({
       data: {
         clientOrderId: 'v-ord-from',
         tableNumber: '1',
@@ -51,12 +51,20 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         items: [{ menuItemId: waiter.id, name: 'A', unitPrice: 10000, quantity: 1, notes: '' }],
         totalAmount: 10000,
         status: OrderStatus.PAID,
-        isPaid: true,
-        paymentMethod: PaymentMethod.CASH,
-        paidAt: fromBoundary,
+        settlementStatus: 'SETTLED',
       },
     });
-    await p.order.create({
+    await p.settlement.create({
+      data: {
+        orderId: order1.id,
+        amountMinor: 10000,
+        method: 'CASH',
+        recordedById: waiter.id,
+        recordedAt: fromBoundary,
+      },
+    });
+
+    const order2 = await p.order.create({
       data: {
         clientOrderId: 'v-ord-mid',
         tableNumber: '2',
@@ -64,12 +72,20 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         items: [{ menuItemId: waiter.id, name: 'B', unitPrice: 12500, quantity: 2, notes: '' }],
         totalAmount: 25000,
         status: OrderStatus.PAID,
-        isPaid: true,
-        paymentMethod: PaymentMethod.CARD,
-        paidAt: mid,
+        settlementStatus: 'SETTLED',
       },
     });
-    await p.order.create({
+    await p.settlement.create({
+      data: {
+        orderId: order2.id,
+        amountMinor: 25000,
+        method: 'CARD',
+        recordedById: waiter.id,
+        recordedAt: mid,
+      },
+    });
+
+    const order3 = await p.order.create({
       data: {
         clientOrderId: 'v-ord-to',
         tableNumber: '3',
@@ -77,12 +93,20 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         items: [{ menuItemId: waiter.id, name: 'C', unitPrice: 5000, quantity: 1, notes: '' }],
         totalAmount: 5000,
         status: OrderStatus.PAID,
-        isPaid: true,
-        paymentMethod: PaymentMethod.MOBILE,
-        paidAt: toBoundary,
+        settlementStatus: 'SETTLED',
       },
     });
-    // Cancelled — must be excluded even if isPaid somehow true
+    await p.settlement.create({
+      data: {
+        orderId: order3.id,
+        amountMinor: 5000,
+        method: 'MOBILE',
+        recordedById: waiter.id,
+        recordedAt: toBoundary,
+      },
+    });
+
+    // Cancelled — must be excluded
     await p.order.create({
       data: {
         clientOrderId: 'v-ord-cancel',
@@ -91,9 +115,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         items: [{ menuItemId: waiter.id, name: 'X', unitPrice: 99900, quantity: 1, notes: '' }],
         totalAmount: 99900,
         status: OrderStatus.CANCELLED,
-        isPaid: false,
-        paymentMethod: PaymentMethod.NONE,
-        paidAt: mid,
+        settlementStatus: 'UNSETTLED',
         cancellationReason: 'test',
       },
     });
@@ -106,9 +128,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         items: [{ menuItemId: waiter.id, name: 'Y', unitPrice: 1000, quantity: 1, notes: '' }],
         totalAmount: 1000,
         status: OrderStatus.PAID,
-        isPaid: true,
-        paymentMethod: PaymentMethod.CASH,
-        paidAt: outside,
+        settlementStatus: 'SETTLED',
       },
     });
 
