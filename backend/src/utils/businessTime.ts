@@ -65,7 +65,9 @@ function getTimezoneOffset(tz: string): number {
 export function getBusinessDayStart(date: Date = new Date()): Date {
   const tz = getBusinessTimezone();
   const dateStr = formatDateInTz(date, tz);
-  return parseISOInTimezone(dateStr, tz);
+  // Create a date at midnight in local time for the given date string
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 0, 0, 0, 0);
 }
 
 /**
@@ -160,16 +162,17 @@ export function getNextBusinessDay(date: Date = new Date()): Date {
 
 /**
  * Get date range for a specific month in business timezone
+ * @param year - Full year (e.g., 2024)
+ * @param month - Month number 1-12 (1=January, 12=December)
  */
 export function getMonthRange(year: number, month: number): { start: Date; end: Date } {
-  const tz = getBusinessTimezone();
-  const start = new Date(Date.UTC(year, month - 1, 1));
-  const end = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+  // month parameter is 1-indexed, but Date constructor uses 0-indexed months
+  const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+  // Get last day of month: set to day 0 of next month
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = new Date(year, month - 1, lastDay, 23, 59, 59, 999);
   
-  return {
-    start: parseISOInTimezone(start.toISOString(), tz),
-    end: parseISOInTimezone(end.toISOString(), tz),
-  };
+  return { start, end };
 }
 
 /**
