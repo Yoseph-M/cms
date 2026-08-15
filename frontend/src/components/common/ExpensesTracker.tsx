@@ -124,7 +124,7 @@ export const ExpensesTracker: React.FC = () => {
     setEditing(expense);
     setForm({
       category: expense.category,
-      amount: String(expense.amount),
+      amount: String(expense.amount / 100), // Convert cents to dollars for display
       description: expense.description,
       date: toDateInputValue(expense.date),
     });
@@ -136,8 +136,8 @@ export const ExpensesTracker: React.FC = () => {
       addToast({ type: 'error', title: 'Category, amount, description, and date are required.' });
       return;
     }
-    const amount = parseFloat(form.amount);
-    if (!Number.isFinite(amount) || amount < 0) {
+    const amountDollars = parseFloat(form.amount);
+    if (!Number.isFinite(amountDollars) || amountDollars < 0) {
       addToast({ type: 'error', title: 'Amount must be a non-negative number.' });
       return;
     }
@@ -146,7 +146,7 @@ export const ExpensesTracker: React.FC = () => {
     try {
       const payload = {
         category: form.category,
-        amount,
+        amount: Math.round(amountDollars * 100), // Convert dollars to cents
         description: form.description.trim(),
         date: form.date,
       };
