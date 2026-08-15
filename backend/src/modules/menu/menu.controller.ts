@@ -46,6 +46,11 @@ export async function getMenuItems(req: AuthenticatedRequest, res: Response) {
   return res.json(items);
 }
 
+/**
+ * Create a new menu item.
+ * 
+ * @param price - Price in minor units (cents). E.g., 1599 for $15.99
+ */
 export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
   const { name, category, price, isAvailable, imageUrl } = req.body;
   const actorId = req.user!.userId;
@@ -54,7 +59,7 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
     data: {
       name,
       category,
-      price: Math.round(parseFloat(price) * 100),
+      price, // Already in cents from frontend
       isAvailable: isAvailable !== undefined ? isAvailable : true,
       imageUrl,
     },
@@ -73,6 +78,11 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
   return res.status(201).json(newItem);
 }
 
+/**
+ * Update an existing menu item.
+ * 
+ * @param price - Price in minor units (cents) if provided. E.g., 1599 for $15.99
+ */
 export async function updateMenuItem(req: AuthenticatedRequest, res: Response) {
   const { id } = req.params;
   const actorId = req.user!.userId;
@@ -87,7 +97,7 @@ export async function updateMenuItem(req: AuthenticatedRequest, res: Response) {
     data: {
       name: req.body.name,
       category: req.body.category,
-      price: req.body.price ? Math.round(parseFloat(req.body.price) * 100) : undefined,
+      price: req.body.price, // Already in cents from frontend
       isAvailable: req.body.isAvailable,
       imageUrl: req.body.imageUrl,
     },
