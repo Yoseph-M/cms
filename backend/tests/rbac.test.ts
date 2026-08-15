@@ -100,7 +100,7 @@ const ROUTE_SPECS: RouteSpec[] = [
     method: 'POST',
     path: '/api/menu',
     allowedRoles: [Role.OWNER, Role.MANAGER],
-    body: { name: 'Test Item', category: 'FOOD', price: 10.0 },
+    body: { name: 'Test Item', category: 'FOOD', price: 1000 }, // 10.00 in minor units
     description: 'Create menu item',
   },
   {
@@ -156,30 +156,51 @@ const ROUTE_SPECS: RouteSpec[] = [
     description: 'Update order status',
   },
   {
-    method: 'PATCH',
-    path: `/api/orders/${fakeId}/pay`,
+    method: 'POST',
+    path: `/api/orders/${fakeId}/settlements`,
     allowedRoles: [Role.CASHIER, Role.MANAGER, Role.OWNER],
-    body: { paymentMethod: 'CASH' },
-    description: 'Pay order',
+    body: { amountMinor: 10000, method: 'CASH', reference: '', note: '' },
+    description: 'Record settlement (payment)',
   },
   {
     method: 'POST',
-    path: `/api/orders/${fakeId}/cancel-request`,
+    path: `/api/orders/${fakeId}/cancellation-request`,
     allowedRoles: [Role.WAITER, Role.CASHIER, Role.MANAGER, Role.OWNER],
     body: { reason: 'Customer changed mind' },
-    description: 'Request cancel order',
-  },
-  {
-    method: 'PATCH',
-    path: `/api/orders/${fakeId}/cancel-confirm`,
-    allowedRoles: [Role.CASHIER, Role.MANAGER, Role.OWNER],
-    description: 'Confirm cancel order',
+    description: 'Request order cancellation',
   },
   {
     method: 'POST',
     path: `/api/orders/${fakeId}/reprint`,
     allowedRoles: [Role.CASHIER, Role.MANAGER, Role.OWNER],
     description: 'Reprint order',
+  },
+
+  // --- Cancellation Requests ---
+  {
+    method: 'GET',
+    path: '/api/cancellation-requests',
+    allowedRoles: [Role.WAITER, Role.CASHIER, Role.MANAGER, Role.OWNER],
+    description: 'List cancellation requests',
+  },
+  {
+    method: 'GET',
+    path: `/api/cancellation-requests/${fakeId}`,
+    allowedRoles: [Role.WAITER, Role.CASHIER, Role.MANAGER, Role.OWNER],
+    description: 'Get cancellation request',
+  },
+  {
+    method: 'PATCH',
+    path: `/api/cancellation-requests/${fakeId}/approve`,
+    allowedRoles: [Role.MANAGER, Role.OWNER],
+    description: 'Approve cancellation request',
+  },
+  {
+    method: 'PATCH',
+    path: `/api/cancellation-requests/${fakeId}/reject`,
+    allowedRoles: [Role.MANAGER, Role.OWNER],
+    body: { reason: 'Not valid' },
+    description: 'Reject cancellation request',
   },
 
   // --- Attendance ---
