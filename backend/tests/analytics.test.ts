@@ -2,7 +2,7 @@
  * Analytics & Audit integration tests — Phase 11
  */
 import request from 'supertest';
-import { OrderStatus, PaymentMethod } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
 
 const app = getTestApp();
@@ -21,7 +21,7 @@ describe('Analytics endpoints', () => {
     const p = getPrisma();
 
     const menuItem = await p.menuItem.create({
-      data: { name: 'Burger', category: 'FOOD', price: 12, isAvailable: true },
+      data: { name: 'Burger', category: 'FOOD', price: 1200, isAvailable: true }, // 12.00 in minor units
     });
 
     await p.order.create({
@@ -29,11 +29,10 @@ describe('Analytics endpoints', () => {
         clientOrderId: 'ord-cat-1',
         tableNumber: '1',
         waiterId: owner.id,
-        items: [{ menuItemId: menuItem.id, name: 'Burger', unitPrice: 12, quantity: 2, notes: '' }],
-        totalAmount: 24,
+        items: [{ menuItemId: menuItem.id, name: 'Burger', unitPrice: 1200, quantity: 2, notes: '' }],
+        totalAmount: 2400, // 24.00 in minor units
         status: OrderStatus.PAID,
-        paymentMethod: PaymentMethod.CASH,
-        paidAt: new Date(),
+        settlementStatus: 'SETTLED',
       },
     });
 
@@ -55,8 +54,8 @@ describe('Analytics endpoints', () => {
         clientOrderId: 'ord-peak-1',
         tableNumber: '2',
         waiterId: owner.id,
-        items: [{ menuItemId: owner.id, name: 'Coffee', unitPrice: 5, quantity: 1, notes: '' }],
-        totalAmount: 5,
+        items: [{ menuItemId: owner.id, name: 'Coffee', unitPrice: 500, quantity: 1, notes: '' }],
+        totalAmount: 500, // 5.00 in minor units
         status: OrderStatus.SUBMITTED,
       },
     });
@@ -78,11 +77,10 @@ describe('Analytics endpoints', () => {
         clientOrderId: 'ord-pm-1',
         tableNumber: '3',
         waiterId: owner.id,
-        items: [{ menuItemId: owner.id, name: 'Tea', unitPrice: 4, quantity: 1, notes: '' }],
-        totalAmount: 4,
+        items: [{ menuItemId: owner.id, name: 'Tea', unitPrice: 400, quantity: 1, notes: '' }],
+        totalAmount: 400, // 4.00 in minor units
         status: OrderStatus.PAID,
-        paymentMethod: PaymentMethod.CARD,
-        paidAt: new Date(),
+        settlementStatus: 'SETTLED',
       },
     });
 
@@ -103,8 +101,8 @@ describe('Analytics endpoints', () => {
         clientOrderId: 'ord-cancel-1',
         tableNumber: '4',
         waiterId: owner.id,
-        items: [{ menuItemId: owner.id, name: 'Salad', unitPrice: 8, quantity: 1, notes: '' }],
-        totalAmount: 8,
+        items: [{ menuItemId: owner.id, name: 'Salad', unitPrice: 800, quantity: 1, notes: '' }],
+        totalAmount: 800, // 8.00 in minor units
         status: OrderStatus.CANCELLED,
         cancellationReason: 'Customer changed mind',
       },
@@ -208,19 +206,29 @@ describe('Profit & loss + expenses', () => {
     const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'pnl-waiter@pos.com' });
     const p = getPrisma();
 
-    const paidAt = new Date('2026-06-15T12:00:00Z');
+    const recordedAt = new Date('2026-06-15T12:00:00Z');
 
-    await p.order.create({
+    const order = await p.order.create({
       data: {
         clientOrderId: 'ord-pnl-1',
         tableNumber: '1',
         waiterId: waiter.id,
         items: [{ menuItemId: waiter.id, name: 'Tea', unitPrice: 10000, quantity: 2, notes: '' }],
         totalAmount: 20000,
+        createdAt: recordedAt,
         status: OrderStatus.PAID,
-        isPaid: true,
-        paymentMethod: PaymentMethod.CASH,
-        paidAt,
+        settlementStatus: 'SETTLED',
+      },
+    });
+
+    // Create settlement record to track the payment
+    await p.settlement.create({
+      data: {
+        orderId: order.id,
+        amountMinor: 20000,
+        method: 'CASH',
+        recordedById: owner.id,
+        recordedAt,
       },
     });
 
@@ -232,7 +240,7 @@ describe('Profit & loss + expenses', () => {
         baseSalary: 1200000,
         paidAmount: 5000,
         processedById: owner.id,
-        paymentDate: paidAt,
+        paymentDate: recordedAt,
       },
     });
 
@@ -241,7 +249,7 @@ describe('Profit & loss + expenses', () => {
         category: 'RENT',
         amount: 3000,
         description: 'June rent share',
-        date: paidAt,
+        date: recordedAt,
         recordedById: owner.id,
       },
     });
