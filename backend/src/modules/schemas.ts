@@ -19,7 +19,7 @@ export const createUserSchema = z.object({
   email: z.string().email().optional().nullable(),
   phone: z.string().min(5, 'Valid phone number is required'),
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
-  salaryAmount: z.number().nonnegative().default(0),
+  salaryAmount: z.number().int('Salary must be an integer (cents)').nonnegative().default(0),
 });
 
 export const updateUserSchema = z.object({
@@ -48,14 +48,14 @@ export const updateSystemSettingSchema = z.object({
 export const createMenuItemSchema = z.object({
   name: z.string().min(1, 'Item name is required'),
   category: z.nativeEnum(MenuCategory),
-  price: z.number().nonnegative('Price must be greater than or equal to 0'),
+  price: z.number().int('Price must be an integer (cents)').positive('Price must be greater than 0'),
   isAvailable: z.boolean().default(true),
 });
 
 export const updateMenuItemSchema = z.object({
   name: z.string().min(1).optional(),
   category: z.nativeEnum(MenuCategory).optional(),
-  price: z.number().nonnegative().optional(),
+  price: z.number().int('Price must be an integer (cents)').positive('Price must be greater than 0').optional(),
   isAvailable: z.boolean().optional(),
 });
 
