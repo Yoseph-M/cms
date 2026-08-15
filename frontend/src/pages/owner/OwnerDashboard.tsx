@@ -97,6 +97,10 @@ interface TrendSalesData {
   date: string;
   revenue: number;
   orderCount: number;
+  topItems?: Array<{
+    name: string;
+    count: number;
+  }>;
 }
 
 export const OwnerDashboard: React.FC = () => {
@@ -333,10 +337,10 @@ export const OwnerDashboard: React.FC = () => {
             <span className="text-[11px] text-muted-foreground">{t('dashboard.topItems.lastDays', { count: trendData.length, defaultValue: 'Last {{count}} days' })}</span>
           </CardHeader>
           <CardContent>
-            {trendData.length > 0 && trendData[0].topItems ? (
+            {trendData.length > 0 && trendData[0].topItems && trendData[0].topItems.length > 0 ? (
               <ul className="space-y-3">
                 {trendData[0].topItems.slice(0, 5).map((item: any, idx: number) => {
-                  const max = trendData[0].topItems[0].count || 1;
+                  const max = trendData[0].topItems![0].count || 1;
                   const widthPct = Math.max(8, (item.count / max) * 100);
                   return (
                     <li key={idx} className="group">
