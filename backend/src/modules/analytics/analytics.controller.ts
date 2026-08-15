@@ -85,7 +85,7 @@ export async function getDailySales(req: AuthenticatedRequest, res: Response) {
 
   const totalRevenue = today.totalRevenue;
   const orderCount = today.orderCount;
-  const avgTicket = orderCount > 0 ? Math.round((totalRevenue / orderCount) * 100) / 100 : 0;
+  const avgTicket = orderCount > 0 ? Math.round(totalRevenue / orderCount) : 0; // Average in cents
   const mtdRevenue = mtd.totalRevenue;
   const priorDayRevenue = yesterday.totalRevenue;
   const priorMtdRevenue = priorMtd.totalRevenue;
@@ -99,7 +99,7 @@ export async function getDailySales(req: AuthenticatedRequest, res: Response) {
   return res.json({
     date: new Date(todayStart.getTime() + offsetHours * 3600000).toISOString().split('T')[0],
     totalRevenue,
-    mtdRevenue: Math.round(mtdRevenue * 100) / 100,
+    mtdRevenue, // Already in cents
     orderCount,
     avgTicket,
     activeOrdersCount,
@@ -354,25 +354,25 @@ export async function getPeakHours(req: AuthenticatedRequest, res: Response) {
 
 export async function getPaymentMethods(req: AuthenticatedRequest, res: Response) {
   const { from, to } = req.query;
-  const match: Record<string, unknown> = { status: 'PAID', paymentMethod: { $ne: 'NONE' } };
-  Object.assign(match, dateRangeMatch('paidAt', from as string | undefined, to as string | undefined));
+  // Use settlementStatus instead of deprecated isPaid/paymentMethod
+  const match: Record<string, unknown> = {};
+  Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
   const pipeline = [
     { $match: match },
     {
       $group: {
-        _id: '$paymentMethod',
-        revenue: { $sum: '$totalAmount' },
+        _id: '$method',
+        revenue: { $sum: '$amountMinor' },
         count: { $sum: 1 },
       },
     },
     { $project: { _id: 0, method: '$_id', revenue: 1, count: 1 } },
   ];
 
-  const rawResult = await prisma.order.aggregateRaw({ pipeline: pipeline as never });
+  const rawResult = await prisma.settlement.aggregateRaw({ pipeline: pipeline as never });
   return res.json(rawResult);
 }
-
 export async function getCancellations(req: AuthenticatedRequest, res: Response) {
   const { from, to } = req.query;
   const match: Record<string, unknown> = { status: 'CANCELLED' };
@@ -443,15 +443,19 @@ export async function getAuditLogs(req: AuthenticatedRequest, res: Response) {
  * GET /analytics/profit-loss?from&to
  * Revenue (paid non-cancelled orders) vs payroll + other expenses → net.
  */
+/**
+ * GET /analytics/profit-loss?from&to
+ * Revenue (settled non-cancelled orders) vs payroll + other expenses → net.
+ */
 export async function getProfitLoss(req: AuthenticatedRequest, res: Response) {
   const from = (req.query.from as string) || undefined;
   const to = (req.query.to as string) || undefined;
 
   const orderMatch: Record<string, unknown> = {
-    isPaid: true,
+    settlementStatus: 'SETTLED',
     status: { $ne: 'CANCELLED' },
   };
-  Object.assign(orderMatch, dateRangeMatch('paidAt', from, to));
+  Object.assign(orderMatch, dateRangeMatch('createdAt', from, to));
 
   const orderPipeline = [
     { $match: orderMatch },
@@ -508,9 +512,9 @@ export async function getProfitLoss(req: AuthenticatedRequest, res: Response) {
   return res.json({
     from: from || null,
     to: to || null,
-    revenue: Math.round(revenue * 100) / 100,
-    payrollCost: Math.round(payrollCost * 100) / 100,
-    otherExpenses: Math.round(otherExpenses * 100) / 100,
-    netProfit: Math.round(netProfit * 100) / 100,
+    revenue, // Already in cents
+    payrollCost, // Already in cents
+    otherExpenses, // Already in cents
+    netProfit, // Already in cents
   });
 }
