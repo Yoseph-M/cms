@@ -72,7 +72,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
       email: email || null,
       phone,
       passwordHash: passHash,
-      salaryAmount: salaryAmount ? Math.round(parseFloat(salaryAmount) * 100) : 0,
+      salaryAmount: salaryAmount || 0, // Already in cents from frontend
     },
     select: {
       id: true,
@@ -115,7 +115,7 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
     where: { id },
     data: {
       ...req.body,
-      ...(req.body.salaryAmount !== undefined && { salaryAmount: Math.round(parseFloat(req.body.salaryAmount) * 100) })
+      ...(req.body.salaryAmount !== undefined && { salaryAmount: req.body.salaryAmount }) // Already in cents
     },
     select: {
       id: true,
