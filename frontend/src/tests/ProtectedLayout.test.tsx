@@ -36,7 +36,12 @@ describe('ProtectedLayout / App Routing', () => {
   });
 
   it('redirects to /login when not authenticated', async () => {
-    (useAuthStore as any).mockReturnValue({ isAuthenticated: false, user: null });
+    (useAuthStore as any).mockReturnValue({ 
+      isAuthenticated: false, 
+      user: null,
+      isLoading: false,
+      bootstrapSession: vi.fn(),
+    });
 
     render(
       <MemoryRouter initialEntries={['/owner']}>
@@ -51,6 +56,8 @@ describe('ProtectedLayout / App Routing', () => {
     (useAuthStore as any).mockReturnValue({
       isAuthenticated: true,
       user: { role: 'OWNER', id: '1', name: 'Owner' },
+      isLoading: false,
+      bootstrapSession: vi.fn(),
     });
 
     render(
@@ -66,6 +73,8 @@ describe('ProtectedLayout / App Routing', () => {
     (useAuthStore as any).mockReturnValue({
       isAuthenticated: true,
       user: { role: 'WAITER', id: '2', name: 'Waiter' },
+      isLoading: false,
+      bootstrapSession: vi.fn(),
     });
 
     render(
