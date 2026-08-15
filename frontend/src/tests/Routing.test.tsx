@@ -38,6 +38,8 @@ describe('Layout Architecture Regression Tests', () => {
       (useAuthStore as any).mockReturnValue({
         user: { role: 'OWNER', name: 'Test Owner' },
         isAuthenticated: true,
+        isLoading: false,
+        bootstrapSession: vi.fn(),
       });
 
       renderWithQueryClient(
@@ -58,6 +60,8 @@ describe('Layout Architecture Regression Tests', () => {
       (useAuthStore as any).mockReturnValue({
         user: { role: 'MANAGER', name: 'Test Manager' },
         isAuthenticated: true,
+        isLoading: false,
+        bootstrapSession: vi.fn(),
       });
 
       renderWithQueryClient(
@@ -79,6 +83,8 @@ describe('Layout Architecture Regression Tests', () => {
       (useAuthStore as any).mockReturnValue({
         user: { role: 'OWNER', name: 'Test Owner' },
         isAuthenticated: true,
+        isLoading: false,
+        bootstrapSession: vi.fn(),
       });
 
       const { container } = renderWithQueryClient(
@@ -97,6 +103,8 @@ describe('Layout Architecture Regression Tests', () => {
       (useAuthStore as any).mockReturnValue({
         user: { role: 'MANAGER', name: 'Test Manager' },
         isAuthenticated: true,
+        isLoading: false,
+        bootstrapSession: vi.fn(),
       });
 
       const { container } = renderWithQueryClient(
@@ -115,6 +123,8 @@ describe('Layout Architecture Regression Tests', () => {
       (useAuthStore as any).mockReturnValue({
         user: { role: 'MANAGER', name: 'Test Manager' },
         isAuthenticated: true,
+        isLoading: false,
+        bootstrapSession: vi.fn(),
       });
 
       renderWithQueryClient(
@@ -135,6 +145,8 @@ describe('Layout Architecture Regression Tests', () => {
       (useAuthStore as any).mockReturnValue({
         user: { role: 'CASHIER', name: 'Test Cashier' },
         isAuthenticated: true,
+        isLoading: false,
+        bootstrapSession: vi.fn(),
       });
 
       renderWithQueryClient(
