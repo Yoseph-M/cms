@@ -10,7 +10,7 @@
 
 import { prisma } from './prisma.service';
 import { recordAudit } from './audit.service';
-import { PaymentMethod, SettlementStatus, OrderStatus } from '@prisma/client';
+import { PaymentMethod, SettlementStatus, OrderStatus, CashDrawerEventType } from '@prisma/client';
 import { executeInCriticalTransaction } from '../utils/transaction';
 import { canSettle } from '../utils/orderStateMachine';
 import {
@@ -154,17 +154,51 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
       },
     });
 
+    // 4.5. Auto-create CASH_SETTLEMENT ledger entry if CASH
+    if (method === PaymentMethod.CASH) {
+      const activeShift = await tx.cashierShift.findFirst({
+        where: { cashierId: recordedById, status: 'OPEN' },
+      });
+      
+      if (!activeShift) {
+        throw new ValidationError('A cashier must have an active OPEN shift to process cash settlements.', 'method');
+      }
+
+      await tx.cashDrawerEvent.create({
+        data: {
+          shiftId: activeShift.id,
+          type: CashDrawerEventType.CASH_SETTLEMENT,
+          amountMinor,
+          referenceType: 'Settlement',
+          referenceId: settlement.id,
+          performedById: recordedById,
+          notes: `Cash settlement for order ${orderId}`,
+        },
+      });
+    }
+
     // 5. Update order settlement status atomically using optimistic locking
     // This ensures we don't overwrite if status changed since we read
+    
+    const updateData: any = {
+      settlementStatus: newSettlementStatus,
+    };
+    
+    if (newSettlementStatus === 'SETTLED') {
+      updateData.status = OrderStatus.PAID;
+      updateData.isPaid = true;
+      updateData.paidAt = new Date();
+      updateData.cashierId = recordedById;
+      updateData.paymentMethod = method;
+    }
+
     const updateResult = await tx.order.updateMany({
       where: {
         id: orderId,
         // Optimistic lock: only update if status hasn't changed
         settlementStatus: order.settlementStatus,
       },
-      data: {
-        settlementStatus: newSettlementStatus,
-      },
+      data: updateData,
     });
 
     if (updateResult.count === 0) {
