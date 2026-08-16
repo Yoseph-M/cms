@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
+import { extractErrorMessage } from '../../utils/errorHandler';
 
 function exportCSV(data: Record<string, unknown>[], filename: string) {
   if (!data.length) return;
@@ -99,7 +100,7 @@ function useWidget<T>(endpoint: string, deps: Record<string, string> = {}) {
       setData(res.data);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: string } } };
-      setError(err.response?.data?.error || 'Failed to load data.');
+      setError(extractErrorMessage(err, 'Failed to load data.'));
     } finally {
       setLoading(false);
     }
