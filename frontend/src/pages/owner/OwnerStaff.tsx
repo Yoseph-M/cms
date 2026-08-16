@@ -17,6 +17,7 @@ import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { formatEthiopianPhone, isValidEthiopianPhone, ETHIOPIAN_COUNTRY_CODE } from '../../utils/phone';
+import { extractErrorMessage } from '../../utils/errorHandler';
 
 interface User {
   id: string;
@@ -70,7 +71,7 @@ export const OwnerStaff: React.FC = () => {
       const res = await axiosClient.get('/users');
       setUsers(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load staff.');
+      setError(extractErrorMessage(err, 'Failed to load staff.'));
     } finally {
       setIsLoading(false);
     }
@@ -101,7 +102,7 @@ export const OwnerStaff: React.FC = () => {
 
   const openEdit = (user: User) => {
     setEditingUser(user);
-    setForm({ name: user.name, role: user.role, email: user.email || ', phone: user.phone, salaryAmount: String(user.salaryAmount / 100), credential: '' }); // Convert cents to dollars for display
+    setForm({ name: user.name, role: user.role, email: user.email || '', phone: user.phone, salaryAmount: String(user.salaryAmount / 100), credential: '' }); // Convert cents to dollars for display
     setShowCredential(false);
     setSlideOverOpen(true);
   };
@@ -138,7 +139,7 @@ export const OwnerStaff: React.FC = () => {
       }
       setSlideOverOpen(false);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Save failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Save failed', message: extractErrorMessage(err) });
     } finally {
       setIsSaving(false);
     }
@@ -160,7 +161,7 @@ export const OwnerStaff: React.FC = () => {
         pendingStatusTimeouts.current.delete(user.id);
       } catch (err: any) {
         setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: !nextActive } : u));
-        addToast({ type: 'error', title: 'Action failed', message: err.response?.data?.error });
+        addToast({ type: 'error', title: 'Action failed', message: extractErrorMessage(err) });
         pendingStatusTimeouts.current.delete(user.id);
       }
     };
@@ -196,7 +197,7 @@ export const OwnerStaff: React.FC = () => {
       const newCred = res.data?.password || '(see response)';
       setResetResult({ name: user.name, credential: newCred });
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Reset failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Reset failed', message: extractErrorMessage(err) });
     } finally {
       setIsResetting(false);
     }
