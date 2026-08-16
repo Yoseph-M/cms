@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
+import { extractErrorMessage } from '../../utils/errorHandler';
 
 interface StaffUser {
   id: string;
@@ -77,7 +78,7 @@ export const OwnerPayroll: React.FC = () => {
       const res = await axiosClient.get('/payroll');
       setLedger(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load payroll ledger.');
+      setError(extractErrorMessage(err, 'Failed to load payroll ledger.'));
     } finally {
       setIsLoading(false);
     }
@@ -123,7 +124,7 @@ export const OwnerPayroll: React.FC = () => {
       setRefSalary(salary);
       setPaidAmount(String(salary));
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Could not load salary reference', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Could not load salary reference', message: extractErrorMessage(err) });
     } finally {
       setIsLoadingRef(false);
     }
@@ -157,7 +158,7 @@ export const OwnerPayroll: React.FC = () => {
       addToast({
         type: 'error',
         title: 'Could not record entry',
-        message: detail || err.response?.data?.error,
+        message: detail || extractErrorMessage(err),
       });
     } finally {
       setIsSubmitting(false);
@@ -183,7 +184,7 @@ export const OwnerPayroll: React.FC = () => {
       setDetailRow(null);
       fetchLedger();
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Adjustment failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Adjustment failed', message: extractErrorMessage(err) });
     } finally {
       setIsAdjusting(false);
     }
