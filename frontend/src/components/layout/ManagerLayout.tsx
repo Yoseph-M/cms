@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { Header } from '../common/Header';
 import { SidebarProfile } from './SidebarProfile';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
-import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle } from 'lucide-react';
+import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle, ClipboardCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
@@ -11,6 +11,7 @@ import { PanelLeftRounded } from '../ui/PanelLeftRounded';
 const MANAGER_NAV = [
   { to: '/manager/people', label: 'People', icon: Users, end: false },
   { to: '/manager/cancellations', label: 'Cancellations', icon: XCircle, end: false },
+  { to: '/manager/reconciliation', label: 'End of Day', icon: ClipboardCheck, end: false },
   { to: '/manager/menu', label: 'Menu Catalog', icon: UtensilsCrossed, end: false },
   { to: '/manager/attendance', label: 'Attendance', icon: CalendarCheck, end: false },
   { to: '/manager/payroll', label: 'Payroll', icon: DollarSign, end: false },
