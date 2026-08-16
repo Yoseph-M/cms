@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { axiosClient } from '../api/axiosClient';
 import { useAuthStore } from '../store/authStore';
+import { extractErrorMessage } from '../utils/errorHandler';
 
 interface Settlement {
   id: string;
@@ -61,7 +62,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
       setRemainingAmount(remainingRes.data.remainingAmount);
     } catch (err: any) {
       console.error('Failed to fetch settlements:', err);
-      setError(err.response?.data?.error?.message || 'Failed to load settlement history');
+      setError(extractErrorMessage(err, 'Failed to load settlement history'));
     } finally {
       setLoading(false);
     }
