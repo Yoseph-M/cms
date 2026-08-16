@@ -86,7 +86,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
       setStaff(staffData);
       setAttendance(attRes.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load attendance data.');
+      setError(extractErrorMessage(err, 'Failed to load attendance data.'));
     } finally {
       setIsLoading(false);
     }
@@ -130,7 +130,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
       addToast({ type: 'success', title: 'Attendance saved' });
       setPopover(null);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Failed to save', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Failed to save', message: extractErrorMessage(err) });
     } finally {
       setIsSaving(false);
     }
