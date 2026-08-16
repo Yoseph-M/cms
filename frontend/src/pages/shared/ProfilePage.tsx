@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
+import { extractErrorMessage } from '../../utils/errorHandler';
 import type { Role } from '../../types';
 
 /* ─── Role-themed config ─── */
@@ -261,7 +262,7 @@ export const ProfilePage: React.FC = () => {
       addToast({
         type: 'error',
         title: 'Update failed',
-        message: err.response?.data?.error || 'Could not update password.',
+        message: extractErrorMessage(err) || 'Could not update password.',
       });
     } finally {
       setIsSavingPassword(false);
