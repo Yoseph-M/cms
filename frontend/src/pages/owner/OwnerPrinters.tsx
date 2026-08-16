@@ -13,6 +13,7 @@ import { Printer, Plus, Pencil, Trash2, Zap, Wifi, WifiOff, X, AlertCircle } fro
 import { Tooltip } from '../../components/ui/Tooltip';
 import { usePrintersQuery } from '../../hooks/useCachedQueries';
 import { EmptyState } from '../../components/common/EmptyState';
+import { extractErrorMessage } from '../../utils/errorHandler';
 
 interface PrinterStation {
   id?: string;
@@ -132,7 +133,7 @@ export const OwnerPrinters: React.FC = () => {
       invalidatePrinters();
       setSlideOverOpen(false);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Save failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Save failed', message: extractErrorMessage(err) });
     } finally {
       setIsSaving(false);
     }
@@ -148,7 +149,7 @@ export const OwnerPrinters: React.FC = () => {
       addToast({ type: 'success', title: 'Printer removed' });
       setDeleteTarget(null);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Delete failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Delete failed', message: extractErrorMessage(err) });
     } finally {
       setIsDeleting(false);
     }
@@ -165,7 +166,7 @@ export const OwnerPrinters: React.FC = () => {
       addToast({
         type: 'error',
         title: `Test print failed: ${printer.station}`,
-        message: err.response?.data?.error || 'TCP connection failed',
+        message: extractErrorMessage(err) || 'TCP connection failed',
       });
       setStatuses(prev => ({ ...prev, [printer.station]: 'offline' }));
     } finally {
