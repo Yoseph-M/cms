@@ -65,7 +65,7 @@ export const TableCountSetting: React.FC = () => {
       addToast({
         type: 'error',
         title: 'Update failed',
-        message: err.response?.data?.error || 'Could not update setting.',
+        message: extractErrorMessage(err) || 'Could not update setting.',
       });
     } finally {
       setIsSaving(false);
