@@ -160,7 +160,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       addToast({
         type: 'error',
         title: t('ordering.toasts.orderFailed'),
-        message: err.response?.data?.error || t('ordering.toasts.orderFailedMsg'),
+        message: extractErrorMessage(err) || t('ordering.toasts.orderFailedMsg'),
       });
     } finally {
       setIsSubmitting(false);
