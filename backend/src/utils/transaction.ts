@@ -120,12 +120,14 @@ export async function executeInTransaction<T>(
  * 
  * @param prisma - Prisma client instance
  * @param callback - Function containing operations to execute
+ * @param options - Transaction options (timeout, isolation level)
  * @returns Result from callback
  * @throws Error if transactions are not supported
  */
 export async function executeInCriticalTransaction<T>(
   prisma: PrismaClient,
-  callback: (tx: PrismaClient) => Promise<T>
+  callback: (tx: PrismaClient) => Promise<T>,
+  options?: { timeout?: number; maxWait?: number }
 ): Promise<T> {
   // Ensure we've detected transaction support
   if (!capabilityCheckComplete) {
@@ -140,8 +142,12 @@ export async function executeInCriticalTransaction<T>(
     );
   }
 
-  // Use full Prisma transaction with ACID guarantees
-  return await prisma.$transaction(callback as any) as T;
+  // Use full Prisma transaction with ACID guarantees and increased timeout
+  // Default timeout increased from 5s to 10s to prevent timeouts on slow queries
+  return await prisma.$transaction(callback as any, {
+    timeout: options?.timeout || 10000, // 10 seconds (was 5s default)
+    maxWait: options?.maxWait || 5000, // 5 seconds to acquire connection
+  }) as T;
 }
 
 /**
