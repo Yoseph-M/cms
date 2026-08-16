@@ -65,7 +65,7 @@ export const ManagerDashboard: React.FC = () => {
       const res = await axiosClient.get('/users');
       setStaffList(res.data);
     } catch (err: any) {
-      setStaffError(err.response?.data?.error || t('toasts.fetchStaffError', { defaultValue: 'Failed to fetch staff list' }));
+      setStaffError(extractErrorMessage(err, t('toasts.fetchStaffError', { defaultValue: 'Failed to fetch staff list' })));
     } finally {
       setIsLoadingStaff(false);
     }
@@ -84,7 +84,7 @@ export const ManagerDashboard: React.FC = () => {
       addToast({
         type: 'error',
         title: t('toasts.attendanceFailed', { defaultValue: 'Failed to log attendance' }),
-        message: err.response?.data?.error,
+        message: extractErrorMessage(err),
       });
     }
   };
