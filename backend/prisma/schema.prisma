@@ -82,6 +82,56 @@ enum CancellationRequestStatus {
   REJECTED
 }
 
+enum ShiftStatus {
+  OPEN
+  PENDING_REVIEW
+  CLOSED
+}
+
+enum CashDrawerEventType {
+  OPENING_BALANCE
+  CASH_SETTLEMENT
+  CASH_PAYOUT
+  PETTY_CASH
+  CASH_ADJUSTMENT
+  CLOSING_BALANCE
+}
+
+enum VarianceClassification {
+  BALANCED
+  SHORT
+  OVER
+}
+
+enum VarianceReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DailyCloseStatus {
+  OPEN
+  PENDING_REVIEW
+  CLOSED
+}
+
+enum IntegritySeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum IntegrityCategory {
+  OVER_SETTLEMENT
+  ORPHAN_SETTLEMENT
+  MISSING_SHIFT
+  CLOSED_SHIFT_SETTLEMENT
+  DUPLICATE_CLOSE
+  NEGATIVE_TOTAL
+  BROKEN_LEDGER
+}
+
 // ---------- Models ----------
 
 model User {
@@ -112,6 +162,14 @@ model User {
   expensesRecorded  Expense[]          @relation("ExpenseRecorder")
   cancellationRequestsCreated OrderCancellationRequest[] @relation("CancellationRequester")
   cancellationRequestsApproved OrderCancellationRequest[] @relation("CancellationApprover")
+
+  cashierShiftsAsCashier CashierShift[] @relation("CashierShifts")
+  cashierShiftsOpened    CashierShift[] @relation("ShiftOpenedBy")
+  cashierShiftsClosed    CashierShift[] @relation("ShiftClosedBy")
+  cashierShiftsReviewed  CashierShift[] @relation("ShiftReviewedBy")
+  cashDrawerEvents       CashDrawerEvent[] @relation("CashDrawerEventPerformedBy")
+  varianceReviews        VarianceReview[] @relation("VarianceReviewedBy")
+  dailyClosesClosed      DailyClose[] @relation("DailyCloseClosedBy")
 
   @@index([role, isActive])
   @@map("users")
@@ -348,4 +406,109 @@ model SystemSetting {
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+model CashierShift {
+  id                String       @id @default(auto()) @map("_id") @db.ObjectId
+  cashierId         String       @db.ObjectId
+  cashier           User         @relation("CashierShifts", fields: [cashierId], references: [id])
+  status            ShiftStatus  @default(OPEN)
+  openedAt          DateTime     @default(now())
+  closedAt          DateTime?
+  openingCashMinor  Int
+  expectedCashMinor Int?
+  declaredCashMinor Int?
+  varianceMinor     Int?
+  openedById        String       @db.ObjectId
+  openedBy          User         @relation("ShiftOpenedBy", fields: [openedById], references: [id])
+  closedById        String?      @db.ObjectId
+  closedBy          User?        @relation("ShiftClosedBy", fields: [closedById], references: [id])
+  reviewedById      String?      @db.ObjectId
+  reviewedBy        User?        @relation("ShiftReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt        DateTime?
+  reviewNotes       String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  cashDrawerEvents  CashDrawerEvent[]
+  varianceReviews   VarianceReview[]
+
+  @@index([cashierId, status, openedAt])
+  @@map("cashier_shifts")
+}
+
+model CashDrawerEvent {
+  id              String              @id @default(auto()) @map("_id") @db.ObjectId
+  shiftId         String              @db.ObjectId
+  shift           CashierShift        @relation(fields: [shiftId], references: [id])
+  type            CashDrawerEventType
+  amountMinor     Int
+  referenceType   String?
+  referenceId     String?
+  performedById   String              @db.ObjectId
+  performedBy     User                @relation("CashDrawerEventPerformedBy", fields: [performedById], references: [id])
+  notes           String?
+  createdAt       DateTime            @default(now())
+
+  @@index([shiftId, type, createdAt])
+  @@map("cash_drawer_events")
+}
+
+model VarianceReview {
+  id              String                 @id @default(auto()) @map("_id") @db.ObjectId
+  shiftId         String                 @db.ObjectId
+  shift           CashierShift           @relation(fields: [shiftId], references: [id])
+  varianceMinor   Int
+  classification  VarianceClassification
+  cashierReason   String
+  reviewStatus    VarianceReviewStatus   @default(PENDING)
+  reviewedById    String?                @db.ObjectId
+  reviewedBy      User?                  @relation("VarianceReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  managerNotes    String?
+  createdAt       DateTime               @default(now())
+
+  @@index([reviewStatus, createdAt])
+  @@map("variance_reviews")
+}
+
+model DailyClose {
+  id                     String           @id @default(auto()) @map("_id") @db.ObjectId
+  businessDate           String           @unique // "YYYY-MM-DD"
+  status                 DailyCloseStatus @default(OPEN)
+  totalSalesMinor        Int              @default(0)
+  totalSettledMinor      Int              @default(0)
+  cashSettledMinor       Int              @default(0)
+  cardSettledMinor       Int              @default(0)
+  mobileSettledMinor     Int              @default(0)
+  otherSettledMinor      Int              @default(0)
+  cashExpectedMinor      Int              @default(0)
+  cashDeclaredMinor      Int              @default(0)
+  cashVarianceMinor      Int              @default(0)
+  unsettledOrderCount    Int              @default(0)
+  partialSettlementCount Int              @default(0)
+  cancelledOrderCount    Int              @default(0)
+  closedById             String?          @db.ObjectId
+  closedBy               User?            @relation("DailyCloseClosedBy", fields: [closedById], references: [id])
+  closedAt               DateTime?
+  reviewNotes            String?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@index([businessDate, status])
+  @@map("daily_closes")
+}
+
+model IntegrityIssue {
+  id              String            @id @default(auto()) @map("_id") @db.ObjectId
+  severity        IntegritySeverity
+  category        IntegrityCategory
+  description     String
+  referenceType   String?
+  referenceId     String?
+  resolved        Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+
+  @@index([severity, resolved])
+  @@map("integrity_issues")
 }
