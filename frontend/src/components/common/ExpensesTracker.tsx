@@ -10,6 +10,7 @@ import { Sheet } from '../ui/Sheet';
 import { AlertDialog } from '../ui/AlertDialog';
 import { Plus, Pencil, Trash2, Wallet } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
+import { extractErrorMessage } from '../../utils/errorHandler';
 
 type ExpenseCategory =
   | 'RENT'
@@ -104,7 +105,7 @@ export const ExpensesTracker: React.FC = () => {
       const res = await axiosClient.get('/expenses', { params });
       setExpenses(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load expenses.');
+      setError(extractErrorMessage(err, 'Failed to load expenses.'));
     } finally {
       setIsLoading(false);
     }
@@ -164,7 +165,7 @@ export const ExpensesTracker: React.FC = () => {
       addToast({
         type: 'error',
         title: editing ? 'Update failed' : 'Could not record expense',
-        message: err.response?.data?.error,
+        message: extractErrorMessage(err),
       });
     } finally {
       setIsSaving(false);
@@ -180,7 +181,7 @@ export const ExpensesTracker: React.FC = () => {
       setDeleteTarget(null);
       fetchExpenses();
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Delete failed', message: err.response?.data?.error });
+      addToast({ type: 'error', title: 'Delete failed', message: extractErrorMessage(err) });
     } finally {
       setIsDeleting(false);
     }
