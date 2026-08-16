@@ -49,7 +49,7 @@ export const BusinessProfileSection: React.FC = () => {
       addToast({
         type: 'error',
         title: 'Save failed',
-        message: err.response?.data?.error || 'Could not save business profile.',
+        message: extractErrorMessage(err) || 'Could not save business profile.',
       });
     } finally {
       setIsSaving(false);
