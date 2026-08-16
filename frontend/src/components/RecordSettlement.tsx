@@ -5,9 +5,10 @@
  * Includes idempotency key generation for safe retries.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { axiosClient } from '../api/axiosClient';
 import { useAuthStore } from '../store/authStore';
+import { extractErrorMessage, extractErrorDetails } from '../utils/errorHandler';
 
 interface RecordSettlementProps {
   orderId: string;
@@ -29,33 +30,18 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [500, 1000, 2000]; // Exponential backoff
 
   const generateIdempotencyKey = () => {
     return `settlement-${orderId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
+  const submitSettlement = async (idempotencyKey: string) => {
     const amountMinor = Math.round(parseFloat(amount) * 100);
 
-    if (amountMinor <= 0) {
-      setError('Amount must be greater than zero');
-      return;
-    }
-
-    if (amountMinor > remainingAmount) {
-      setError(
-        `Amount cannot exceed remaining balance of $${(remainingAmount / 100).toFixed(2)}`
-      );
-      return;
-    }
-
     try {
-      setSubmitting(true);
-      const idempotencyKey = generateIdempotencyKey();
-
       await axiosClient.post(
         `/orders/${orderId}/settlements`,
         {
@@ -73,16 +59,64 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
       );
 
       onSuccess();
+      retryCountRef.current = 0; // Reset for next submission
     } catch (err: any) {
-      console.error('Failed to record settlement:', err);
-      const errorMessage =
-        err.response?.data?.error?.message ||
-        err.response?.data?.error ||
-        'Failed to record settlement';
-      setError(errorMessage);
-    } finally {
+      const errorDetails = extractErrorDetails(err);
+      const isConcurrentError = errorDetails.code === 'CONCURRENT_MODIFICATION';
+
+      // Retry logic for concurrent modification
+      if (isConcurrentError && retryCountRef.current < MAX_RETRIES) {
+        const delay = RETRY_DELAYS[retryCountRef.current];
+        console.log(`Concurrent modification detected. Retrying in ${delay}ms (attempt ${retryCountRef.current + 1}/${MAX_RETRIES})...`);
+        
+        if (retryCountRef.current === 0) {
+          setError('Order is being updated. Retrying automatically...');
+        }
+        
+        retryCountRef.current += 1;
+        
+        // Wait and retry with same idempotency key
+        setTimeout(() => {
+          submitSettlement(idempotencyKey);
+        }, delay);
+        return;
+      }
+
+      // Max retries reached or non-retryable error
+      retryCountRef.current = 0;
+      
+      if (isConcurrentError) {
+        setError('Order is being modified by another user. Please wait and try again.');
+      } else {
+        const errorMessage = extractErrorMessage(err, 'Failed to record settlement');
+        setError(errorMessage);
+      }
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    retryCountRef.current = 0;
+
+    const amountMinor = Math.round(parseFloat(amount) * 100);
+
+    if (amountMinor <= 0) {
+      setError('Amount must be greater than zero');
+      return;
+    }
+
+    if (amountMinor > remainingAmount) {
+      setError(
+        `Amount cannot exceed remaining balance of $${(remainingAmount / 100).toFixed(2)}`
+      );
+      return;
+    }
+
+    setSubmitting(true);
+    const idempotencyKey = generateIdempotencyKey();
+    await submitSettlement(idempotencyKey);
   };
 
   const handleQuickAmount = (percentage: number) => {
