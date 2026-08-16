@@ -38,6 +38,7 @@ import { PageSkeleton } from '../../components/common/PageSkeleton';
 import { formatCurrency } from '../../utils/currency';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { cn } from '../../lib/utils';
+import { extractErrorMessage, extractErrorDetails } from '../../utils/errorHandler';
 
 const CashierOrderingPanel = lazy(() =>
   import('../../components/cashier/CashierOrderingPanel').then((m) => ({
@@ -329,6 +330,7 @@ export const CashierDashboard: React.FC = () => {
 
   const [isPrinting, setIsPrinting] = useState(false);
   const [printed, setPrinted] = useState(false);
+  const isSettlingRef = useRef(false);
 
   // Cancellation
   const [cancelReason, setCancelReason] = useState('');
@@ -500,15 +502,22 @@ export const CashierDashboard: React.FC = () => {
       const res = await axiosClient.get('/orders');
       setOrders(res.data.data || res.data); // Support both paginated and flat arrays
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to fetch active queue');
+      setError(extractErrorMessage(err, 'Failed to fetch active queue'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleMarkPaid = async (orderId: string) => {
+  const handleMarkPaid = async (orderId: string, retryCount = 0) => {
+    if (retryCount === 0 && isSettlingRef.current) return;
+    if (retryCount === 0) isSettlingRef.current = true;
+
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = [500, 1000, 2000]; // Exponential backoff
+    
     setIsPrinting(true);
     setPrinted(false);
+    let isConcurrentError = false;
     try {
       // Use new settlements endpoint instead of deprecated /pay endpoint
       const order = orders.find(o => o.id === orderId);
@@ -521,6 +530,10 @@ export const CashierDashboard: React.FC = () => {
         method: paymentMethod,
         reference: '', // External transaction reference (optional)
         note: 'Settlement recorded via Cashier Dashboard',
+      }, {
+        headers: {
+          'Idempotency-Key': `settle-full-${orderId}`
+        }
       });
       
       // Update orders list with the returned order object
@@ -537,8 +550,51 @@ export const CashierDashboard: React.FC = () => {
         setTimeout(() => setPrinted(false), 3000);
       }, 800);
     } catch (err: any) {
+      // Check if it's a concurrent modification error and we can retry
+      const errorDetails = extractErrorDetails(err);
+      isConcurrentError = errorDetails.code === 'CONCURRENT_MODIFICATION';
+      
+      if (isConcurrentError && retryCount < MAX_RETRIES) {
+        // Automatic retry with backoff
+        const delay = RETRY_DELAY_MS[retryCount];
+        console.log(`Concurrent modification detected. Retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+        
+        // Show brief feedback
+        if (retryCount === 0) {
+          addToast({ 
+            type: 'info', 
+            title: 'Retrying...', 
+            message: 'Order was being updated. Retrying automatically.' 
+          });
+        }
+        
+        // Wait and retry
+        setTimeout(() => {
+          handleMarkPaid(orderId, retryCount + 1);
+        }, delay);
+        return;
+      }
+      
+      // Max retries reached or non-retryable error
       setIsPrinting(false);
-      addToast({ type: 'error', title: t('toasts.paymentFailed'), message: err.response?.data?.error });
+      
+      if (isConcurrentError && retryCount >= MAX_RETRIES) {
+        addToast({ 
+          type: 'error', 
+          title: t('toasts.paymentFailed'), 
+          message: 'Order is being modified by another user. Please wait and try again.' 
+        });
+      } else {
+        addToast({ 
+          type: 'error', 
+          title: t('toasts.paymentFailed'), 
+          message: extractErrorMessage(err) 
+        });
+      }
+    } finally {
+      if (retryCount === 0 || !isConcurrentError) {
+        isSettlingRef.current = false;
+      }
     }
   };
 
@@ -900,7 +956,7 @@ export const CashierDashboard: React.FC = () => {
 
                 {/* Items */}
                 <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
-                  {selectedOrder.items.map((item, idx) => (
+                  {(selectedOrder.items || []).map((item, idx) => (
                     <div
                       key={idx}
                       className="flex justify-between items-start gap-3 py-2.5 border-b border-border/40 last:border-0"
