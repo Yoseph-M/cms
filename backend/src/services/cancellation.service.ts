@@ -77,13 +77,14 @@ export async function requestCancellation(params: CreateCancellationRequestParam
   }
 
   // Use critical transaction to prevent duplicate requests
-  const request = await executeInCriticalTransaction(prisma, async (tx) => {
+  const requestId = await executeInCriticalTransaction(prisma, async (tx) => {
     // Check if there's already a pending cancellation request
     const pendingRequest = await tx.orderCancellationRequest.findFirst({
       where: { 
         orderId,
         status: PENDING_STATUS,
       },
+      select: { id: true }, // Only need to know if it exists
     });
 
     if (pendingRequest) {
@@ -104,22 +105,34 @@ export async function requestCancellation(params: CreateCancellationRequestParam
       throw new CannotCancelSettledOrderError(orderId);
     }
 
-    // Create cancellation request
-    return tx.orderCancellationRequest.create({
+    // Create cancellation request (without includes to keep transaction fast)
+    const created = await tx.orderCancellationRequest.create({
       data: {
         orderId,
         requestedById,
         reason: reason.trim(),
         status: PENDING_STATUS,
       },
-      include: {
-        order: true,
-        requestedBy: {
-          select: { id: true, name: true, role: true },
-        },
-      },
+      select: { id: true }, // Only return ID to keep transaction fast
     });
+
+    return created.id;
   });
+
+  // Fetch full request details OUTSIDE transaction (not time-sensitive)
+  const request = await prisma.orderCancellationRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      order: true,
+      requestedBy: {
+        select: { id: true, name: true, role: true },
+      },
+    },
+  });
+
+  if (!request) {
+    throw new NotFoundError('CancellationRequest', requestId);
+  }
 
   // Audit log
   await recordAudit({
@@ -162,7 +175,7 @@ export async function approveCancellation(params: ApproveCancellationParams) {
   const { requestId, approvedById } = params;
 
   // Use critical transaction - approval must be atomic
-  const result = await executeInCriticalTransaction(prisma, async (tx) => {
+  const { requestId: approvedRequestId, orderId } = await executeInCriticalTransaction(prisma, async (tx) => {
     // 1. Try to update cancellation request with conditional WHERE clause
     // This ensures we only succeed if status is still PENDING
     const updateResult = await tx.orderCancellationRequest.updateMany({
@@ -182,38 +195,44 @@ export async function approveCancellation(params: ApproveCancellationParams) {
       throw new CancellationRequestNotPendingError(requestId, 'already processed');
     }
 
-    // 2. Fetch the updated request (now approved)
+    // 2. Fetch minimal data to validate eligibility
     const approvedRequest = await tx.orderCancellationRequest.findUnique({
       where: { id: requestId },
-      include: {
-        order: true,
-        requestedBy: {
-          select: { id: true, name: true, role: true },
-        },
-        approvedBy: {
-          select: { id: true, name: true, role: true },
+      select: { 
+        id: true, 
+        orderId: true, 
+        reason: true,
+        order: {
+          select: {
+            status: true,
+            settlementStatus: true,
+          },
         },
       },
     });
 
-    // 3. Validate order is still eligible for cancellation
-    if (approvedRequest!.order.status === OrderStatus.CANCELLED) {
-      throw new OrderAlreadyCancelledError(approvedRequest!.orderId);
+    if (!approvedRequest) {
+      throw new NotFoundError('CancellationRequest', requestId);
     }
 
-    if (approvedRequest!.order.settlementStatus !== SettlementStatus.UNSETTLED) {
-      throw new CannotCancelSettledOrderError(approvedRequest!.orderId);
+    // 3. Validate order is still eligible for cancellation
+    if (approvedRequest.order.status === OrderStatus.CANCELLED) {
+      throw new OrderAlreadyCancelledError(approvedRequest.orderId);
+    }
+
+    if (approvedRequest.order.settlementStatus !== SettlementStatus.UNSETTLED) {
+      throw new CannotCancelSettledOrderError(approvedRequest.orderId);
     }
 
     // 4. Cancel the order - also use conditional update
     const orderUpdateResult = await tx.order.updateMany({
       where: {
-        id: approvedRequest!.orderId,
+        id: approvedRequest.orderId,
         status: { not: OrderStatus.CANCELLED }, // Only if not already cancelled
       },
       data: {
         status: OrderStatus.CANCELLED,
-        cancellationReason: approvedRequest!.reason,
+        cancellationReason: approvedRequest.reason,
         cancelledById: approvedById,
       },
     });
@@ -226,13 +245,36 @@ export async function approveCancellation(params: ApproveCancellationParams) {
       // The request is approved so we return that, but order was already cancelled
     }
 
-    // 5. Fetch final state
-    const cancelledOrder = await tx.order.findUnique({
-      where: { id: approvedRequest!.orderId },
-    });
-
-    return { request: approvedRequest!, order: cancelledOrder };
+    return { 
+      requestId: approvedRequest.id, 
+      orderId: approvedRequest.orderId 
+    };
   });
+
+  // Fetch full details OUTSIDE transaction
+  const [approvedRequest, cancelledOrder] = await Promise.all([
+    prisma.orderCancellationRequest.findUnique({
+      where: { id: approvedRequestId },
+      include: {
+        order: true,
+        requestedBy: {
+          select: { id: true, name: true, role: true },
+        },
+        approvedBy: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    }),
+    prisma.order.findUnique({
+      where: { id: orderId },
+    }),
+  ]);
+
+  if (!approvedRequest) {
+    throw new NotFoundError('CancellationRequest', requestId);
+  }
+
+  const result = { request: approvedRequest, order: cancelledOrder };
 
   // Audit log
   await recordAudit({
@@ -278,7 +320,7 @@ export async function rejectCancellation(params: RejectCancellationParams) {
   }
 
   // Use critical transaction for atomic rejection
-  const result = await executeInCriticalTransaction(prisma, async (tx) => {
+  const rejectedRequestId = await executeInCriticalTransaction(prisma, async (tx) => {
     // 1. Try to update with conditional WHERE clause
     const updateResult = await tx.orderCancellationRequest.updateMany({
       where: {
@@ -298,19 +340,21 @@ export async function rejectCancellation(params: RejectCancellationParams) {
       throw new CancellationRequestNotPendingError(requestId, 'already processed');
     }
 
-    // 2. Fetch the updated request
-    return tx.orderCancellationRequest.findUnique({
-      where: { id: requestId },
-      include: {
-        order: true,
-        requestedBy: {
-          select: { id: true, name: true, role: true },
-        },
-        approvedBy: {
-          select: { id: true, name: true, role: true },
-        },
+    return requestId;
+  });
+
+  // 2. Fetch the updated request OUTSIDE transaction
+  const result = await prisma.orderCancellationRequest.findUnique({
+    where: { id: rejectedRequestId },
+    include: {
+      order: true,
+      requestedBy: {
+        select: { id: true, name: true, role: true },
       },
-    });
+      approvedBy: {
+        select: { id: true, name: true, role: true },
+      },
+    },
   });
 
   if (!result) {
