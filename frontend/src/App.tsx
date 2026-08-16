@@ -13,6 +13,10 @@ import { OwnerLayout } from './components/layout/OwnerLayout';
 import { ManagerLayout } from './components/layout/ManagerLayout';
 import { CashierLayout } from './components/layout/CashierLayout';
 
+import { ClientOrderView } from './pages/client/ClientOrderView';
+import { CustomerDisplay } from './pages/client/CustomerDisplay';
+import { ShiftManager } from './components/cashier/ShiftManager';
+
 import { LoginPage } from './pages/login/LoginPage';
 import { NotFoundPage } from './pages/error/NotFoundPage';
 
@@ -59,6 +63,9 @@ const ManagerPayroll = lazy(() =>
 );
 const ManagerExpenses = lazy(() =>
   import('./pages/manager/ManagerExpenses').then((m) => ({ default: m.ManagerExpenses }))
+);
+const OperationalReconciliation = lazy(() =>
+  import('./pages/manager/OperationalReconciliation').then((m) => ({ default: m.OperationalReconciliation }))
 );
 const CashierDashboard = lazy(() =>
   import('./pages/cashier/CashierDashboard').then((m) => ({ default: m.CashierDashboard }))
@@ -172,10 +179,11 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Navigate to="people" replace />} />
+          <Route path="attendance" element={<Lazy><ManagerDashboard /></Lazy>} />
           <Route path="people" element={<Lazy><ManagerDashboard /></Lazy>} />
           <Route path="cancellations" element={<Lazy><CancellationReview /></Lazy>} />
+          <Route path="reconciliation" element={<Lazy><OperationalReconciliation /></Lazy>} />
           <Route path="menu" element={<Lazy><MenuCatalog canEdit /></Lazy>} />
-          <Route path="attendance" element={<Lazy><AttendanceCalendar isOwner={false} /></Lazy>} />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
           <Route path="expenses" element={<Lazy><ManagerExpenses /></Lazy>} />
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
@@ -191,7 +199,7 @@ export const AppRoutes: React.FC = () => {
             </RoleGuard>
           }
         >
-          <Route index element={<Lazy><CashierDashboard /></Lazy>} />
+          <Route index element={<Lazy><ShiftManager><CashierDashboard /></ShiftManager></Lazy>} />
           <Route path="settings" element={<Navigate to="profile" replace />} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/cashier" replace />} />
