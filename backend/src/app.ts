@@ -19,6 +19,14 @@ import settingsRoutes from './modules/settings/settings.routes';
 import searchRoutes from './modules/search/search.routes';
 import settlementsRoutes from './modules/settlements/settlements.routes';
 import cancellationRoutes from './modules/cancellation/cancellation.routes';
+
+// Phase 9 Domains
+import cashierShiftsRoutes from './modules/cashier-shifts/cashierShifts.routes';
+import cashDrawerRoutes from './modules/cash-drawer/cashDrawer.routes';
+import varianceReviewRoutes from './modules/variance-review/varianceReview.routes';
+import dailyCloseRoutes from './modules/daily-close/dailyClose.routes';
+import integrityRoutes from './modules/integrity/integrity.routes';
+
 import { errorHandler } from './middleware/error.middleware';
 import { prisma } from './services/prisma.service';
 import { hashPassword } from './utils/security';
@@ -105,6 +113,13 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api', settlementsRoutes); // Settlements routes include /orders/:orderId/settlements
 app.use('/api', cancellationRoutes); // Cancellation routes include /orders/:orderId/cancellation-request
+
+// Phase 9 API Routes
+app.use('/api/shifts', cashierShiftsRoutes);
+app.use('/api/cash-drawer', cashDrawerRoutes);
+app.use('/api/variance', varianceReviewRoutes);
+app.use('/api/daily-close', dailyCloseRoutes);
+app.use('/api/integrity', integrityRoutes);
 
 // Liveness probe — always responds 200 if the process is up
 app.get('/api/health', (req: Request, res: Response) => {
