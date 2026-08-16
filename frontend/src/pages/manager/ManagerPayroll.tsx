@@ -110,7 +110,7 @@ export const ManagerPayroll: React.FC = () => {
       setRefSalary(salary);
       setPaidAmount(String(salary));
     } catch (err: any) {
-      addToast({ type: 'error', title: t('toasts.refSalaryError', { defaultValue: 'Could not load salary reference' }), message: err.response?.data?.error });
+      addToast({ type: 'error', title: t('toasts.refSalaryError', { defaultValue: 'Could not load salary reference' }), message: extractErrorMessage(err) });
     } finally {
       setIsLoadingRef(false);
     }
@@ -144,7 +144,7 @@ export const ManagerPayroll: React.FC = () => {
       addToast({
         type: 'error',
         title: t('toasts.payrollRecordError', { defaultValue: 'Could not record entry' }),
-        message: detail || err.response?.data?.error,
+        message: detail || extractErrorMessage(err),
       });
     } finally {
       setIsSubmitting(false);
