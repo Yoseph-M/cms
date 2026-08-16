@@ -1,0 +1,308 @@
+/**
+ * Cashier Shift Service
+ * 
+ * Manages shift lifecycle: open → close → review.
+ * Enforces one active OPEN shift per cashier.
+ * Calculates expected cash from the Cash Drawer Ledger.
+ */
+
+import { prisma } from '../../services/prisma.service';
+import { recordAudit } from '../../services/audit.service';
+import { emitToRoom } from '../../services/socket.service';
+import { ShiftStatus, CashDrawerEventType, Role } from '@prisma/client';
+import { executeInCriticalTransaction } from '../../utils/transaction';
+import {
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+  ForbiddenError,
+  ConcurrentModificationError,
+} from '../../utils/errors';
+import { logger } from '../../utils/logger';
+
+// ─── Open Shift ────────────────────────────────────────────
+
+interface OpenShiftParams {
+  cashierId: string;
+  openingCashMinor: number;
+  openedById: string;
+}
+
+export async function openShift(params: OpenShiftParams) {
+  const { cashierId, openingCashMinor, openedById } = params;
+
+  if (openingCashMinor < 0) {
+    throw new ValidationError('Opening cash cannot be negative', 'openingCashMinor');
+  }
+
+  const result = await executeInCriticalTransaction(prisma, async (tx) => {
+    // Enforce: one active OPEN shift per cashier
+    const existingOpen = await tx.cashierShift.findFirst({
+      where: { cashierId, status: ShiftStatus.OPEN },
+    });
+
+    if (existingOpen) {
+      throw new ConflictError(
+        `Cashier ${cashierId} already has an active shift (${existingOpen.id})`,
+        'SHIFT_ALREADY_OPEN'
+      );
+    }
+
+    // Create the shift
+    const shift = await tx.cashierShift.create({
+      data: {
+        cashierId,
+        status: ShiftStatus.OPEN,
+        openingCashMinor,
+        openedById,
+      },
+    });
+
+    // Create the OPENING_BALANCE ledger entry
+    await tx.cashDrawerEvent.create({
+      data: {
+        shiftId: shift.id,
+        type: CashDrawerEventType.OPENING_BALANCE,
+        amountMinor: openingCashMinor,
+        performedById: openedById,
+        notes: 'Shift opened',
+      },
+    });
+
+    return shift;
+  });
+
+  // Audit
+  await recordAudit({
+    actorId: openedById,
+    actionType: 'SHIFT_OPENED',
+    targetType: 'CashierShift',
+    targetId: result.id,
+    details: { cashierId, openingCashMinor },
+  });
+
+  // Socket event
+  emitToRoom('orders', 'shift:opened', {
+    id: result.id,
+    cashierId,
+    openedAt: result.openedAt.toISOString(),
+    openingCashMinor,
+  });
+
+  return result;
+}
+
+// ─── Close Shift ───────────────────────────────────────────
+
+interface CloseShiftParams {
+  shiftId: string;
+  declaredCashMinor: number;
+  notes?: string;
+  reason?: string; // Required if variance != 0
+  closedById: string;
+}
+
+export async function closeShift(params: CloseShiftParams) {
+  const { shiftId, declaredCashMinor, notes, reason, closedById } = params;
+
+  if (declaredCashMinor < 0) {
+    throw new ValidationError('Declared cash cannot be negative', 'declaredCashMinor');
+  }
+
+  const result = await executeInCriticalTransaction(prisma, async (tx) => {
+    // Load shift with optimistic lock check
+    const shift = await tx.cashierShift.findUnique({
+      where: { id: shiftId },
+      include: { cashDrawerEvents: true },
+    });
+
+    if (!shift) {
+      throw new NotFoundError('CashierShift', shiftId);
+    }
+
+    if (shift.status !== ShiftStatus.OPEN) {
+      throw new ConflictError(
+        `Shift ${shiftId} is not open (current: ${shift.status})`,
+        'SHIFT_NOT_OPEN'
+      );
+    }
+
+    // Calculate expected cash from ledger (server authoritative)
+    const expectedCashMinor = calculateExpectedCash(shift.cashDrawerEvents);
+
+    const varianceMinor = declaredCashMinor - expectedCashMinor;
+
+    // Require reason if variance != 0
+    if (varianceMinor !== 0 && (!reason || reason.trim().length === 0)) {
+      throw new ValidationError(
+        'A reason is required when there is a cash variance',
+        'reason'
+      );
+    }
+
+    // Determine new status
+    const newStatus = varianceMinor !== 0 ? ShiftStatus.PENDING_REVIEW : ShiftStatus.CLOSED;
+
+    // Update shift atomically
+    const updateResult = await tx.cashierShift.updateMany({
+      where: { id: shiftId, status: ShiftStatus.OPEN },
+      data: {
+        status: newStatus,
+        closedAt: new Date(),
+        expectedCashMinor,
+        declaredCashMinor,
+        varianceMinor,
+        closedById,
+        reviewNotes: notes,
+      },
+    });
+
+    if (updateResult.count === 0) {
+      throw new ConcurrentModificationError('CashierShift');
+    }
+
+    // Create CLOSING_BALANCE ledger entry
+    await tx.cashDrawerEvent.create({
+      data: {
+        shiftId,
+        type: CashDrawerEventType.CLOSING_BALANCE,
+        amountMinor: declaredCashMinor,
+        performedById: closedById,
+        notes: notes || 'Shift closed',
+      },
+    });
+
+    // If variance exists, create a VarianceReview
+    if (varianceMinor !== 0) {
+      await tx.varianceReview.create({
+        data: {
+          shiftId,
+          varianceMinor,
+          classification: varianceMinor > 0 ? 'OVER' : 'SHORT',
+          cashierReason: reason || '',
+        },
+      });
+    }
+
+    const updatedShift = await tx.cashierShift.findUnique({ where: { id: shiftId } });
+    return updatedShift!;
+  });
+
+  // Audit
+  await recordAudit({
+    actorId: closedById,
+    actionType: 'SHIFT_CLOSED',
+    targetType: 'CashierShift',
+    targetId: shiftId,
+    details: {
+      declaredCashMinor,
+      expectedCashMinor: result.expectedCashMinor,
+      varianceMinor: result.varianceMinor,
+      status: result.status,
+    },
+  });
+
+  // Socket event
+  emitToRoom('orders', 'shift:closed', {
+    id: shiftId,
+    cashierId: result.cashierId,
+    status: result.status,
+    varianceMinor: result.varianceMinor,
+    closedAt: result.closedAt?.toISOString(),
+  });
+
+  return result;
+}
+
+// ─── Current Shift ─────────────────────────────────────────
+
+export async function getCurrentShift(cashierId: string) {
+  return prisma.cashierShift.findFirst({
+    where: { cashierId, status: ShiftStatus.OPEN },
+    include: {
+      cashDrawerEvents: { orderBy: { createdAt: 'asc' } },
+      cashier: { select: { id: true, name: true, role: true } },
+    },
+  });
+}
+
+// ─── Shift History ─────────────────────────────────────────
+
+interface ShiftHistoryParams {
+  cashierId?: string;
+  status?: ShiftStatus;
+  limit?: number;
+  offset?: number;
+}
+
+export async function getShiftHistory(params: ShiftHistoryParams) {
+  const { cashierId, status, limit = 50, offset = 0 } = params;
+
+  const where: any = {};
+  if (cashierId) where.cashierId = cashierId;
+  if (status) where.status = status;
+
+  const [shifts, total] = await Promise.all([
+    prisma.cashierShift.findMany({
+      where,
+      include: {
+        cashier: { select: { id: true, name: true, role: true } },
+        openedBy: { select: { id: true, name: true } },
+        closedBy: { select: { id: true, name: true } },
+        varianceReviews: true,
+      },
+      orderBy: { openedAt: 'desc' },
+      skip: offset,
+      take: limit,
+    }),
+    prisma.cashierShift.count({ where }),
+  ]);
+
+  return { shifts, total };
+}
+
+// ─── Get All Open Shifts ───────────────────────────────────
+
+export async function getOpenShifts() {
+  return prisma.cashierShift.findMany({
+    where: { status: ShiftStatus.OPEN },
+    include: {
+      cashier: { select: { id: true, name: true, role: true } },
+      cashDrawerEvents: { orderBy: { createdAt: 'asc' } },
+    },
+    orderBy: { openedAt: 'asc' },
+  });
+}
+
+// ─── Helper: Calculate Expected Cash ───────────────────────
+
+interface LedgerEntry {
+  type: CashDrawerEventType;
+  amountMinor: number;
+}
+
+export function calculateExpectedCash(events: LedgerEntry[]): number {
+  let expected = 0;
+
+  for (const event of events) {
+    switch (event.type) {
+      case CashDrawerEventType.OPENING_BALANCE:
+      case CashDrawerEventType.CASH_SETTLEMENT:
+        expected += event.amountMinor;
+        break;
+      case CashDrawerEventType.CASH_PAYOUT:
+      case CashDrawerEventType.PETTY_CASH:
+        expected -= event.amountMinor;
+        break;
+      case CashDrawerEventType.CASH_ADJUSTMENT:
+        // Adjustment can be positive or negative
+        expected += event.amountMinor;
+        break;
+      // CLOSING_BALANCE is informational, doesn't affect expected
+      case CashDrawerEventType.CLOSING_BALANCE:
+        break;
+    }
+  }
+
+  return expected;
+}
