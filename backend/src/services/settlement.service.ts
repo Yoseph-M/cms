@@ -5,6 +5,17 @@
  * The CMS does NOT process payments; it only records settlements
  * that occurred through external means (cash, card terminal, mobile payment, etc.)
  * 
+ * SETTLEMENT ATTRIBUTION SEMANTICS:
+ * - CASH settlements: REQUIRE active cashier shift
+ *   → Creates cash drawer ledger entry
+ *   → Links settlement to shift via shiftId
+ *   → Cashier must have OPEN shift
+ * 
+ * - CARD/MOBILE/OTHER settlements: NO shift requirement
+ *   → Only records the settlement actor (recordedById)
+ *   → Does NOT affect cash drawer
+ *   → Can be processed by any authenticated user
+ * 
  * All operations are atomic and idempotent.
  */
 
@@ -43,6 +54,7 @@ interface SettlementResult {
     reference: string;
     note: string;
     recordedById: string;
+    shiftId: string | null;
     idempotencyKey: string | null;
     createdAt: Date;
   };
@@ -142,6 +154,24 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     }
 
     // 4. Create settlement record WITHIN transaction
+    // For CASH settlements: find active shift and link
+    let shiftId: string | null = null;
+    
+    if (method === PaymentMethod.CASH) {
+      const activeShift = await tx.cashierShift.findFirst({
+        where: { cashierId: recordedById, status: 'OPEN' },
+      });
+      
+      if (!activeShift) {
+        throw new ValidationError(
+          'CASH settlements require an active cashier shift. Please open a shift first.',
+          'method'
+        );
+      }
+      
+      shiftId = activeShift.id;
+    }
+    
     const settlement = await tx.settlement.create({
       data: {
         orderId,
@@ -150,23 +180,16 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
         reference,
         note,
         recordedById,
+        shiftId,
         idempotencyKey,
       },
     });
 
     // 4.5. Auto-create CASH_SETTLEMENT ledger entry if CASH
-    if (method === PaymentMethod.CASH) {
-      const activeShift = await tx.cashierShift.findFirst({
-        where: { cashierId: recordedById, status: 'OPEN' },
-      });
-      
-      if (!activeShift) {
-        throw new ValidationError('A cashier must have an active OPEN shift to process cash settlements.', 'method');
-      }
-
+    if (method === PaymentMethod.CASH && shiftId) {
       await tx.cashDrawerEvent.create({
         data: {
-          shiftId: activeShift.id,
+          shiftId,
           type: CashDrawerEventType.CASH_SETTLEMENT,
           amountMinor,
           referenceType: 'Settlement',
@@ -240,6 +263,7 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
       reference: result.settlement.reference,
       note: result.settlement.note,
       recordedById: result.settlement.recordedById,
+      shiftId: result.settlement.shiftId,
       idempotencyKey: result.settlement.idempotencyKey,
       createdAt: result.settlement.createdAt,
     },
