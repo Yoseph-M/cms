@@ -96,30 +96,32 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' }
 });
 
+import { requireManagerDashboard } from './middleware/feature.middleware';
+
 // API Route mounts
 app.use('/api', apiLimiter);
 app.use('/api/auth', authRoutes);
-app.use('/api/users', usersRoutes);
-app.use('/api/menu', menuRoutes);
+app.use('/api/users', requireManagerDashboard, usersRoutes);
+app.use('/api/menu', menuRoutes); // Cashier menu access is handled in its own route
 app.use('/api/orders', ordersRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/payroll', payrollRoutes);
-app.use('/api/analytics', analyticsRoutes);
+app.use('/api/attendance', requireManagerDashboard, attendanceRoutes);
+app.use('/api/payroll', requireManagerDashboard, payrollRoutes);
+app.use('/api/analytics', requireManagerDashboard, analyticsRoutes);
 app.use('/api/settings/printers', printersRoutes);
 app.use('/api/audit', auditRoutes);
-app.use('/api/expenses', expensesRoutes);
+app.use('/api/expenses', requireManagerDashboard, expensesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api', settlementsRoutes); // Settlements routes include /orders/:orderId/settlements
-app.use('/api', cancellationRoutes); // Cancellation routes include /orders/:orderId/cancellation-request
+app.use('/api', requireManagerDashboard, cancellationRoutes); // Cancellation routes include /orders/:orderId/cancellation-request
 
 // Phase 9 API Routes
-app.use('/api/shifts', cashierShiftsRoutes);
-app.use('/api/cash-drawer', cashDrawerRoutes);
-app.use('/api/variance', varianceReviewRoutes);
-app.use('/api/daily-close', dailyCloseRoutes);
-app.use('/api/integrity', integrityRoutes);
+app.use('/api/shifts', cashierShiftsRoutes); // Used by Cashier
+app.use('/api/cash-drawer', cashDrawerRoutes); // Used by Cashier
+app.use('/api/variance', varianceReviewRoutes); // Only owner? Actually variance is probably owner.
+app.use('/api/daily-close', requireManagerDashboard, dailyCloseRoutes);
+app.use('/api/integrity', requireManagerDashboard, integrityRoutes);
 
 // Liveness probe — always responds 200 if the process is up
 app.get('/api/health', (req: Request, res: Response) => {
@@ -248,6 +250,9 @@ export async function seedInitialData() {
       currency: 'ETB',
       receiptFooter: 'Thank you for dining with us!',
       receiptLogo: '',
+      managerDashboardEnabled: 'true',
+      systemAdministrationEnabled: 'true',
+      cashierMenuManagementEnabled: 'true',
     };
     for (const [key, value] of Object.entries(businessDefaults)) {
       const existing = await prisma.systemSetting.findUnique({ where: { key } });
