@@ -3,7 +3,7 @@ import * as ShiftController from './cashierShifts.controller';
 import { requireAuth } from '../../middleware/auth.middleware';
 import { requireRole } from '../../middleware/role.middleware';
 import { validate } from '../../middleware/validate.middleware';
-import { openShiftSchema, closeShiftSchema } from './cashierShifts.schema';
+import { openShiftSchema, openShiftAdminSchema, closeShiftSchema } from './cashierShifts.schema';
 import { Role } from '@prisma/client';
 
 const router = Router();
@@ -11,12 +11,20 @@ const router = Router();
 // All shift endpoints require authentication
 router.use(requireAuth);
 
-// Open shift — CASHIER, MANAGER, OWNER
+// Open shift (self-service) — CASHIER, MANAGER, OWNER
 router.post(
   '/',
   requireRole([Role.CASHIER, Role.MANAGER, Role.OWNER]),
   validate(openShiftSchema),
   ShiftController.openShift
+);
+
+// Open shift (administrative) — MANAGER, OWNER only
+router.post(
+  '/admin',
+  requireRole([Role.MANAGER, Role.OWNER]),
+  validate(openShiftAdminSchema),
+  ShiftController.openShiftAdmin
 );
 
 // Get current shift — CASHIER, MANAGER, OWNER
