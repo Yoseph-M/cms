@@ -458,7 +458,44 @@ export const CashierDashboard: React.FC = () => {
         }, 1400);
       }, 500);
     } catch (err: any) {
-      const isConcurrent = extractErrorDetails(err).code === 'CONCURRENT_MODIFICATION';
+      const errorDetails = extractErrorDetails(err);
+      const isConcurrent = errorDetails.code === 'CONCURRENT_MODIFICATION';
+      const isAlreadySettled = errorDetails.code === 'ALREADY_SETTLED';
+      const isOverage = errorDetails.code === 'SETTLEMENT_OVERAGE';
+      
+      // For already settled or overage, don't retry - these are final states
+      if (isAlreadySettled || isOverage) {
+        setPhase('idle');
+        
+        let errorMessage = extractErrorMessage(err);
+        let errorTitle = 'Payment Issue';
+        
+        if (isAlreadySettled) {
+          errorMessage = 'This order has already been fully settled.';
+          errorTitle = 'Already Settled';
+        } else if (isOverage) {
+          errorMessage = 'Settlement amount exceeds the remaining balance.';
+          errorTitle = 'Overpayment Attempted';
+        }
+        
+        // Refresh the order to show current state
+        axiosClient.get(`/orders/${orderId}`)
+          .then(res => setOrders(prev => prev.map(o => o.id === orderId ? res.data : o)))
+          .catch(() => {});
+        
+        addToast({
+          type: 'warning',
+          title: errorTitle,
+          message: errorMessage,
+        });
+        
+        if (retryCount === 0) {
+          isSettlingRef.current = false;
+        }
+        return;
+      }
+      
+      // Retry only for concurrent modification errors, with a max of 3 attempts
       if (isConcurrent && retryCount < MAX_SETTLE_RETRIES) {
         const delay = SETTLE_BACKOFF_MS[retryCount];
         if (retryCount === 0) {
@@ -471,13 +508,31 @@ export const CashierDashboard: React.FC = () => {
         setTimeout(() => handleMarkPaid(orderId, retryCount + 1), delay);
         return;
       }
+      
       setPhase('idle');
+      
+      // Provide specific error messages for other scenarios
+      let errorMessage = extractErrorMessage(err);
+      let errorTitle = t('toasts.paymentFailed');
+      
+      if (errorDetails.statusCode === 401) {
+        errorMessage = 'Your session has expired. Please log in again.';
+        errorTitle = 'Session Expired';
+      } else if (errorDetails.message?.includes('cashier shift')) {
+        errorMessage = 'CASH settlements require an active cashier shift. Please open a shift first.';
+        errorTitle = 'Shift Required';
+      } else if (isConcurrent) {
+        errorMessage = 'Order is being modified by another user or process. Please try again.';
+        // Also refresh the order
+        axiosClient.get(`/orders/${orderId}`)
+          .then(res => setOrders(prev => prev.map(o => o.id === orderId ? res.data : o)))
+          .catch(() => {});
+      }
+      
       addToast({
         type: 'error',
-        title: t('toasts.paymentFailed'),
-        message: isConcurrent
-          ? 'Order is being modified by another user. Please wait and try again.'
-          : extractErrorMessage(err),
+        title: errorTitle,
+        message: errorMessage,
       });
     } finally {
       if (retryCount === 0 || !isSettlingRef.current) {
