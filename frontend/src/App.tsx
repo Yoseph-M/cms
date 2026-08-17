@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/authStore';
 import { useSocketStore } from './store/socketStore';
 import { useOfflineSyncStore } from './store/offlineSyncStore';
+import { useSettingsStore } from './store/settingsStore';
 
 import { ToastContainer } from './components/common/ToastContainer';
 
@@ -26,23 +27,14 @@ const OwnerDashboard = lazy(() =>
 const OwnerFinance = lazy(() =>
   import('./pages/owner/OwnerFinance').then((m) => ({ default: m.OwnerFinance }))
 );
-const OwnerStaff = lazy(() =>
-  import('./pages/owner/OwnerStaff').then((m) => ({ default: m.OwnerStaff }))
-);
 const OwnerPayroll = lazy(() =>
   import('./pages/owner/OwnerPayroll').then((m) => ({ default: m.OwnerPayroll }))
 );
 const OwnerExpenses = lazy(() =>
   import('./pages/owner/OwnerExpenses').then((m) => ({ default: m.OwnerExpenses }))
 );
-const OwnerAudit = lazy(() =>
-  import('./pages/owner/OwnerAudit').then((m) => ({ default: m.OwnerAudit }))
-);
-const OwnerPrinters = lazy(() =>
-  import('./pages/owner/OwnerPrinters').then((m) => ({ default: m.OwnerPrinters }))
-);
-const OwnerSettings = lazy(() =>
-  import('./pages/settings/OwnerSettings').then((m) => ({ default: m.OwnerSettings }))
+const SystemAdminPage = lazy(() =>
+  import('./pages/owner/SystemAdminPage').then((m) => ({ default: m.SystemAdminPage }))
 );
 const ManagerSettings = lazy(() =>
   import('./pages/settings/ManagerSettings').then((m) => ({ default: m.ManagerSettings }))
@@ -78,6 +70,9 @@ const AttendanceCalendar = lazy(() =>
 );
 const ProfilePage = lazy(() =>
   import('./pages/shared/ProfilePage').then((m) => ({ default: m.ProfilePage }))
+);
+const GlobalSettlementHistory = lazy(() =>
+  import('./pages/shared/GlobalSettlementHistory').then((m) => ({ default: m.GlobalSettlementHistory }))
 );
 
 const Lazy: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -126,11 +121,18 @@ export const AppRoutes: React.FC = () => {
   const { isAuthenticated, isLoading, bootstrapSession } = useAuthStore();
   const { connect, disconnect } = useSocketStore();
   const { initListeners } = useOfflineSyncStore();
+  const { settings, fetchSettings } = useSettingsStore();
 
   // Bootstrap session on app load - uses HttpOnly refresh cookie
   useEffect(() => {
     bootstrapSession();
   }, [bootstrapSession]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchSettings();
+    }
+  }, [isAuthenticated, fetchSettings]);
 
   useEffect(() => {
     initListeners();
@@ -157,15 +159,13 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Lazy><OwnerDashboard /></Lazy>} />
-          <Route path="staff" element={<Lazy><OwnerStaff /></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog /></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} /></Lazy>} />
           <Route path="finance" element={<Lazy><OwnerFinance /></Lazy>} />
           <Route path="expenses" element={<Lazy><OwnerExpenses /></Lazy>} />
           <Route path="attendance" element={<Lazy><AttendanceCalendar isOwner /></Lazy>} />
           <Route path="payroll" element={<Lazy><OwnerPayroll /></Lazy>} />
-          <Route path="audit" element={<Lazy><OwnerAudit /></Lazy>} />
-          <Route path="printers" element={<Lazy><OwnerPrinters /></Lazy>} />
-          <Route path="settings" element={<Lazy><OwnerSettings /></Lazy>} />
+          <Route path="admin" element={<Lazy><SystemAdminPage /></Lazy>} />
+          <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/owner" replace />} />
         </Route>
@@ -183,10 +183,11 @@ export const AppRoutes: React.FC = () => {
           <Route path="people" element={<Lazy><ManagerDashboard /></Lazy>} />
           <Route path="cancellations" element={<Lazy><CancellationReview /></Lazy>} />
           <Route path="reconciliation" element={<Lazy><OperationalReconciliation /></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit /></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} /></Lazy>} />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
           <Route path="expenses" element={<Lazy><ManagerExpenses /></Lazy>} />
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
+          <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/manager/people" replace />} />
         </Route>
@@ -200,6 +201,8 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Lazy><ShiftManager><CashierDashboard /></ShiftManager></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit={settings['cashierMenuManagementEnabled'] === 'true'} /></Lazy>} />
+          <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="settings" element={<Navigate to="profile" replace />} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/cashier" replace />} />
