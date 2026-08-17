@@ -32,7 +32,7 @@ export async function getMenuItems(req: AuthenticatedRequest, res: Response) {
 
   if (isAvailable !== undefined) {
     whereClause.isAvailable = isAvailable === 'true';
-  } else if (callerRole !== Role.OWNER && callerRole !== Role.MANAGER) {
+  } else if (callerRole !== Role.OWNER && callerRole !== Role.MANAGER && callerRole !== Role.CASHIER) {
     whereClause.isAvailable = true;
   }
 
