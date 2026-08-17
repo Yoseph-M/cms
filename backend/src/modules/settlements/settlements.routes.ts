@@ -31,6 +31,12 @@ router.get(
   SettlementsController.getRemaining
 );
 
+// Global settlement history - all authenticated users
+router.get(
+  '/settlements',
+  SettlementsController.getAllSettlements
+);
+
 // Get specific settlement - all authenticated users
 router.get(
   '/settlements/:settlementId',
