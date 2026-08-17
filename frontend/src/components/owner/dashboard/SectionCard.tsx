@@ -30,7 +30,14 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   return (
     <section
       className={cn(
-        'rounded-[20px] bg-white shadow-sm border border-[#e5e0d8] overflow-hidden',
+        // Floating card / island look:
+        //  - rounded-2xl corners
+        //  - layered shadow (subtle base + soft brand-tinted lift)
+        //  - hover lifts the card a touch more
+        //  - no harsh border; the shadow alone defines the edge
+        'rounded-2xl bg-white overflow-hidden',
+        'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-12px_rgba(15,23,42,0.12),0_4px_12px_-8px_rgba(249,115,22,0.10)]',
+        'transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_18px_40px_-14px_rgba(15,23,42,0.16),0_6px_16px_-10px_rgba(249,115,22,0.18)]',
         className,
       )}
     >
