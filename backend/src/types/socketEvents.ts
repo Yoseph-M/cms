@@ -184,7 +184,12 @@ export type SocketEventName =
   | 'settings:cashierOrderingChanged'
   | 'printer:recovered'
   | 'printer:failed'
-  | 'notification:new';
+  | 'notification:new'
+  | 'integrity:alert'
+  | 'variance:reviewed'
+  | 'shift:opened'
+  | 'shift:closed'
+  | 'daily-close:completed';
 
 // Room names
 export type SocketRoom = 
