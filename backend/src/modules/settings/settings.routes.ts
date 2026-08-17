@@ -11,10 +11,16 @@ const router = Router();
 router.use(requireAuth);
 
 router.get(
+  '/system',
+  SettingsController.getAllSystemSettings
+);
+
+router.get(
   '/system/:key',
   requireRole([Role.OWNER, Role.MANAGER, Role.CASHIER]),
   SettingsController.getSystemSetting
 );
+
 router.patch(
   '/system/:key',
   requireRole([Role.OWNER, Role.MANAGER]),
