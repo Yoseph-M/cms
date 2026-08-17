@@ -30,3 +30,26 @@ export async function runCheck(req: AuthenticatedRequest, res: Response, next: N
     return next(error);
   }
 }
+
+/**
+ * POST /api/integrity/:id/resolve
+ * Resolve an integrity issue with notes
+ */
+export async function resolveIssue(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const { resolutionNotes } = req.body;
+    const resolvedById = req.user!.userId;
+
+    const issue = await IntegrityService.resolveIntegrityIssue({
+      issueId: id,
+      resolvedById,
+      resolutionNotes,
+    });
+
+    return res.json(issue);
+  } catch (error: any) {
+    logger.error({ error, issueId: req.params.id }, 'Failed to resolve integrity issue');
+    return next(error);
+  }
+}
