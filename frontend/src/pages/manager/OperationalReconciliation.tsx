@@ -44,7 +44,7 @@ export const OperationalReconciliation: React.FC = () => {
   const runIntegrityMutation = useMutation({
     mutationFn: () => integrityApi.runCheck(),
     onSuccess: (data) => {
-      addToast(`Integrity check complete. ${data.passed ? 'Passed!' : `${data.newIssuesLogged} new issues found.`}`, data.passed ? 'success' : 'error');
+      addToast({ title: `Integrity check complete. ${data.passed ? 'Passed!' : `${data.newIssuesLogged} new issues found.`}`, type: data.passed ? 'success' : 'error' });
       refetchIntegrity();
     }
   });
@@ -55,11 +55,11 @@ export const OperationalReconciliation: React.FC = () => {
       return dailyCloseApi.startDailyClose(today);
     },
     onSuccess: () => {
-      addToast('Daily Close pre-flight successful.', 'success');
+      addToast({ title: 'Daily Close pre-flight successful.', type: 'success' });
       refetchClose();
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.error?.message || 'Failed to start daily close', 'error');
+      addToast({ title: err.response?.data?.error?.message || 'Failed to start daily close', type: 'error' });
     }
   });
 
@@ -69,12 +69,12 @@ export const OperationalReconciliation: React.FC = () => {
       return dailyCloseApi.finalizeDailyClose(today, { reviewNotes });
     },
     onSuccess: () => {
-      addToast('Business day closed successfully.', 'success');
+      addToast({ title: 'Business day closed successfully.', type: 'success' });
       refetchClose();
       setReviewNotes('');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.error?.message || 'Failed to finalize daily close', 'error');
+      addToast({ title: err.response?.data?.error?.message || 'Failed to finalize daily close', type: 'error' });
     }
   });
 
@@ -82,14 +82,14 @@ export const OperationalReconciliation: React.FC = () => {
     mutationFn: ({ id, status, managerNotes }: { id: string, status: 'APPROVED' | 'REJECTED', managerNotes: string }) => 
       varianceApi.reviewVariance(id, { status, managerNotes }),
     onSuccess: () => {
-      addToast('Variance reviewed successfully', 'success');
+      addToast({ title: 'Variance reviewed successfully', type: 'success' });
       refetchVariances();
       refetchShifts();
     }
   });
 
   if (isLoadingShifts || isLoadingVariances || isLoadingIntegrity || isLoadingClose) {
-    return <LoadingState text="Loading reconciliation data..." />;
+    return <LoadingState message="Loading reconciliation data..." />;
   }
 
   const isReadyForClose = 
@@ -173,7 +173,7 @@ export const OperationalReconciliation: React.FC = () => {
                         const note = prompt('Rejection reason (optional):');
                         reviewVarianceMutation.mutate({ id: review.id, status: 'REJECTED', managerNotes: note || 'Rejected by manager' });
                       }}>Reject</Button>
-                      <Button size="sm" variant="primary" className="flex-1" onClick={() => {
+                      <Button size="sm" variant="default" className="flex-1" onClick={() => {
                         const note = prompt('Approval note (optional):');
                         reviewVarianceMutation.mutate({ id: review.id, status: 'APPROVED', managerNotes: note || 'Approved by manager' });
                       }}>Approve</Button>
@@ -273,7 +273,7 @@ export const OperationalReconciliation: React.FC = () => {
               {dailyClose?.status === 'PENDING_REVIEW' ? (
                 <Button 
                   size="lg" 
-                  variant="primary" 
+                  variant="default" 
                   className="w-full shadow-brand"
                   onClick={() => finalizeDailyCloseMutation.mutate()}
                   disabled={finalizeDailyCloseMutation.isPending}
@@ -286,7 +286,7 @@ export const OperationalReconciliation: React.FC = () => {
               ) : (
                 <Button 
                   size="lg" 
-                  variant="primary"
+                  variant="default"
                   className="w-full shadow-brand"
                   disabled={!isReadyForClose || startDailyCloseMutation.isPending}
                   onClick={() => startDailyCloseMutation.mutate()}
