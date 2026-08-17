@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
 import { SidebarProfile } from './SidebarProfile';
@@ -24,11 +24,14 @@ const GROUP_ORDER: string[] = ['core', 'ops', 'people', 'system'];
 import { OnboardingWizard } from '../onboarding/OnboardingWizard';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
+import { cn } from '../../lib/utils';
 
 const OwnerLayoutInner: React.FC = () => {
   const { collapsed, toggle } = useSidebar();
   const { openWizard } = useOnboardingStore();
   const { t } = useTranslation('owner');
+  const location = useLocation();
+  const isDashboard = location.pathname === '/owner' || location.pathname === '/owner/';
 
   const OWNER_NAV = [
     { to: '/owner', label: t('nav.overview', { defaultValue: 'Overview' }), icon: LayoutDashboard, end: true, group: 'core' },
@@ -68,49 +71,69 @@ const OwnerLayoutInner: React.FC = () => {
   }));
 
   return (
-    <div className="min-h-screen bg-app-gradient text-foreground flex flex-col">
+    <div
+      className={cn(
+        'min-h-screen flex flex-col text-slate-800',
+        isDashboard ? 'bg-gradient-to-br from-[#ffad66] to-[#ffecd2] p-4 sm:p-8' : 'bg-[#fdfaf6]',
+      )}
+    >
       <OnboardingWizard />
-      <Header />
-      <div className="flex flex-1 overflow-hidden">
+
+      <AnimatePresence>
+        {!isDashboard && (
+          <motion.div
+            key="global-header"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Header />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div
+        className={cn(
+          'flex flex-1 overflow-hidden transition-all',
+          isDashboard ? 'bg-white rounded-[32px] shadow-2xl max-w-[1600px] mx-auto w-full' : ''
+        )}
+      >
         <motion.aside
           initial={false}
-          animate={{ width: collapsed ? 72 : 256 }}
-          className="shrink-0 border-r border-border bg-sidebar/95 backdrop-blur-sm flex flex-col z-10 sticky top-0 h-[calc(100vh-3rem)]"
+          animate={{ width: collapsed ? 80 : 260 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+          className={cn(
+            'shrink-0 flex flex-col z-10 sticky top-0 bg-white h-full border-r border-[#ece6dd]',
+          )}
         >
-          <div className={`px-4 py-4 border-b border-border flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
-            {!collapsed && (
-              <div className="overflow-hidden whitespace-nowrap">
-                <h1 className="text-base font-display font-semibold text-foreground leading-tight">
-                  CMS
-                </h1>
-                <p className="text-[10px] text-muted-foreground font-mono tracking-wider">
-                  {t('nav.consoleSubtitle', { defaultValue: 'Owner Console' })}
-                </p>
-              </div>
+          <div
+            className={cn(
+              'h-[88px] px-6 flex items-center',
+              collapsed ? 'justify-center' : 'justify-start gap-3',
             )}
-            <Tooltip label={collapsed ? t('nav.openSidebar', { defaultValue: 'Open sidebar' }) : t('nav.closeSidebar', { defaultValue: 'Close sidebar' })} side="right">
-              <button
-                onClick={toggle}
-                aria-label={collapsed ? t('nav.openSidebar', { defaultValue: 'Open sidebar' }) : t('nav.closeSidebar', { defaultValue: 'Close sidebar' })}
-                className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground transition-colors shrink-0"
-              >
-                <PanelLeftRounded className="w-4 h-4" />
-              </button>
-            </Tooltip>
+          >
+            {/* Orange N logo from image */}
+            <div className="w-8 h-8 rounded-lg bg-orange-500 text-white flex items-center justify-center font-bold text-xl leading-none">
+              N
+            </div>
+            {!collapsed && (
+              <span className="font-display font-bold text-[22px] text-slate-900 tracking-tight">
+                Nexus
+              </span>
+            )}
           </div>
 
-          <nav className="flex-1 px-3 py-5 overflow-y-auto space-y-6 overflow-x-hidden">
+          <nav className="flex-1 px-4 py-6 overflow-y-auto space-y-6 overflow-x-hidden">
             {grouped.map(({ group, items }) => (
               <div key={group}>
-                {!collapsed ? (
-                  <p className="px-3 mb-2 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.14em] whitespace-nowrap">
+                {!collapsed && GROUP_LABELS[group] !== 'Insights' && (
+                  <p className="px-4 mb-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
                     {GROUP_LABELS[group]}
                   </p>
-                ) : (
-                  <div className="h-px bg-border my-4 mx-2" />
                 )}
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   {items.map((link) => {
                     const Icon = link.icon;
                     const navLink = (
@@ -118,35 +141,20 @@ const OwnerLayoutInner: React.FC = () => {
                         to={link.to}
                         end={'end' in link ? link.end : false}
                         className={({ isActive }) =>
-                          `group relative flex items-center ${collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2'} rounded-lg text-sm font-medium transition-colors ${isActive
-                            ? 'text-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                          `group relative flex items-center ${collapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
+                            ? 'text-orange-600 bg-[#fff5eb]'
+                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                           }`
                         }
                       >
                         {({ isActive }) => (
                           <>
-                            {isActive && (
-                              <motion.span
-                                layoutId="owner-nav-active"
-                                className="absolute inset-0 bg-gradient-to-r from-primary/15 via-primary/10 to-transparent border border-primary/25 rounded-lg shadow-brand"
-                                initial={false}
-                                transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                              />
-                            )}
-                            {isActive && (
-                              <motion.span
-                                layoutId="owner-nav-pill"
-                                className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r-full bg-brand-gradient"
-                                initial={false}
-                                transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                              />
-                            )}
                             <Icon
-                              className={`relative w-4 h-4 shrink-0 transition-colors ${isActive
-                                ? 'text-primary'
-                                : 'text-muted-foreground group-hover:text-foreground'
+                              className={`relative w-5 h-5 shrink-0 transition-colors ${isActive
+                                ? 'text-orange-500'
+                                : 'text-slate-400 group-hover:text-slate-600'
                                 }`}
+                              strokeWidth={2.5}
                             />
                             {!collapsed && (
                               <span className="relative truncate whitespace-nowrap">
@@ -169,14 +177,19 @@ const OwnerLayoutInner: React.FC = () => {
               </div>
             ))}
           </nav>
-
-          <SidebarProfile />
         </motion.aside>
 
-        <main className="flex-1 bg-background overflow-y-auto h-[calc(100vh-3rem)]">
-          <div className="max-w-6xl mx-auto p-8">
+        <main className={cn(
+          "flex-1 overflow-y-auto",
+          isDashboard ? "bg-[#fdfaf6] rounded-tl-3xl border-l border-t border-[#ece6dd]" : "bg-[#fdfaf6]"
+        )}>
+          {isDashboard ? (
             <Outlet />
-          </div>
+          ) : (
+            <div className="max-w-6xl mx-auto p-8">
+              <Outlet />
+            </div>
+          )}
         </main>
       </div>
     </div>
@@ -188,4 +201,3 @@ export const OwnerLayout: React.FC = () => (
     <OwnerLayoutInner />
   </SidebarProvider>
 );
-
