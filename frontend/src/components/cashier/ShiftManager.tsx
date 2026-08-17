@@ -133,12 +133,12 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
       <div className="relative min-h-screen">
         {/* Render CashierDashboard inside */}
         {children}
-        
-        {/* Floating Close Shift Button */}
+
+        {/* Floating Close Shift Button (original behaviour) */}
         <div className="fixed bottom-6 right-6 z-50">
-          <Button 
-            variant="warning" 
-            size="lg" 
+          <Button
+            variant="warning"
+            size="lg"
             className="shadow-xl rounded-full px-6 py-6 font-bold flex gap-2 items-center hover:scale-105 transition-transform"
             onClick={() => setIsClosing(true)}
           >
