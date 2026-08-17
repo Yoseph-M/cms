@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Header } from '../common/Header';
 import { SidebarProfile } from './SidebarProfile';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
@@ -7,6 +7,7 @@ import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XC
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
+import { cn } from '../../lib/utils';
 
 const MANAGER_NAV = [
   { to: '/manager/people', label: 'People', icon: Users, end: false },
@@ -21,18 +22,53 @@ const MANAGER_NAV = [
 
 const ManagerLayoutInner: React.FC = () => {
   const { collapsed, toggle } = useSidebar();
+  const location = useLocation();
+  const isDashboard = location.pathname === '/manager' || location.pathname === '/manager/';
 
   return (
-    <div className="min-h-screen bg-app-gradient text-foreground flex flex-col">
-      <Header />
+    <div
+      className={cn(
+        'min-h-screen flex flex-col text-foreground',
+        isDashboard ? 'bg-owner-frame' : 'bg-app-gradient',
+      )}
+    >
+      <AnimatePresence>
+        {!isDashboard && (
+          <motion.div
+            key="global-header"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Header />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div
+        className={cn(
+          'flex flex-1 overflow-hidden',
+          isDashboard && 'p-3 sm:p-6',
+        )}
+      >
         <motion.aside
           initial={false}
-          animate={{ width: collapsed ? 72 : 256 }}
-          className="shrink-0 border-r border-border bg-sidebar/95 backdrop-blur-sm flex flex-col z-10 sticky top-0 h-[calc(100vh-3rem)]"
+          animate={{ width: collapsed ? 64 : 240 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+          className={cn(
+            'shrink-0 flex flex-col z-10 sticky top-0',
+            isDashboard
+              ? 'rounded-2xl bg-card/85 backdrop-blur-sm border border-white/40 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.04)] ml-0 mb-0'
+              : 'border-r border-border bg-sidebar/95 backdrop-blur-sm h-[calc(100vh-3rem)]',
+          )}
         >
-          <div className={`px-4 py-4 border-b border-border flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
+          <div
+            className={cn(
+              'px-4 py-4 border-b border-border flex items-center',
+              collapsed ? 'justify-center' : 'justify-between',
+            )}
+          >
             {!collapsed && (
               <div className="overflow-hidden whitespace-nowrap">
                 <h1 className="text-base font-display font-semibold text-foreground leading-tight">
@@ -116,10 +152,21 @@ const ManagerLayoutInner: React.FC = () => {
           <SidebarProfile />
         </motion.aside>
 
-        <main className="flex-1 bg-background overflow-y-auto h-[calc(100vh-3rem)]">
-          <div className="max-w-7xl mx-auto p-6">
+        <main
+          className={cn(
+            'flex-1 overflow-y-auto',
+            isDashboard
+              ? 'ml-3 sm:ml-5 rounded-2xl bg-card border border-white/40 shadow-[0_24px_60px_-24px_rgba(15,23,42,0.18),0_2px_8px_-2px_rgba(15,23,42,0.06)] overflow-hidden'
+              : 'bg-background h-[calc(100vh-3rem)]',
+          )}
+        >
+          {isDashboard ? (
             <Outlet />
-          </div>
+          ) : (
+            <div className="max-w-7xl mx-auto p-6">
+              <Outlet />
+            </div>
+          )}
         </main>
       </div>
     </div>
