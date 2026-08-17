@@ -10,6 +10,12 @@ const router = Router();
 
 router.use(requireAuth);
 
+// Get current business date (server-authoritative) — ALL ROLES
+router.get(
+  '/business-date',
+  DailyCloseController.getCurrentBusinessDate
+);
+
 // Get current daily close status — MANAGER, OWNER
 router.get(
   '/current',
