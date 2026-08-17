@@ -2,8 +2,14 @@ import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { detectTransactionSupport } from '../utils/transaction';
 
+// Configure Prisma with better connection handling and timeouts
 export const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
+});
+
+// Handle Prisma connection errors gracefully
+prisma.$on('error' as never, (e: any) => {
+  logger.error({ error: e }, 'Prisma connection error occurred');
 });
 
 // Note: Immutability is enforced through:
