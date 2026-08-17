@@ -2,12 +2,20 @@ import { axiosClient } from './axiosClient';
 
 // --- Cashier Shifts ---
 export const shiftApi = {
+  // Self-service shift open (cashier opens their own shift)
   openShift: async (data: { openingCashMinor: number }) => {
     const res = await axiosClient.post('/shifts', data);
     return res.data;
   },
-  getCurrentShift: async () => {
-    const res = await axiosClient.get('/shifts/current');
+  // Administrative shift open (manager/owner opens shift for another cashier)
+  openShiftAdmin: async (data: { cashierId: string; openingCashMinor: number }) => {
+    const res = await axiosClient.post('/shifts/admin', data);
+    return res.data;
+  },
+  // Get current shift (cashiers get their own, managers can specify cashierId)
+  getCurrentShift: async (cashierId?: string) => {
+    const params = cashierId ? { cashierId } : {};
+    const res = await axiosClient.get('/shifts/current', { params });
     return res.data;
   },
   getOpenShifts: async () => {
@@ -18,14 +26,31 @@ export const shiftApi = {
     const res = await axiosClient.post(`/shifts/${id}/close`, data);
     return res.data;
   },
+  // Get shift history (cashiers get their own, managers can filter by cashierId)
+  getShiftHistory: async (params?: { cashierId?: string; status?: string; limit?: number; offset?: number }) => {
+    const res = await axiosClient.get('/shifts/history', { params });
+    return res.data;
+  },
 };
 
 // --- Cash Drawer Ledger ---
 export const cashDrawerApi = {
-  createEntry: async (shiftId: string, data: { type: string; amountMinor: number; notes?: string }) => {
-    const res = await axiosClient.post(`/cash-drawer/${shiftId}/entries`, data);
+  // Record cash payout (money leaving drawer)
+  recordPayout: async (data: { shiftId: string; amountMinor: number; reason: string; reference?: string }) => {
+    const res = await axiosClient.post('/cash-drawer/payout', data);
     return res.data;
   },
+  // Record petty cash (small operational expenses) - Manager/Owner only
+  recordPettyCash: async (data: { shiftId: string; amountMinor: number; reason: string; category?: string }) => {
+    const res = await axiosClient.post('/cash-drawer/petty-cash', data);
+    return res.data;
+  },
+  // Record cash adjustment (corrections) - Owner only
+  recordAdjustment: async (data: { shiftId: string; amountMinor: number; reason: string }) => {
+    const res = await axiosClient.post('/cash-drawer/adjustment', data);
+    return res.data;
+  },
+  // Get ledger for a shift
   getLedger: async (shiftId: string) => {
     const res = await axiosClient.get(`/cash-drawer/${shiftId}`);
     return res.data;
