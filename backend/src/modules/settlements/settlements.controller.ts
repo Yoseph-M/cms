@@ -1,8 +1,58 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { recordSettlement, getOrderSettlements, getSettlementById, getRemainingAmount } from '../../services/settlement.service';
+import { prisma } from '../../services/prisma.service';
 import { logger } from '../../utils/logger';
 
+/**
+ * GET /api/settlements
+ * Get all settlements (global history), paginated.
+ * Accessible by all authenticated roles.
+ */
+export async function getAllSettlements(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
+    const skip = (page - 1) * limit;
+    const method = req.query.method as string | undefined;
+
+    const where: Record<string, unknown> = {};
+    if (method && ['CASH', 'CARD', 'MOBILE'].includes(method)) {
+      where.method = method;
+    }
+
+    const [settlements, total] = await Promise.all([
+      prisma.settlement.findMany({
+        where,
+        include: {
+          order: {
+            select: { id: true, clientOrderId: true, tableNumber: true, totalAmount: true, status: true },
+          },
+          recordedBy: {
+            select: { id: true, name: true, role: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.settlement.count({ where }),
+    ]);
+
+    return res.json({
+      data: settlements,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error: any) {
+    logger.error({ error }, 'Failed to fetch global settlement history');
+    return next(error);
+  }
+}
 /**
  * POST /api/orders/:orderId/settlements
  * Record an external settlement for an order
