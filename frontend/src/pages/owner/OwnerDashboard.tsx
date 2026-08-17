@@ -4,11 +4,11 @@ import { motion } from 'framer-motion';
 import { Coffee, GlassWater, CupSoda, type LucideIcon } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { formatCurrency } from '../../utils/currency';
 import { cn } from '../../lib/utils';
 
 // New dashboard module
-import { DashboardHeader } from '../../components/owner/dashboard/DashboardHeader';
 import { KpiCards } from '../../components/owner/dashboard/KpiCards';
 import { SectionCard } from '../../components/owner/dashboard/SectionCard';
 import { RevenueLineChart } from '../../components/owner/dashboard/RevenueLineChart';
@@ -99,15 +99,41 @@ const ICON_COLOR: Array<string> = [
 export const OwnerDashboard: React.FC = () => {
   const { t } = useTranslation('owner');
   const { user } = useAuthStore();
+  const { dateRange: headerDateRange, setDateRange: setHeaderDateRange, setShowDateRange } = useHeaderStore();
 
-  // Date range — defaults to last 30 days for the trend chart
+  // Date range — defaults to last 30 days for the trend chart.
+  // The header store is the single source of truth, so the chip in the
+  // global header and the dashboard's queries stay in sync.
   const today = new Date();
   const monthAgo = new Date(today);
   monthAgo.setDate(today.getDate() - 29);
-  const [dateRange, setDateRange] = useState({
-    from: monthAgo.toISOString().split('T')[0],
-    to: today.toISOString().split('T')[0],
-  });
+  const defaultRange = React.useMemo(
+    () => ({
+      from: monthAgo.toISOString().split('T')[0],
+      to: today.toISOString().split('T')[0],
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  // Seed the store with the default range on first mount, then keep using it.
+  useEffect(() => {
+    if (!headerDateRange.from || !headerDateRange.to) {
+      setHeaderDateRange(defaultRange);
+    }
+  }, [headerDateRange.from, headerDateRange.to, defaultRange, setHeaderDateRange]);
+
+  const dateRange = {
+    from: headerDateRange.from || defaultRange.from,
+    to: headerDateRange.to || defaultRange.to,
+  };
+  const setDateRange = setHeaderDateRange;
+
+  // Opt this page into showing the date-range chip in the header.
+  useEffect(() => {
+    setShowDateRange(true);
+    return () => setShowDateRange(false);
+  }, [setShowDateRange]);
 
   /* ── Data ── */
   const [daily, setDaily] = useState<DailySales | null>(null);
@@ -246,32 +272,20 @@ export const OwnerDashboard: React.FC = () => {
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="h-full flex flex-col"
     >
-      <DashboardHeader
-        title={t('dashboard.title', { defaultValue: 'Dashboard' })}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-      />
-
-      <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 sm:space-y-6">
-          {/* KPI cards */}
+      <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-6 space-y-5 sm:space-y-6">
+          {/* KPI cards — 4 floating islands */}
           <KpiCards
             totalOrders={kpis.totalOrders}
             inProgress={kpis.inProgress}
             completed={kpis.completed}
             totalRevenue={kpis.totalRevenue}
-            revenueDelta={
-              kpis.revenueDelta != null
-                ? { value: kpis.revenueDelta, positive: kpis.revenueDelta >= 0 }
-                : null
-            }
           />
 
-          {/* Chart row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+          {/* Chart row — 2-column mode (line chart + donut side by side, equal width) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
             <SectionCard
               title={t('dashboard.trend.title', { defaultValue: 'Total Revenue' })}
               filter={{ label: 'This Year', options: ['This Year', 'This Month', 'This Week', 'Last Year'] }}
-              className="lg:col-span-2"
             >
               <RevenueLineChart
                 labels={lineData.labels}
