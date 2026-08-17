@@ -55,6 +55,39 @@
 
     /* Subtle blue-tinted sidebar surface so the shell feels brand-cohesive */
     --sidebar: 220 100% 99%;
+
+    /* ─── Owner dashboard palette (warm, food-friendly) ─── */
+    --orange-50: 30 100% 96%;
+    --orange-100: 28 100% 90%;
+    --orange-200: 27 96% 83%;
+    --orange-300: 25 95% 75%;
+    --orange-400: 22 95% 65%;
+    --orange-500: 20 95% 53%;
+    --orange-600: 18 90% 48%;
+    --orange-700: 16 85% 40%;
+
+    /* KPI card pastels (used in the redesigned owner dashboard) */
+    --kpi-cream: 38 75% 92%;     /* Total orders — soft yellow */
+    --kpi-mint: 152 50% 88%;     /* In progress — soft green */
+    --kpi-blush: 340 80% 92%;    /* Completed — soft pink */
+    --kpi-rose: 350 75% 90%;     /* Revenue — soft rose */
+
+    /* Chart palette */
+    --chart-income: 20 95% 53%;   /* orange-500 — income line */
+    --chart-expense: 24 60% 35%;  /* brown — expenses line */
+    --chart-grid: 30 30% 92%;
+
+    /* Donut palette */
+    --donut-1: 20 95% 53%;   /* primary orange */
+    --donut-2: 24 60% 35%;   /* brown */
+    --donut-3: 30 80% 75%;   /* light peach */
+    --donut-4: 32 100% 90%;  /* very light cream */
+
+    /* Status pill colors for the recent orders table */
+    --status-paid: 152 60% 45%;
+    --status-cancelled: 0 75% 55%;
+    --status-pending: 45 95% 50%;
+    --status-feedback: 14 90% 55%;
   }
 
   /* ─── Dark Theme (opt-in via .dark class) ─── */
@@ -406,6 +439,30 @@ textarea::-moz-selection {
 /*
  * Print styles.
  */
+/*
+ * Owner dashboard frame — warm orange/amber gradient that contains
+ * the dashboard "card" (sidebar + main). Mirrors the design reference.
+ */
+.bg-owner-frame {
+  background:
+    radial-gradient(
+      ellipse 80% 60% at 50% 0%,
+      hsl(28 100% 70% / 0.55),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 100% 50%,
+      hsl(15 95% 60% / 0.45),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 50% 40% at 0% 60%,
+      hsl(40 100% 65% / 0.45),
+      transparent 60%
+    ),
+    linear-gradient(135deg, hsl(30 100% 75%), hsl(20 95% 60%));
+}
+
 @media print {
   body {
     background: #ffffff !important;
