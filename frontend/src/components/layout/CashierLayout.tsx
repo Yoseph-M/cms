@@ -3,21 +3,28 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Header } from '../common/Header';
 import { SidebarProfile } from './SidebarProfile';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
-import { ShoppingCart, Settings } from 'lucide-react';
+import { ShoppingCart, Settings, UtensilsCrossed, Receipt } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
 import { cn } from '../../lib/utils';
 
-const CASHIER_NAV = [
-  { to: '/cashier', label: 'POS', icon: ShoppingCart, end: true },
-  { to: '/cashier/settings', label: 'Settings', icon: Settings, end: false },
-];
+import { useSettingsStore } from '../../store/settingsStore';
 
 const CashierLayoutInner: React.FC = () => {
   const { collapsed, toggle } = useSidebar();
+  const { settings } = useSettingsStore();
   const location = useLocation();
   const isDashboard = location.pathname === '/cashier' || location.pathname === '/cashier/';
+
+  const CASHIER_NAV = [
+    { to: '/cashier', label: 'POS', icon: ShoppingCart, end: true },
+    ...(settings['cashierMenuManagementEnabled'] === 'true'
+      ? [{ to: '/cashier/menu', label: 'Menu Catalog', icon: UtensilsCrossed, end: false }]
+      : []),
+    { to: '/cashier/settlements', label: 'Settlements', icon: Receipt, end: false },
+    { to: '/cashier/settings', label: 'Settings', icon: Settings, end: false },
+  ];
 
   return (
     <div
