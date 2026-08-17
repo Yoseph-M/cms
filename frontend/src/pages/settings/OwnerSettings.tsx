@@ -4,10 +4,11 @@ import { BusinessProfileSection } from '../../components/settings/BusinessProfil
 import { CashierOrderingToggle } from '../../components/settings/CashierOrderingToggle';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { ShoppingCart, RotateCcw, CalendarCheck } from 'lucide-react';
+import { ShoppingCart, RotateCcw, CalendarCheck, Settings } from 'lucide-react';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { OwnerAttendanceToggle } from '../../components/settings/OwnerAttendanceToggle';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
+import { FeatureToggles } from '../../components/settings/FeatureToggles';
 
 /**
  * Owner Settings page — Phase 14, §3.2.
@@ -62,6 +63,17 @@ export const OwnerSettings: React.FC = () => {
         </CardHeader>
         <CardContent>
           <OwnerAttendanceToggle />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Settings className="w-4 h-4 text-primary" />
+            Feature Toggles
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FeatureToggles />
         </CardContent>
       </Card>
     </div>

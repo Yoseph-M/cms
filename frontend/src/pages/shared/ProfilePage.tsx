@@ -7,6 +7,7 @@ import { useMeQuery } from '../../hooks/useCachedQueries';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { FloatingCard } from '../../components/ui/FloatingCard';
 import { LoadingState } from '../../components/common/LoadingState';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 import {
@@ -276,7 +277,7 @@ export const ProfilePage: React.FC = () => {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative rounded-2xl border border-border bg-card overflow-hidden shadow-[0_4px_24px_-12px_rgba(59,130,246,0.25)]"
+        className="relative rounded-2xl border border-border/40 bg-card overflow-hidden shadow-[0_4px_24px_-12px_rgba(59,130,246,0.25),0_1px_2px_rgba(15,23,42,0.04)]"
       >
         {/* Gradient header */}
         <div className={cn('relative h-32 bg-gradient-to-br', meta.gradient)}>
@@ -514,7 +515,7 @@ export const ProfilePage: React.FC = () => {
                 subtitle="Quick overview of your current sign-in."
               />
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl border border-border/60 bg-secondary/40 p-4">
+                <FloatingCard className="p-4">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     <Activity className="w-3 h-3" />
                     Status
@@ -523,8 +524,8 @@ export const ProfilePage: React.FC = () => {
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     Online
                   </p>
-                </div>
-                <div className="rounded-xl border border-border/60 bg-secondary/40 p-4">
+                </FloatingCard>
+                <FloatingCard className="p-4">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     <Shield className="w-3 h-3" />
                     Access level
@@ -533,8 +534,8 @@ export const ProfilePage: React.FC = () => {
                     <RoleIcon className="w-4 h-4 text-primary" />
                     {meta.label}
                   </p>
-                </div>
-                <div className="rounded-xl border border-border/60 bg-secondary/40 p-4">
+                </FloatingCard>
+                <FloatingCard className="p-4">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     <Languages className="w-3 h-3" />
                     Language
@@ -542,7 +543,7 @@ export const ProfilePage: React.FC = () => {
                   <p className="mt-2 font-display text-lg font-bold text-foreground">
                     {(typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('am')) ? 'አማርኛ' : 'English'}
                   </p>
-                </div>
+                </FloatingCard>
               </div>
             </Card>
           </motion.div>
