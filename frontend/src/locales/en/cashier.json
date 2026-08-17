@@ -14,7 +14,16 @@
     "takeout": "Takeout",
     "items": "items",
     "by": "by",
+    "searchPlaceholder": "Search table, order, waiter…",
+    "filter": {
+      "all": "All",
+      "ready": "Ready to pay",
+      "cooking": "In kitchen",
+      "newest": "Newest"
+    },
     "status": {
+      "ready": "Ready to pay",
+      "cooking": "In kitchen",
       "paid": "Paid",
       "cancelled": "Cancelled",
       "cancelReq": "Cancel Req",
@@ -104,7 +113,8 @@
     "tableText": "Table {{table}}'s",
     "takeoutText": "Takeout order is",
     "paymentFailed": "Payment Failed",
-    "cancelFailed": "Cancel Failed"
+    "cancelFailed": "Cancel Failed",
+    "cancelRequested": "Cancellation Requested"
   },
   "shortcuts": {
     "navigate": "↑↓ / J K — Navigate queue",
