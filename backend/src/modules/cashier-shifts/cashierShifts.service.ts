@@ -26,16 +26,29 @@ interface OpenShiftParams {
   cashierId: string;
   openingCashMinor: number;
   openedById: string;
+  idempotencyKey?: string;
 }
 
 export async function openShift(params: OpenShiftParams) {
-  const { cashierId, openingCashMinor, openedById } = params;
+  const { cashierId, openingCashMinor, openedById, idempotencyKey } = params;
 
   if (openingCashMinor < 0) {
     throw new ValidationError('Opening cash cannot be negative', 'openingCashMinor');
   }
 
   const result = await executeInCriticalTransaction(prisma, async (tx) => {
+    // Check idempotency key first (inside transaction)
+    if (idempotencyKey) {
+      const existing = await tx.cashierShift.findFirst({
+        where: { openIdempotencyKey: idempotencyKey },
+      });
+      
+      if (existing) {
+        logger.info(`Idempotent shift open: returning existing shift ${existing.id}`);
+        return existing;
+      }
+    }
+
     // Enforce: one active OPEN shift per cashier
     const existingOpen = await tx.cashierShift.findFirst({
       where: { cashierId, status: ShiftStatus.OPEN },
@@ -55,6 +68,7 @@ export async function openShift(params: OpenShiftParams) {
         status: ShiftStatus.OPEN,
         openingCashMinor,
         openedById,
+        openIdempotencyKey: idempotencyKey,
       },
     });
 
@@ -100,16 +114,43 @@ interface CloseShiftParams {
   notes?: string;
   reason?: string; // Required if variance != 0
   closedById: string;
+  idempotencyKey?: string;
 }
 
+/**
+ * Close a shift with physical cash count.
+ * 
+ * IMPORTANT ACCOUNTING SEMANTICS:
+ * - Physical count (declaredCashMinor) is NOT a ledger movement
+ * - Expected cash is CALCULATED from ledger events
+ * - Variance = declaredCashMinor (physical) - expectedCashMinor (ledger)
+ * - We DO NOT create a CLOSING_BALANCE ledger event
+ * 
+ * The shift record stores:
+ * - declaredCashMinor: What cashier physically counted
+ * - expectedCashMinor: What ledger says should be there
+ * - varianceMinor: The difference (derived, not entered)
+ */
 export async function closeShift(params: CloseShiftParams) {
-  const { shiftId, declaredCashMinor, notes, reason, closedById } = params;
+  const { shiftId, declaredCashMinor, notes, reason, closedById, idempotencyKey } = params;
 
   if (declaredCashMinor < 0) {
     throw new ValidationError('Declared cash cannot be negative', 'declaredCashMinor');
   }
 
   const result = await executeInCriticalTransaction(prisma, async (tx) => {
+    // Check idempotency key first (inside transaction)
+    if (idempotencyKey) {
+      const existing = await tx.cashierShift.findFirst({
+        where: { closeIdempotencyKey: idempotencyKey },
+      });
+      
+      if (existing) {
+        logger.info(`Idempotent shift close: returning existing shift ${existing.id}`);
+        return existing;
+      }
+    }
+
     // Load shift with optimistic lock check
     const shift = await tx.cashierShift.findUnique({
       where: { id: shiftId },
@@ -154,6 +195,7 @@ export async function closeShift(params: CloseShiftParams) {
         varianceMinor,
         closedById,
         reviewNotes: notes,
+        closeIdempotencyKey: idempotencyKey,
       },
     });
 
@@ -161,16 +203,9 @@ export async function closeShift(params: CloseShiftParams) {
       throw new ConcurrentModificationError('CashierShift');
     }
 
-    // Create CLOSING_BALANCE ledger entry
-    await tx.cashDrawerEvent.create({
-      data: {
-        shiftId,
-        type: CashDrawerEventType.CLOSING_BALANCE,
-        amountMinor: declaredCashMinor,
-        performedById: closedById,
-        notes: notes || 'Shift closed',
-      },
-    });
+    // NOTE: We do NOT create a CLOSING_BALANCE ledger event
+    // The physical count is stored in the shift record itself
+    // Ledger remains pure: only movements (in/out), not counts
 
     // If variance exists, create a VarianceReview
     if (varianceMinor !== 0) {
@@ -221,6 +256,17 @@ export async function getCurrentShift(cashierId: string) {
     where: { cashierId, status: ShiftStatus.OPEN },
     include: {
       cashDrawerEvents: { orderBy: { createdAt: 'asc' } },
+      cashier: { select: { id: true, name: true, role: true } },
+    },
+  });
+}
+
+// ─── Get Shift By ID ───────────────────────────────────────
+
+export async function getShiftById(shiftId: string) {
+  return prisma.cashierShift.findUnique({
+    where: { id: shiftId },
+    include: {
       cashier: { select: { id: true, name: true, role: true } },
     },
   });
