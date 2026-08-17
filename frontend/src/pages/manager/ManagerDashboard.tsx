@@ -4,11 +4,11 @@ import { motion } from 'framer-motion';
 import { Users, UserCheck, UserX, UserMinus } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { User, Role } from '../../types';
 import { extractErrorMessage } from '../../utils/errorHandler';
 
 // Use the owner dashboard components to match the UI perfectly
-import { DashboardHeader } from '../../components/owner/dashboard/DashboardHeader';
 import { KpiCards, KpiCard } from '../../components/owner/dashboard/KpiCards';
 import { SectionCard } from '../../components/owner/dashboard/SectionCard';
 import { RevenueLineChart } from '../../components/owner/dashboard/RevenueLineChart';
@@ -30,14 +30,36 @@ const ROLE_TONE: Record<Role, 'default' | 'secondary' | 'success' | 'outline'> =
 export const ManagerDashboard: React.FC = () => {
   const { addToast } = useToastStore();
   const { t } = useTranslation('manager');
+  const { dateRange: headerDateRange, setDateRange: setHeaderDateRange, setShowDateRange } = useHeaderStore();
 
   const today = new Date();
   const monthAgo = new Date(today);
   monthAgo.setDate(today.getDate() - 29);
-  const [dateRange, setDateRange] = useState({
-    from: monthAgo.toISOString().split('T')[0],
-    to: today.toISOString().split('T')[0],
-  });
+  const defaultRange = React.useMemo(
+    () => ({
+      from: monthAgo.toISOString().split('T')[0],
+      to: today.toISOString().split('T')[0],
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  useEffect(() => {
+    if (!headerDateRange.from || !headerDateRange.to) {
+      setHeaderDateRange(defaultRange);
+    }
+  }, [headerDateRange.from, headerDateRange.to, defaultRange, setHeaderDateRange]);
+
+  const dateRange = {
+    from: headerDateRange.from || defaultRange.from,
+    to: headerDateRange.to || defaultRange.to,
+  };
+  const setDateRange = setHeaderDateRange;
+
+  useEffect(() => {
+    setShowDateRange(true);
+    return () => setShowDateRange(false);
+  }, [setShowDateRange]);
 
   const [staffList, setStaffList] = useState<User[]>([]);
   const [isLoadingStaff, setIsLoadingStaff] = useState(true);
@@ -116,15 +138,9 @@ export const ManagerDashboard: React.FC = () => {
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="h-full flex flex-col"
     >
-      <DashboardHeader
-        title={t('dashboard.title', { defaultValue: 'Staff Roster' })}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-      />
-
       <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 sm:space-y-6">
         {/* KPI cards - Matching the 4-card layout */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
           <KpiCard label="Total Staff" value={kpis.total} kind="number" icon={Users} tone="cream" trendDots={{ active: 3, total: 3, tone: 'green' }} />
           <KpiCard label="Present Today" value={kpis.present} kind="number" icon={UserCheck} tone="mint" trendDots={{ active: 3, total: 3, tone: 'green' }} />
           <KpiCard label="Absent Today" value={kpis.absent} kind="number" icon={UserX} tone="blush" trendDots={{ active: 1, total: 3, tone: 'orange' }} />
