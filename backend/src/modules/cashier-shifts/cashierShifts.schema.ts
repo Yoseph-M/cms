@@ -2,8 +2,14 @@ import { z } from 'zod';
 
 // ---------- Cashier Shift Schemas ----------
 
+// Self-service shift open (cashierId determined by server from auth)
 export const openShiftSchema = z.object({
-  cashierId: z.string().min(1, 'cashierId is required'),
+  openingCashMinor: z.number().int('Opening cash must be an integer (minor units)').nonnegative('Opening cash cannot be negative'),
+});
+
+// Administrative shift open (cashierId required for manager/owner)
+export const openShiftAdminSchema = z.object({
+  cashierId: z.string().min(1, 'cashierId is required for administrative shift opening'),
   openingCashMinor: z.number().int('Opening cash must be an integer (minor units)').nonnegative('Opening cash cannot be negative'),
 });
 
