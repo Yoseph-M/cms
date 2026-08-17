@@ -188,6 +188,38 @@ export function isValidTimezone(tz: string): boolean {
 }
 
 /**
+ * Get the current business date (server-authoritative)
+ * Returns YYYY-MM-DD string in business timezone
+ * 
+ * This is the single source of truth for "what day is it?"
+ * NEVER allow clients to calculate this - timezone manipulation risk!
+ */
+export function getCurrentBusinessDate(): string {
+  return getBusinessDateString(new Date());
+}
+
+/**
+ * Validate that a date string is not in the future
+ * Prevents time-travel attacks
+ */
+export function validateNotFuture(dateStr: string): boolean {
+  const current = getCurrentBusinessDate();
+  return dateStr <= current; // String comparison works for YYYY-MM-DD
+}
+
+/**
+ * Validate that a date string is not in the past beyond a threshold
+ * Useful for preventing backdating
+ */
+export function validateNotTooOld(dateStr: string, maxDaysAgo: number = 30): boolean {
+  const now = new Date();
+  const target = parseBusinessDate(dateStr);
+  const diffMs = now.getTime() - target.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  return diffDays <= maxDaysAgo;
+}
+
+/**
  * Initialize and validate business timezone on startup
  */
 export function initBusinessTimezone(): void {
