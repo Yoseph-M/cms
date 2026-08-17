@@ -3,6 +3,17 @@ import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { emitToLiveOrders } from '../../services/socket.service';
 
+export async function getAllSystemSettings(req: AuthenticatedRequest, res: Response) {
+  const settings = await prisma.systemSetting.findMany();
+  
+  const settingsMap = settings.reduce((acc, curr) => {
+    acc[curr.key] = curr.value;
+    return acc;
+  }, {} as Record<string, string>);
+
+  return res.json(settingsMap);
+}
+
 export async function getSystemSetting(req: AuthenticatedRequest, res: Response) {
   const { key } = req.params;
 
@@ -17,6 +28,16 @@ export async function getSystemSetting(req: AuthenticatedRequest, res: Response)
 export async function patchSystemSetting(req: AuthenticatedRequest, res: Response) {
   const { key } = req.params;
   const { value } = req.body;
+
+  const ownerOnlySettings = [
+    'managerDashboardEnabled',
+    'systemAdministrationEnabled',
+    'cashierMenuManagementEnabled',
+  ];
+
+  if (ownerOnlySettings.includes(key) && req.user?.role !== 'OWNER') {
+    return res.status(403).json({ error: 'Only the OWNER can modify this setting.' });
+  }
 
   const setting = await prisma.systemSetting.upsert({
     where: { key },
