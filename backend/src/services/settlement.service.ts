@@ -85,6 +85,50 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     throw new ValidationError('Payment method cannot be NONE for settlements', 'method');
   }
 
+  // Pre-check: If idempotency key exists, check outside transaction for fast return
+  if (idempotencyKey) {
+    const existing = await prisma.settlement.findUnique({
+      where: { idempotencyKey },
+      include: { order: true },
+    });
+    
+    if (existing) {
+      // If fingerprint provided, check for materially different request
+      if (requestFingerprint) {
+        const existingFingerprint = `${existing.orderId}:${existing.amountMinor}:${existing.method}`;
+        if (existingFingerprint !== requestFingerprint) {
+          throw new IdempotencyConflictError(
+            'Idempotency key reused with different request parameters'
+          );
+        }
+      }
+      
+      // Return existing settlement immediately (idempotent response, no transaction needed)
+      return {
+        settlement: existing,
+        order: existing.order,
+      };
+    }
+  }
+
+  // Pre-check: Quick validation of order status outside transaction to fail fast
+  const preCheckOrder = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { status: true, settlementStatus: true },
+  });
+
+  if (!preCheckOrder) {
+    throw new NotFoundError('Order', orderId);
+  }
+
+  if (!canSettle(preCheckOrder.status)) {
+    throw new OrderAlreadyCancelledError(orderId);
+  }
+
+  if (preCheckOrder.settlementStatus === SettlementStatus.SETTLED) {
+    throw new AlreadySettledError(orderId);
+  }
+
   // Use critical transaction wrapper - will fail if transactions unavailable
   const result = await executeInCriticalTransaction(prisma, async (tx) => {
     // 1. First check idempotency key INSIDE the transaction
