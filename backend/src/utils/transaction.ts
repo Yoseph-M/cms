@@ -117,17 +117,18 @@ export async function executeInTransaction<T>(
 /**
  * Execute critical financial operations only with real transactions.
  * Will fail if transactions are unavailable.
+ * Automatically retries on transient errors (network issues, connection drops).
  * 
  * @param prisma - Prisma client instance
  * @param callback - Function containing operations to execute
- * @param options - Transaction options (timeout, isolation level)
+ * @param options - Transaction options (timeout, isolation level, maxRetries)
  * @returns Result from callback
- * @throws Error if transactions are not supported
+ * @throws Error if transactions are not supported or max retries exceeded
  */
 export async function executeInCriticalTransaction<T>(
   prisma: PrismaClient,
   callback: (tx: PrismaClient) => Promise<T>,
-  options?: { timeout?: number; maxWait?: number }
+  options?: { timeout?: number; maxWait?: number; maxRetries?: number }
 ): Promise<T> {
   // Ensure we've detected transaction support
   if (!capabilityCheckComplete) {
@@ -142,12 +143,60 @@ export async function executeInCriticalTransaction<T>(
     );
   }
 
-  // Use full Prisma transaction with ACID guarantees and increased timeout
-  // Default timeout increased from 5s to 10s to prevent timeouts on slow queries
-  return await prisma.$transaction(callback as any, {
-    timeout: options?.timeout || 10000, // 10 seconds (was 5s default)
-    maxWait: options?.maxWait || 5000, // 5 seconds to acquire connection
-  }) as T;
+  const maxRetries = options?.maxRetries ?? 3;
+  const timeout = options?.timeout || 10000; // 10 seconds
+  const maxWait = options?.maxWait || 5000; // 5 seconds to acquire connection
+  
+  let lastError: Error | undefined;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Use full Prisma transaction with ACID guarantees and increased timeout
+      // Default timeout increased from 5s to 10s to prevent timeouts on slow queries
+      return await prisma.$transaction(callback as any, {
+        timeout,
+        maxWait,
+      }) as T;
+    } catch (error: any) {
+      lastError = error;
+      
+      // Check if this is a transient error that can be retried
+      const isTransientError = 
+        error.message?.includes('TransientTransactionError') ||
+        error.message?.includes('peer closed connection') ||
+        error.message?.includes('connection') ||
+        error.message?.includes('network') ||
+        error.message?.includes('timeout') ||
+        error.code === 'P2024' || // Timed out fetching a new connection from the connection pool
+        error.code === 'P1001' || // Can't reach database server
+        error.code === 'P1002';   // Database server timed out
+      
+      if (isTransientError && attempt < maxRetries) {
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000); // Exponential backoff, max 5s
+        logger.warn(
+          { attempt: attempt + 1, maxRetries: maxRetries + 1, backoffMs, error: error.message },
+          'Transient database error detected, retrying transaction'
+        );
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      
+      // Not a transient error, or max retries exceeded
+      if (attempt >= maxRetries) {
+        logger.error(
+          { attempts: attempt + 1, error: error.message },
+          'Transaction failed after max retries'
+        );
+      }
+      
+      throw error;
+    }
+  }
+  
+  // Should never reach here, but TypeScript needs this
+  throw lastError || new Error('Transaction failed for unknown reason');
 }
 
 /**
