@@ -1,3 +1,4 @@
+import { extractErrorMessage } from "../../utils/errorHandler";
 import React, { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Plus, Minus, Trash2, X, ShoppingCart, UtensilsCrossed, CheckCircle2, ImageIcon } from 'lucide-react';
