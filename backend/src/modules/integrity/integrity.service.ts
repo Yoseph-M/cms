@@ -23,13 +23,30 @@ export async function runIntegrityChecks() {
   const issues: any[] = [];
 
   // Check 1: Over-settlement
-  const overSettledOrders = await prisma.$queryRaw<any[]>`
-    SELECT o._id, o.totalAmount, COALESCE(SUM(s.amountMinor), 0) as settledAmount
-    FROM orders o
-    JOIN settlements s ON o._id = s.orderId
-    GROUP BY o._id, o.totalAmount
-    HAVING COALESCE(SUM(s.amountMinor), 0) > o.totalAmount
-  `;
+  const overSettledOrders = await prisma.order.aggregateRaw({
+    pipeline: [
+      {
+        $lookup: {
+          from: "settlements",
+          localField: "_id",
+          foreignField: "orderId",
+          as: "order_settlements"
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          totalAmount: 1,
+          settledAmount: { $sum: "$order_settlements.amountMinor" }
+        }
+      },
+      {
+        $match: {
+          $expr: { $gt: ["$settledAmount", "$totalAmount"] }
+        }
+      }
+    ]
+  }) as unknown as any[];
   for (const order of overSettledOrders) {
     issues.push({
       severity: IntegritySeverity.ERROR,
@@ -41,11 +58,23 @@ export async function runIntegrityChecks() {
   }
 
   // Check 2: Orphan Settlements
-  const orphanSettlements = await prisma.$queryRaw<any[]>`
-    SELECT s._id FROM settlements s
-    LEFT JOIN orders o ON s.orderId = o._id
-    WHERE o._id IS NULL
-  `;
+  const orphanSettlements = await prisma.settlement.aggregateRaw({
+    pipeline: [
+      {
+        $lookup: {
+          from: "orders",
+          localField: "orderId",
+          foreignField: "_id",
+          as: "order_info"
+        }
+      },
+      {
+        $match: {
+          order_info: { $size: 0 }
+        }
+      }
+    ]
+  }) as unknown as any[];
   for (const settlement of orphanSettlements) {
     issues.push({
       severity: IntegritySeverity.CRITICAL,
@@ -106,19 +135,28 @@ export async function runIntegrityChecks() {
   }
 
   // Check 5: Duplicate daily close
-  const duplicateCloses = await prisma.$queryRaw<any[]>`
-    SELECT businessDate, COUNT(*) as count
-    FROM daily_closes
-    GROUP BY businessDate
-    HAVING COUNT(*) > 1
-  `;
+  const duplicateCloses = await prisma.dailyClose.aggregateRaw({
+    pipeline: [
+      {
+        $group: {
+          _id: "$businessDate",
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $match: {
+          count: { $gt: 1 }
+        }
+      }
+    ]
+  }) as unknown as any[];
   for (const close of duplicateCloses) {
     issues.push({
       severity: IntegritySeverity.CRITICAL,
       category: IntegrityCategory.DUPLICATE_CLOSE,
-      description: `Multiple daily closes found for date ${close.businessDate}`,
+      description: `Multiple daily closes found for date ${close._id}`,
       referenceType: 'DailyCloseDate',
-      referenceId: close.businessDate,
+      referenceId: String(close._id),
     });
   }
 
