@@ -89,12 +89,12 @@ enum ShiftStatus {
 }
 
 enum CashDrawerEventType {
-  OPENING_BALANCE
-  CASH_SETTLEMENT
-  CASH_PAYOUT
-  PETTY_CASH
-  CASH_ADJUSTMENT
-  CLOSING_BALANCE
+  OPENING_BALANCE    // Initial cash at shift start (ledger movement)
+  CASH_SETTLEMENT    // Cash received from customer (ledger movement)
+  CASH_PAYOUT        // Cash removed from drawer (ledger movement)
+  PETTY_CASH         // Small operational expense (ledger movement)
+  CASH_ADJUSTMENT    // Compensating event for corrections (ledger movement)
+  CLOSING_BALANCE    // DEPRECATED: Physical count should be in shift record, not ledger
 }
 
 enum VarianceClassification {
@@ -170,6 +170,7 @@ model User {
   cashDrawerEvents       CashDrawerEvent[] @relation("CashDrawerEventPerformedBy")
   varianceReviews        VarianceReview[] @relation("VarianceReviewedBy")
   dailyClosesClosed      DailyClose[] @relation("DailyCloseClosedBy")
+  integrityIssuesResolved IntegrityIssue[] @relation("IntegrityIssuesResolved")
 
   @@index([role, isActive])
   @@map("users")
@@ -240,12 +241,14 @@ model Settlement {
   note            String        @default("")
   recordedById    String        @db.ObjectId
   recordedBy      User          @relation("SettlementsRecorded", fields: [recordedById], references: [id])
+  shiftId         String?       @db.ObjectId // Required for CASH settlements, null for CARD/MOBILE/OTHER
   idempotencyKey  String?       @unique // For idempotent operations - @unique already creates an index
   recordedAt      DateTime      @default(now())
   createdAt       DateTime      @default(now())
 
   @@index([orderId, createdAt])
   @@index([recordedById, createdAt])
+  @@index([shiftId, createdAt])
   @@map("settlements")
 }
 
@@ -415,10 +418,10 @@ model CashierShift {
   status            ShiftStatus  @default(OPEN)
   openedAt          DateTime     @default(now())
   closedAt          DateTime?
-  openingCashMinor  Int
-  expectedCashMinor Int?
-  declaredCashMinor Int?
-  varianceMinor     Int?
+  openingCashMinor  Int          // Initial cash in drawer
+  expectedCashMinor Int?         // CALCULATED from ledger: opening + sales - payouts ± adjustments
+  declaredCashMinor Int?         // PHYSICAL COUNT: what cashier actually counted
+  varianceMinor     Int?         // DERIVED: declaredCashMinor - expectedCashMinor
   openedById        String       @db.ObjectId
   openedBy          User         @relation("ShiftOpenedBy", fields: [openedById], references: [id])
   closedById        String?      @db.ObjectId
@@ -427,6 +430,8 @@ model CashierShift {
   reviewedBy        User?        @relation("ShiftReviewedBy", fields: [reviewedById], references: [id])
   reviewedAt        DateTime?
   reviewNotes       String?
+  openIdempotencyKey  String?    @unique // For idempotent shift open operations
+  closeIdempotencyKey String?    @unique // For idempotent shift close operations
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
@@ -448,6 +453,7 @@ model CashDrawerEvent {
   performedById   String              @db.ObjectId
   performedBy     User                @relation("CashDrawerEventPerformedBy", fields: [performedById], references: [id])
   notes           String?
+  idempotencyKey  String?             @unique // For idempotent payout/petty-cash/adjustment operations
   createdAt       DateTime            @default(now())
 
   @@index([shiftId, type, createdAt])
@@ -466,6 +472,7 @@ model VarianceReview {
   reviewedBy      User?                  @relation("VarianceReviewedBy", fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
   managerNotes    String?
+  idempotencyKey  String?                @unique // For idempotent variance submission
   createdAt       DateTime               @default(now())
 
   @@index([reviewStatus, createdAt])
@@ -492,6 +499,7 @@ model DailyClose {
   closedBy               User?            @relation("DailyCloseClosedBy", fields: [closedById], references: [id])
   closedAt               DateTime?
   reviewNotes            String?
+  idempotencyKey         String?          @unique // For idempotent daily close operations
   createdAt              DateTime         @default(now())
   updatedAt              DateTime         @updatedAt
 
@@ -507,8 +515,15 @@ model IntegrityIssue {
   referenceType   String?
   referenceId     String?
   resolved        Boolean           @default(false)
+  resolvedAt      DateTime?         // When the issue was resolved
+  resolvedById    String?           @db.ObjectId // Who resolved it
+  resolvedBy      User?             @relation("IntegrityIssuesResolved", fields: [resolvedById], references: [id])
+  resolutionNotes String?           // Why/how it was resolved
   createdAt       DateTime          @default(now())
+  lastSeenAt      DateTime          @default(now()) // Last time this issue was detected
 
   @@index([severity, resolved])
+  @@index([resolvedById, resolvedAt])
+  @@index([category, referenceId, resolved]) // Composite index for duplicate detection
   @@map("integrity_issues")
 }
