@@ -189,7 +189,7 @@ export const OwnerAudit: React.FC = () => {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-3 items-end">
