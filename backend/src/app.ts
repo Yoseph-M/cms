@@ -26,6 +26,8 @@ import cashDrawerRoutes from './modules/cash-drawer/cashDrawer.routes';
 import varianceReviewRoutes from './modules/variance-review/varianceReview.routes';
 import dailyCloseRoutes from './modules/daily-close/dailyClose.routes';
 import integrityRoutes from './modules/integrity/integrity.routes';
+import printAgentsRoutes from './modules/print-agents/print-agents.routes';
+import printJobsRoutes from './modules/print-jobs/print-jobs.routes';
 
 import { errorHandler } from './middleware/error.middleware';
 import { prisma } from './services/prisma.service';
@@ -122,6 +124,8 @@ app.use('/api/cash-drawer', cashDrawerRoutes); // Used by Cashier
 app.use('/api/variance', varianceReviewRoutes); // Only owner? Actually variance is probably owner.
 app.use('/api/daily-close', requireManagerDashboard, dailyCloseRoutes);
 app.use('/api/integrity', requireManagerDashboard, integrityRoutes);
+app.use('/api/print-agents', printAgentsRoutes);
+app.use('/api/print-jobs', printJobsRoutes);
 
 // Liveness probe — always responds 200 if the process is up
 app.get('/api/health', (req: Request, res: Response) => {
