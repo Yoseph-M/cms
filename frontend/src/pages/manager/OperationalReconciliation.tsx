@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { shiftApi, varianceApi, dailyCloseApi, integrityApi } from '../../api/phase9Api';
 import { useToastStore } from '../../store/toastStore';
+import { useSocketStore } from '../../store/socketStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -15,6 +16,7 @@ import { Input } from '../../components/ui/Input';
 export const OperationalReconciliation: React.FC = () => {
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
+  const { socket } = useSocketStore();
   const [reviewNotes, setReviewNotes] = useState('');
 
   // 1. Fetch Open Shifts
@@ -88,6 +90,38 @@ export const OperationalReconciliation: React.FC = () => {
     }
   });
 
+  const resolveIntegrityMutation = useMutation({
+    mutationFn: ({ id, resolutionNotes }: { id: string, resolutionNotes?: string }) => 
+      integrityApi.resolveIssue(id, { resolutionNotes }),
+    onSuccess: () => {
+      addToast({ title: 'Integrity issue resolved successfully', type: 'success' });
+      refetchIntegrity();
+    },
+    onError: (err: any) => {
+      addToast({ title: err.response?.data?.error?.message || 'Failed to resolve issue', type: 'error' });
+    }
+  });
+
+  // Socket listener for real-time integrity alerts
+  useEffect(() => {
+    if (!socket) return;
+    
+    const onIntegrityAlert = (issue: any) => {
+      addToast({ 
+        title: 'New Integrity Issue Detected', 
+        message: issue.description,
+        type: 'error' 
+      });
+      refetchIntegrity();
+    };
+    
+    socket.on('integrity:alert', onIntegrityAlert);
+    
+    return () => {
+      socket.off('integrity:alert', onIntegrityAlert);
+    };
+  }, [socket, refetchIntegrity, addToast]);
+
   if (isLoadingShifts || isLoadingVariances || isLoadingIntegrity || isLoadingClose) {
     return <LoadingState message="Loading reconciliation data..." />;
   }
@@ -98,7 +132,7 @@ export const OperationalReconciliation: React.FC = () => {
     integrityIssues?.length === 0;
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       <div className="flex justify-between items-end">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Operations</p>
@@ -209,7 +243,21 @@ export const OperationalReconciliation: React.FC = () => {
                       {issue.category}
                       <Badge variant="error" className="text-[10px] uppercase">{issue.severity}</Badge>
                     </div>
-                    <div className="text-xs mt-1 leading-snug">{issue.description}</div>
+                    <div className="text-xs mt-1 leading-snug mb-2">{issue.description}</div>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="w-full text-xs"
+                      onClick={() => {
+                        const notes = prompt('Resolution notes (optional):');
+                        if (notes !== null) { // Allow empty string but not cancel
+                          resolveIntegrityMutation.mutate({ id: issue.id, resolutionNotes: notes || 'Resolved by manager' });
+                        }
+                      }}
+                      disabled={resolveIntegrityMutation.isPending}
+                    >
+                      Resolve
+                    </Button>
                   </li>
                 ))}
               </ul>
