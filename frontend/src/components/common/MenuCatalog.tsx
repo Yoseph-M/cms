@@ -348,16 +348,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <Input
-            id="menu-search"
-            type="search"
-            placeholder="Search items..."
-            onChange={handleSearchChange}
-            className="pl-9"
-          />
-        </div>
         {canEdit && (
           <div className="flex items-center gap-2 flex-wrap">
             {selectMode ? (
