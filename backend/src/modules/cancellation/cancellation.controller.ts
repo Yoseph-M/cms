@@ -125,7 +125,13 @@ export async function listCancellationRequests(req: AuthenticatedRequest, res: R
   const { status, orderId, requestedById, limit, skip } = req.query;
 
   try {
-    const filters: any = {};
+    const filters: {
+      status?: CancellationRequestStatus;
+      orderId?: string;
+      requestedById?: string;
+      limit?: number;
+      skip?: number;
+    } = {};
 
     if (status) {
       // Validate status enum
