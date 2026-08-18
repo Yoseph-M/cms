@@ -14,8 +14,7 @@ import { OwnerLayout } from './components/layout/OwnerLayout';
 import { ManagerLayout } from './components/layout/ManagerLayout';
 import { CashierLayout } from './components/layout/CashierLayout';
 
-import { ClientOrderView } from './pages/client/ClientOrderView';
-import { CustomerDisplay } from './pages/client/CustomerDisplay';
+
 import { ShiftManager } from './components/cashier/ShiftManager';
 
 import { LoginPage } from './pages/login/LoginPage';
@@ -35,6 +34,9 @@ const OwnerExpenses = lazy(() =>
 );
 const SystemAdminPage = lazy(() =>
   import('./pages/owner/SystemAdminPage').then((m) => ({ default: m.SystemAdminPage }))
+);
+const OwnerSettings = lazy(() =>
+  import('./pages/settings/OwnerSettings').then((m) => ({ default: m.OwnerSettings }))
 );
 const ManagerSettings = lazy(() =>
   import('./pages/settings/ManagerSettings').then((m) => ({ default: m.ManagerSettings }))
@@ -165,6 +167,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="attendance" element={<Lazy><AttendanceCalendar isOwner /></Lazy>} />
           <Route path="payroll" element={<Lazy><OwnerPayroll /></Lazy>} />
           <Route path="admin" element={<Lazy><SystemAdminPage /></Lazy>} />
+          <Route path="settings" element={<Lazy><OwnerSettings /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/owner" replace />} />
