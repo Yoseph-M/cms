@@ -49,6 +49,66 @@
       "notePlaceholder": "ለምሳሌ፦ በ28ኛው ቀን በጥሬ ገንዘብ ተከፍሏል"
     }
   },
+  "expenses": {
+    "title": "ወጪዎች",
+    "addExpense": "ወጪ ያክሉ",
+    "editExpense": "ወጪ ያርትዑ",
+    "addDescription": "አዲስ የንግድ ወጪ ይመዝግቡ።",
+    "editDescription": "ይህን የወጪ መዝገብ ያዘምኑ።",
+    "emptyTitle": "ገና ምንም ወጪ አልተመዘገበም።",
+    "loading": "በመጫን ላይ...",
+    "retry": "እንደገና ሞክር",
+    "categories": {
+      "rent": "ቤት ኪራይ",
+      "utilities": "አገልግሎቶች",
+      "supplies": "ግብአቶች",
+      "maintenance": "ጥገና",
+      "payroll": "ደመወዝ",
+      "other": "ሌላ"
+    },
+    "filters": {
+      "category": "ምድብ",
+      "allCategories": "ሁሉም ምድቦች",
+      "from": "ከ",
+      "to": "እስከ"
+    },
+    "table": {
+      "date": "ቀን",
+      "category": "ምድብ",
+      "description": "መግለጫ",
+      "amount": "መጠን",
+      "recordedBy": "የመዘገበው"
+    },
+    "form": {
+      "category": "ምድብ",
+      "amount": "መጠን (ብር)",
+      "description": "መግለጫ",
+      "date": "ቀን",
+      "required": "*",
+      "amountPlaceholder": "0.00",
+      "descriptionPlaceholder": "ለምሳሌ፦ ወራዊ የኤሌክትሪክ ክፍያ",
+      "cancel": "ሰርዝ",
+      "saving": "በማስቀመጥ ላይ...",
+      "saveChanges": "ለውጦችን አስቀምጥ",
+      "addExpense": "ወጪ ያክሉ"
+    },
+    "delete": {
+      "title": "\"{{description}}\" ይሰረዝ?",
+      "description": "ይህ መመለስ አይችልም።",
+      "confirm": "ወጪ ሰርዝ"
+    },
+    "toasts": {
+      "validationError": "ምድብ፣ መጠን፣ መግለጫ እና ቀን ያስፈልጋል።",
+      "amountError": "መጠን አዎንታዊ ቁጥር መሆን አለበት።",
+      "updated": "ወጪ ተዘምኗል",
+      "recorded": "ወጪ ተመዝግቧል",
+      "updateFailed": "ማዘመን አልተሳካም",
+      "recordFailed": "ወጪ መመዝገብ አልተቻለም",
+      "deleted": "ወጪ ተሰርዟል",
+      "deleteFailed": "መሰረዝ አልተሳካም",
+      "loadFailed": "ወጪዎችን መጫን አልተቻለም።"
+    }
+  },
   "toasts": {
     "fetchStaffError": "የሰራተኞችን ዝርዝር ማምጣት አልተቻለም",
     "attendanceLogged": "ክትትል ተመዝግቧል",
