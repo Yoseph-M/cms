@@ -22,7 +22,7 @@ export const OwnerSettings: React.FC = () => {
   const { openWizard } = useOnboardingStore();
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
       <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <h3 className="text-lg font-bold">Settings</h3>
