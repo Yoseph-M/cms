@@ -26,6 +26,7 @@ const ManagerLayoutInner: React.FC = () => {
   const { collapsed, toggle } = useSidebar();
   const { settings } = useSettingsStore();
   const location = useLocation();
+  const isDashboard = location.pathname === '/manager' || location.pathname === '/manager/';
 
   const isEnabled = settings['managerDashboardEnabled'] !== 'false'; // defaults to true
 
@@ -142,7 +143,14 @@ const ManagerLayoutInner: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <Header />
 
-        <main className="flex-1 overflow-y-auto">
+        {/* Main canvas — give non-dashboard pages breathing room around their
+            floating cards so the island metaphor reads. */}
+        <main
+          className={cn(
+            'flex-1 overflow-y-auto',
+            isDashboard ? '' : 'p-4 sm:p-6 lg:p-8',
+          )}
+        >
           <Outlet />
         </main>
       </div>
