@@ -18,8 +18,10 @@ import { extractErrorMessage } from '../../utils/errorHandler';
 interface PrinterStation {
   id?: string;
   station: string;
-  ip: string;
-  port: number;
+  transport: 'TCP' | 'WINDOWS';
+  ip: string | null;
+  port: number | null;
+  printerName: string | null;
 }
 
 interface PrinterStatus {
@@ -28,7 +30,7 @@ interface PrinterStatus {
 
 const STATION_OPTIONS = ['kitchen', 'bar', 'cashier'];
 
-const EMPTY_FORM = { station: 'kitchen', ip: '', port: '9100' };
+const EMPTY_FORM = { station: 'kitchen', transport: 'TCP' as 'TCP' | 'WINDOWS', ip: '', port: '9100', printerName: '' };
 const EMPTY_PRINTERS: PrinterStation[] = [];
 
 export const OwnerPrinters: React.FC = () => {
@@ -103,30 +105,55 @@ export const OwnerPrinters: React.FC = () => {
 
   const openEdit = (printer: PrinterStation) => {
     setEditingPrinter(printer);
-    setForm({ station: printer.station, ip: printer.ip, port: String(printer.port) });
+    setForm({
+      station: printer.station,
+      transport: printer.transport,
+      ip: printer.ip || '',
+      port: printer.port ? String(printer.port) : '9100',
+      printerName: printer.printerName || '',
+    });
     setSlideOverOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.ip.trim() || !form.station) {
-      addToast({ type: 'error', title: 'Station and IP are required.' });
-      return;
+    if (form.transport === 'TCP') {
+      if (!form.ip.trim() || !form.station) {
+        addToast({ type: 'error', title: 'Station and IP are required.' });
+        return;
+      }
+      const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+      if (!ipRegex.test(form.ip.trim())) {
+        addToast({ type: 'error', title: 'Invalid IP address format.' });
+        return;
+      }
+    } else {
+      if (!form.printerName.trim() || !form.station) {
+        addToast({ type: 'error', title: 'Station and Printer Name are required.' });
+        return;
+      }
     }
-    // Basic IP format check
-    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-    if (!ipRegex.test(form.ip.trim())) {
-      addToast({ type: 'error', title: 'Invalid IP address format.' });
-      return;
-    }
+
     setIsSaving(true);
     try {
-      const payload = { station: form.station, ip: form.ip.trim(), port: parseInt(form.port) || 9100 };
+      const payload = {
+        station: form.station,
+        transport: form.transport,
+        ip: form.transport === 'TCP' ? form.ip.trim() : null,
+        port: form.transport === 'TCP' ? parseInt(form.port) || 9100 : null,
+        printerName: form.transport === 'WINDOWS' ? form.printerName.trim() : null,
+      };
       if (editingPrinter) {
         const stationId = editingPrinter.id || editingPrinter.station;
         await axiosClient.patch(`/settings/printers/${stationId}`, payload);
         addToast({ type: 'success', title: 'Printer updated' });
       } else {
-        const all = printers.map((p) => ({ station: p.station, ip: p.ip, port: p.port }));
+        const all = printers.map((p) => ({
+          station: p.station,
+          transport: p.transport,
+          ip: p.ip,
+          port: p.port,
+          printerName: p.printerName,
+        }));
         await axiosClient.post('/settings/printers', { stations: [...all, payload] });
         addToast({ type: 'success', title: 'Printer added' });
       }
@@ -189,7 +216,7 @@ export const OwnerPrinters: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-bold">LAN Printers</h3>
@@ -245,7 +272,9 @@ export const OwnerPrinters: React.FC = () => {
                         <div>
                           <p className="font-bold capitalize">{printer.station} Printer</p>
                           <p className="text-xs font-mono text-muted-foreground mt-0.5">
-                            {printer.ip}:{printer.port}
+                            {printer.transport === 'TCP'
+                              ? `TCP: ${printer.ip}:${printer.port}`
+                              : `Windows Agent: ${printer.printerName}`}
                           </p>
                         </div>
                       </div>
@@ -314,17 +343,37 @@ export const OwnerPrinters: React.FC = () => {
                     {STATION_OPTIONS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                   </Select>
                 </div>
+                
                 <div>
-                  <label htmlFor="pr-ip" className="text-sm font-medium block mb-1.5">IP Address <span className="text-destructive">*</span></label>
-                  <Input id="pr-ip" value={form.ip} onChange={e => setForm(f => ({ ...f, ip: e.target.value }))}
-                    placeholder="192.168.1.100" className="font-mono" />
+                  <label htmlFor="pr-transport" className="text-sm font-medium block mb-1.5">Transport Type</label>
+                  <Select id="pr-transport" value={form.transport} onChange={e => setForm(f => ({ ...f, transport: e.target.value as 'TCP' | 'WINDOWS' }))}>
+                    <option value="TCP">Network (TCP)</option>
+                    <option value="WINDOWS">Windows Print Agent</option>
+                  </Select>
                 </div>
-                <div>
-                  <label htmlFor="pr-port" className="text-sm font-medium block mb-1.5">Port</label>
-                  <Input id="pr-port" type="number" value={form.port} onChange={e => setForm(f => ({ ...f, port: e.target.value }))}
-                    placeholder="9100" className="font-mono" />
-                  <p className="text-xs text-muted-foreground mt-1">Default ESC/POS port is 9100.</p>
-                </div>
+
+                {form.transport === 'TCP' ? (
+                  <>
+                    <div>
+                      <label htmlFor="pr-ip" className="text-sm font-medium block mb-1.5">IP Address <span className="text-destructive">*</span></label>
+                      <Input id="pr-ip" value={form.ip} onChange={e => setForm(f => ({ ...f, ip: e.target.value }))}
+                        placeholder="192.168.1.100" className="font-mono" />
+                    </div>
+                    <div>
+                      <label htmlFor="pr-port" className="text-sm font-medium block mb-1.5">Port</label>
+                      <Input id="pr-port" type="number" value={form.port} onChange={e => setForm(f => ({ ...f, port: e.target.value }))}
+                        placeholder="9100" className="font-mono" />
+                      <p className="text-xs text-muted-foreground mt-1">Default ESC/POS port is 9100.</p>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label htmlFor="pr-name" className="text-sm font-medium block mb-1.5">Printer Name <span className="text-destructive">*</span></label>
+                    <Input id="pr-name" value={form.printerName} onChange={e => setForm(f => ({ ...f, printerName: e.target.value }))}
+                      placeholder="EPSON TM-T82III Receipt" className="font-mono" />
+                    <p className="text-xs text-muted-foreground mt-1">Exact name of the printer as shown in Windows Control Panel.</p>
+                  </div>
+                )}
               </div>
               <div className="p-6 border-t border-border flex gap-3">
                 <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
