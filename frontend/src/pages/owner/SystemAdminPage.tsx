@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Shield, Users, FileText, Printer, Settings as SettingsIcon } from 'lucide-react';
+import { ShieldCheck, Users, FileText, Printer, Settings as SettingsIcon } from 'lucide-react';
 import { OwnerStaff } from './OwnerStaff';
 import { OwnerAudit } from './OwnerAudit';
 import { OwnerPrinters } from './OwnerPrinters';
+import { OwnerPrintAgents } from './OwnerPrintAgents';
 import { OwnerSettings } from '../settings/OwnerSettings';
 import { cn } from '../../lib/utils';
 
@@ -39,10 +40,18 @@ export const SystemAdminPage: React.FC = () => {
   ] as const;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <header className="rounded-2xl bg-white/70 border border-border/40 px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(15,23,42,0.08)]">
+    /*
+     * Island architecture — three discrete cards with visible gaps:
+     *  1. Header island  (title + subtitle)
+     *  2. Tab bar island (the tab strip itself)
+     *  3. Content island (the active tab's panel)
+     * No more single monolithic box.
+     */
+    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
+      {/* Island 1 — Header */}
+      <header className="rounded-2xl bg-white border border-slate-200/70 px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-14px_rgba(15,23,42,0.10),0_4px_12px_-8px_rgba(249,115,22,0.08)]">
         <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Shield className="w-6 h-6 text-primary" />
+          <ShieldCheck className="w-6 h-6 text-primary" />
           System Administration
         </h2>
         <p className="text-muted-foreground mt-1">
@@ -50,9 +59,9 @@ export const SystemAdminPage: React.FC = () => {
         </p>
       </header>
 
-      {/* Tabs */}
-      <div className="rounded-2xl bg-white/70 border border-border/40 px-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-16px_rgba(15,23,42,0.08)]">
-        <div className="flex items-center gap-2 border-b border-border pb-px overflow-x-auto">
+      {/* Island 2 — Tabs */}
+      <div className="rounded-2xl bg-white border border-slate-200/70 px-3 sm:px-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-14px_rgba(15,23,42,0.10),0_4px_12px_-8px_rgba(249,115,22,0.08)]">
+        <div className="flex items-center gap-1 border-b border-slate-200 pb-px overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -61,10 +70,10 @@ export const SystemAdminPage: React.FC = () => {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                  'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
                   isActive
                     ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-slate-200'
                 )}
               >
                 <Icon className="w-4 h-4" />
@@ -75,11 +84,16 @@ export const SystemAdminPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Content Area */}
-      <div className="pt-2">
+      {/* Island 3 — Content (the active tab's panel) */}
+      <div className="rounded-2xl bg-white border border-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-14px_rgba(15,23,42,0.10),0_4px_12px_-8px_rgba(249,115,22,0.08)] p-4 sm:p-6">
         {activeTab === 'staff' && <OwnerStaff />}
         {activeTab === 'audit' && <OwnerAudit />}
-        {activeTab === 'printers' && <OwnerPrinters />}
+        {activeTab === 'printers' && (
+          <>
+            <OwnerPrinters />
+            <OwnerPrintAgents />
+          </>
+        )}
         {activeTab === 'settings' && <OwnerSettings />}
       </div>
     </div>

@@ -11,7 +11,7 @@ import {
   Wallet,
   CalendarCheck,
   Receipt,
-  Shield,
+ShieldCheck,
   Settings,
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
@@ -30,6 +30,7 @@ const OwnerLayoutInner: React.FC = () => {
   const { openWizard } = useOnboardingStore();
   const { t } = useTranslation('owner');
   const location = useLocation();
+  const isDashboardPage = location.pathname === '/owner' || location.pathname === '/owner/';
 
   const { settings } = useSettingsStore();
 
@@ -44,7 +45,7 @@ const OwnerLayoutInner: React.FC = () => {
     { to: '/owner/attendance', label: t('nav.attendance', { defaultValue: 'Attendance' }), icon: CalendarCheck, group: 'people' },
     { to: '/owner/payroll', label: t('nav.payroll', { defaultValue: 'Payroll' }), icon: DollarSign, group: 'people' },
     ...(systemAdminEnabled ? [
-      { to: '/owner/admin', label: t('nav.systemAdmin', { defaultValue: 'System Admin' }), icon: Shield, group: 'system' },
+      { to: '/owner/admin', label: t('nav.systemAdmin', { defaultValue: 'System Admin' }), icon: ShieldCheck, group: 'system' },
     ] : []),
   ] as const;
 
@@ -95,7 +96,7 @@ const OwnerLayoutInner: React.FC = () => {
     <div
       className={cn(
         'h-screen w-screen flex overflow-hidden text-slate-800 relative',
-        isDashboard ? 'bg-[#fdfaf6]' : 'bg-[#F1F5F9]',
+        isDashboardPage ? 'bg-[#fdfaf6]' : 'bg-[#F1F5F9]',
       )}
     >
       {/* Subtle radial glow — warm on dashboard, cool elsewhere */}
@@ -103,7 +104,7 @@ const OwnerLayoutInner: React.FC = () => {
         aria-hidden
         className={cn(
           'pointer-events-none absolute inset-0',
-          isDashboard
+          isDashboardPage
             ? 'bg-[radial-gradient(120%_80%_at_0%_0%,rgba(255,173,102,0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,rgba(255,236,210,0.55),transparent_60%)]'
             : 'bg-[radial-gradient(120%_80%_at_0%_0%,rgba(148,163,184,0.18),transparent_55%),radial-gradient(100%_70%_at_100%_100%,rgba(203,213,225,0.35),transparent_60%)]',
         )}
@@ -242,7 +243,7 @@ const OwnerLayoutInner: React.FC = () => {
         <main
           className={cn(
             'flex-1 overflow-y-auto',
-            isDashboard ? '' : 'p-4 sm:p-6 lg:p-8',
+            isDashboardPage ? '' : 'p-4 sm:p-6 lg:p-8',
           )}
         >
           <Outlet />
