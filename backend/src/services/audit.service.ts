@@ -2,6 +2,8 @@ import { prisma } from './prisma.service';
 import { logger } from '../utils/logger';
 import { Prisma } from '@prisma/client';
 
+export const SYSTEM_USER_ID = '000000000000000000000000'; // 24-char hex zero string
+
 export interface AuditEntryInput {
   actorId: string;
   actionType: string;
