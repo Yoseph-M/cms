@@ -4,12 +4,15 @@ import { emitToLiveOrders } from './socket.service';
 import { createNotification } from './notification.service';
 import { prisma } from './prisma.service';
 import { getCached, setCache, invalidateCache } from './cache.service';
+import { PrismaClient, PrintJobStatus, PrintTransport } from '@prisma/client';
 
 export interface PrinterStation {
   id?: string;
   station: 'kitchen' | 'bar' | 'cashier';
-  ip: string;
-  port: number;
+  transport: PrintTransport;
+  ip: string | null;
+  port: number | null;
+  printerName: string | null;
 }
 
 const PRINTER_CACHE_KEY = 'printers:all';
@@ -22,11 +25,13 @@ async function loadPrintersFromDb(): Promise<PrinterStation[]> {
   if (cached) return cached;
 
   const rows = await prisma.printerStation.findMany({ orderBy: { station: 'asc' } });
-  const mapped = rows.map((r: { id: string; station: string; ip: string; port: number }) => ({
+  const mapped = rows.map((r) => ({
     id: r.id,
     station: r.station as PrinterStation['station'],
+    transport: r.transport,
     ip: r.ip,
     port: r.port,
+    printerName: r.printerName,
   }));
 
   setCache(PRINTER_CACHE_KEY, mapped, PRINTER_CACHE_TTL_MS);
@@ -47,9 +52,9 @@ export async function ensureDefaultPrinters(): Promise<void> {
 
   await prisma.printerStation.createMany({
     data: [
-      { station: 'kitchen', ip: '192.168.1.100', port: 9100 },
-      { station: 'bar', ip: '192.168.1.101', port: 9100 },
-      { station: 'cashier', ip: '192.168.1.102', port: 9100 },
+      { station: 'kitchen', ip: '192.168.1.100', port: 9100, transport: PrintTransport.TCP },
+      { station: 'bar', ip: '192.168.1.101', port: 9100, transport: PrintTransport.TCP },
+      { station: 'cashier', ip: '192.168.1.102', port: 9100, transport: PrintTransport.TCP },
     ],
   });
   invalidatePrinterCache();
@@ -157,54 +162,94 @@ export async function sendTicketToPrinterTCP(
   });
 }
 
-export async function triggerKitchenPrint(order: {
-  id: string;
-  clientOrderId: string;
-  tableNumber: string;
-  waiterName?: string;
-  createdAt: Date | string;
-  items: Array<{ name: string; quantity: number; notes?: string }>;
-}) {
+export async function enqueueKitchenPrintJob(
+  tx: Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>,
+  order: {
+    id: string;
+    clientOrderId: string;
+    tableNumber: string;
+    waiterName?: string;
+    createdAt: Date | string;
+    items: Array<{ name: string; quantity: number; notes?: string }>;
+  }
+) {
   const printers = await getPrinterRegistry();
   const kitchenPrinter = printers.find((p) => p.station === 'kitchen');
   if (!kitchenPrinter) {
     logger.warn('No kitchen printer configured in registry.');
-    return;
+    return null;
   }
 
   const ticketBuffer = buildEscPosKitchenTicket(order);
+  const payloadBase64 = ticketBuffer.toString('base64');
 
-  sendTicketToPrinterTCP(kitchenPrinter.ip, kitchenPrinter.port, ticketBuffer)
-    .then((success) => {
-      if (!success) {
-        const payload = {
-          id: order.id,
-          clientOrderId: order.clientOrderId,
-          tableNumber: order.tableNumber,
-          message: 'Kitchen printer TCP connection failed after retries.',
-        };
-        emitToLiveOrders('printer:failed', payload);
+  const printJob = await tx.printJob.create({
+    data: {
+      orderId: order.id,
+      station: kitchenPrinter.station,
+      transport: kitchenPrinter.transport as PrintTransport,
+      printerName: kitchenPrinter.printerName,
+      printerIp: kitchenPrinter.ip,
+      printerPort: kitchenPrinter.port,
+      payloadBase64,
+      status: PrintJobStatus.QUEUED,
+    },
+  });
+
+  return printJob;
+}
+
+export async function processTCPPrintJob(jobId: string) {
+  const job = await prisma.printJob.findUnique({ where: { id: jobId } });
+  if (!job || job.transport !== PrintTransport.TCP || job.status !== PrintJobStatus.QUEUED) {
+    return;
+  }
+
+  if (!job.printerIp || !job.printerPort) {
+    logger.error('TCP print job missing IP or Port');
+    return;
+  }
+
+  // Claim job locally for backend TCP processing
+  const claimed = await prisma.printJob.updateMany({
+    where: { id: jobId, status: PrintJobStatus.QUEUED },
+    data: { status: PrintJobStatus.PRINTING },
+  });
+
+  if (claimed.count === 0) return; // Already claimed or not queued
+
+  const ticketBuffer = Buffer.from(job.payloadBase64, 'base64');
+  
+  try {
+    const success = await sendTicketToPrinterTCP(job.printerIp, job.printerPort, ticketBuffer);
+    if (success) {
+      await prisma.printJob.update({
+        where: { id: jobId },
+        data: { status: PrintJobStatus.PRINTED, printedAt: new Date() },
+      });
+    } else {
+      await prisma.printJob.update({
+        where: { id: jobId },
+        data: { status: PrintJobStatus.FAILED, lastError: 'TCP Connection Failed' },
+      });
+      emitToLiveOrders('printer:failed', {
+        id: job.orderId,
+        message: 'Kitchen printer TCP connection failed after retries.',
+      });
+      if (job.orderId) {
         void createNotification({
           type: 'PRINTER_FAILURE',
           severity: 'critical',
-          message: `Kitchen printer failed for table ${order.tableNumber} (order ${order.clientOrderId.slice(0, 8)}).`,
-          relatedId: order.id,
+          message: `TCP printer failed for station ${job.station}.`,
+          relatedId: job.orderId,
         });
       }
-    })
-    .catch((err) => {
-      logger.error({ err }, 'Background kitchen print error.');
-      emitToLiveOrders('printer:failed', {
-        id: order.id,
-        clientOrderId: order.clientOrderId,
-        tableNumber: order.tableNumber,
-        message: 'Background kitchen print error.',
-      });
-      void createNotification({
-        type: 'PRINTER_FAILURE',
-        severity: 'critical',
-        message: `Kitchen printer error for table ${order.tableNumber}.`,
-        relatedId: order.id,
-      });
+    }
+  } catch (err: any) {
+    logger.error({ err }, 'Background kitchen print error.');
+    await prisma.printJob.update({
+      where: { id: jobId },
+      data: { status: PrintJobStatus.FAILED, lastError: err.message || 'Unknown Error' },
     });
+  }
 }
