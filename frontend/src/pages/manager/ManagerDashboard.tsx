@@ -138,7 +138,7 @@ export const ManagerDashboard: React.FC = () => {
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="h-full flex flex-col"
     >
-      <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 sm:space-y-6">
+      <div className="flex-1 overflow-y-auto max-w-7xl mx-auto w-full space-y-5 sm:space-y-6">
         {/* KPI cards - Matching the 4-card layout */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
           <KpiCard label="Total Staff" value={kpis.total} kind="number" icon={Users} tone="cream" trendDots={{ active: 3, total: 3, tone: 'green' }} />
