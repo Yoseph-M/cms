@@ -6,6 +6,13 @@ import { validate } from '../../middleware/validate.middleware';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 
+/**
+ * Cash Drawer Routes
+ * 
+ * NOTE: These endpoints are currently INTENTIONALLY BACKEND-ONLY.
+ * No UI components in the frontend currently call these routes.
+ * They are preserved for future use or side-effect operations.
+ */
 const router = Router();
 
 router.use(requireAuth);
