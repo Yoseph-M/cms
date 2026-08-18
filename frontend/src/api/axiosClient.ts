@@ -67,10 +67,16 @@ async function performRefreshWithLock() {
 
 async function doRefresh() {
   const res = await axios.post('/api/auth/refresh', {}, { withCredentials: true });
-  const { accessToken } = res.data;
-  useAuthStore.getState().setAccessToken(accessToken);
+  const { accessToken, user } = res.data;
+  
+  if (user) {
+    useAuthStore.getState().setAuth(user, accessToken);
+  } else {
+    useAuthStore.getState().setAccessToken(accessToken);
+  }
+
   if (authChannel) {
-    authChannel.postMessage({ type: 'SESSION_REFRESHED', accessToken });
+    authChannel.postMessage({ type: 'SESSION_REFRESHED', accessToken, user });
   }
   return accessToken;
 }
