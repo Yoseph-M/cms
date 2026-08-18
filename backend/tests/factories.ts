@@ -8,10 +8,10 @@
  * - Proper relationships and constraints
  */
 
-import { PrismaClient, Role, OrderStatus, SettlementStatus } from '@prisma/client';
+import { PrismaClient, Role, OrderStatus, SettlementStatus, ShiftStatus } from '@prisma/client';
 import crypto from 'crypto';
 
-const uuid = () => crypto.randomUUID();
+const uuid = () => crypto.randomBytes(12).toString('hex');
 
 /**
  * Factory options for creating test data
@@ -58,7 +58,7 @@ export async function createUser(
  */
 export interface CreateMenuItemOptions {
   name?: string;
-  category?: 'FOOD' | 'BEVERAGE' | 'DESSERT' | 'APPETIZER';
+  category?: 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER';
   price?: number;
   isAvailable?: boolean;
   description?: string;
@@ -77,7 +77,6 @@ export async function createMenuItem(
       category: overrides.category || 'FOOD',
       price: overrides.price ?? 1500, // $15.00 in minor units
       isAvailable: overrides.isAvailable ?? true,
-      description: overrides.description || '',
     },
   });
 }
@@ -210,7 +209,7 @@ export async function createSettledOrder(
   const order = await createOrder(factory, {
     ...overrides,
     status: OrderStatus.PAID,
-    settlementStatus: SettlementStatus.FULLY_SETTLED,
+    settlementStatus: SettlementStatus.SETTLED,
   });
 
   // Create matching settlement
@@ -255,9 +254,9 @@ export async function createCancellationRequest(
       requestedById: overrides.requestedById,
       reason: overrides.reason || 'Test cancellation',
       status: overrides.status || 'PENDING',
-      reviewedById: overrides.reviewedById,
-      reviewedAt: overrides.reviewedAt,
-      rejectionReason: overrides.rejectionReason,
+      approvedById: overrides.reviewedById,
+      approvedAt: overrides.reviewedAt,
+      rejectedReason: overrides.rejectionReason,
     },
   });
 }
@@ -300,8 +299,8 @@ export async function createExpense(
  */
 export interface CreateAttendanceOptions {
   userId: string;
-  date?: Date;
-  status?: 'PRESENT' | 'ABSENT' | 'LATE' | 'HALF_DAY';
+  date?: string;
+  status?: 'PRESENT' | 'ABSENT' | 'LEAVE' | 'HOLIDAY' | 'HALF_DAY';
   notes?: string;
 }
 
@@ -319,9 +318,9 @@ export async function createAttendance(
   return prisma.attendance.create({
     data: {
       userId: overrides.userId,
-      date: overrides.date || new Date(),
+      date: overrides.date || new Date().toISOString().split('T')[0],
       status: overrides.status || 'PRESENT',
-      notes: overrides.notes || '',
+      note: overrides.notes || '',
     },
   });
 }
@@ -334,7 +333,6 @@ export interface CreatePayrollEntryOptions {
   periodMonth: number;
   periodYear: number;
   baseSalary?: number;
-  bonuses?: number;
   deductions?: number;
   paidAmount?: number;
   processedById: string;
@@ -353,7 +351,6 @@ export async function createPayrollEntry(
   }
 
   const baseSalary = overrides.baseSalary ?? 300000; // $3000.00
-  const bonuses = overrides.bonuses ?? 0;
   const deductions = overrides.deductions ?? 0;
 
   return prisma.userPayment.create({
@@ -362,9 +359,7 @@ export async function createPayrollEntry(
       periodMonth: overrides.periodMonth,
       periodYear: overrides.periodYear,
       baseSalary,
-      bonuses,
-      deductions,
-      paidAmount: overrides.paidAmount ?? baseSalary + bonuses - deductions,
+      paidAmount: overrides.paidAmount ?? baseSalary - deductions,
       processedById: overrides.processedById,
       paymentDate: overrides.paymentDate || new Date(),
     },
@@ -395,14 +390,37 @@ export async function createSystemSetting(
     data: {
       key: overrides.key,
       value: overrides.value || 'test-value',
-      description: overrides.description || '',
     },
   });
 }
 
 /**
- * Printer Station factory options
+ * CashierShift factory options
  */
+export interface CreateShiftOptions {
+  cashierId: string;
+  openedById: string;
+  status?: ShiftStatus;
+  openingCashMinor?: number;
+}
+
+/**
+ * Create a test cashier shift
+ */
+export async function createShift(
+  { prisma }: FactoryOptions,
+  overrides: CreateShiftOptions
+): Promise<any> {
+  return prisma.cashierShift.create({
+    data: {
+      cashierId: overrides.cashierId,
+      openedById: overrides.openedById,
+      status: overrides.status || ShiftStatus.OPEN,
+      openingCashMinor: overrides.openingCashMinor ?? 1000,
+      openedAt: new Date(),
+    },
+  });
+}
 export interface CreatePrinterStationOptions {
   station?: 'KITCHEN' | 'BAR' | 'RECEIPT';
   ip?: string;
@@ -422,7 +440,6 @@ export async function createPrinterStation(
       station: overrides.station || 'KITCHEN',
       ip: overrides.ip || '192.168.1.100',
       port: overrides.port || 9100,
-      isOnline: overrides.isOnline ?? true,
     },
   });
 }
@@ -464,7 +481,7 @@ export async function createTestScenario(
   if (options.includeMenuItems) {
     result.menuItems = [
       await createMenuItem(factory, { name: 'Burger', category: 'FOOD', price: 1500 }),
-      await createMenuItem(factory, { name: 'Coffee', category: 'BEVERAGE', price: 500 }),
+      await createMenuItem(factory, { name: 'Coffee', category: 'DRINK', price: 500 }),
       await createMenuItem(factory, { name: 'Cake', category: 'DESSERT', price: 800 }),
     ];
   }
@@ -508,7 +525,7 @@ export async function createTestScenario(
         where: { id: order1.id },
         data: { 
           status: OrderStatus.PAID,
-          settlementStatus: SettlementStatus.FULLY_SETTLED,
+          settlementStatus: SettlementStatus.SETTLED,
         },
       });
     }
