@@ -34,11 +34,11 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
     mutationFn: (amountMinor: number) => shiftApi.openShift({ openingCashMinor: amountMinor }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['currentShift'] });
-      addToast('Shift opened successfully', 'success');
+      addToast({ title: 'Shift opened successfully', type: 'success' });
       setOpeningCash('');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.error?.message || 'Failed to open shift', 'error');
+      addToast({ title: err.response?.data?.error?.message || 'Failed to open shift', type: 'error' });
     },
   });
 
@@ -47,17 +47,17 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
       shiftApi.closeShift(currentShift?.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['currentShift'] });
-      addToast('Shift closed successfully. Pending variance review.', 'success');
+      addToast({ title: 'Shift closed successfully. Pending variance review.', type: 'success' });
       setIsClosing(false);
       setClosingCash('');
       setClosingNotes('');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.error?.message || 'Failed to close shift', 'error');
+      addToast({ title: err.response?.data?.error?.message || 'Failed to close shift', type: 'error' });
     },
   });
 
-  if (isLoading) return <LoadingState text="Checking shift status..." />;
+  if (isLoading) return <LoadingState message="Checking shift status..." />;
   if (error) return <ErrorState message="Failed to load shift status" onRetry={refetch} />;
 
   // 1. If we have an active shift, render the main dashboard + a "Close Shift" button
@@ -95,11 +95,11 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
 
               <div>
                 <label className="block text-sm font-medium mb-1">Closing Notes (Optional)</label>
-                <Input
-                  as="textarea"
+                <textarea
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm min-h-[80px]"
                   placeholder="Any explanations for over/short..."
                   value={closingNotes}
-                  onChange={(e) => setClosingNotes(e.target.value)}
+                  onChange={(e: any) => setClosingNotes(e.target.value)}
                 />
               </div>
 
@@ -113,7 +113,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
                   Cancel
                 </Button>
                 <Button 
-                  variant="primary" 
+                  variant="default" 
                   className="w-full"
                   onClick={() => {
                     const amountMinor = Math.round(parseFloat(closingCash || '0') * 100);
@@ -138,7 +138,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
         {/* Floating Close Shift Button (original behaviour) */}
         <div className="fixed bottom-6 right-6 z-50">
           <Button
-            variant="warning"
+            variant="destructive"
             size="lg"
             className="shadow-xl rounded-full px-6 py-6 font-bold flex gap-2 items-center hover:scale-105 transition-transform"
             onClick={() => setIsClosing(true)}
