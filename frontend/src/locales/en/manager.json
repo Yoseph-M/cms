@@ -49,6 +49,66 @@
       "notePlaceholder": "e.g. Paid in cash on the 28th"
     }
   },
+  "expenses": {
+    "title": "Expenses",
+    "addExpense": "Add Expense",
+    "editExpense": "Edit Expense",
+    "addDescription": "Record a new business expense.",
+    "editDescription": "Update this expense record.",
+    "emptyTitle": "No expenses recorded yet.",
+    "loading": "Loading...",
+    "retry": "Retry",
+    "categories": {
+      "rent": "Rent",
+      "utilities": "Utilities",
+      "supplies": "Supplies",
+      "maintenance": "Maintenance",
+      "payroll": "Payroll",
+      "other": "Other"
+    },
+    "filters": {
+      "category": "Category",
+      "allCategories": "All categories",
+      "from": "From",
+      "to": "To"
+    },
+    "table": {
+      "date": "Date",
+      "category": "Category",
+      "description": "Description",
+      "amount": "Amount",
+      "recordedBy": "Recorded By"
+    },
+    "form": {
+      "category": "Category",
+      "amount": "Amount (ETB)",
+      "description": "Description",
+      "date": "Date",
+      "required": "*",
+      "amountPlaceholder": "0.00",
+      "descriptionPlaceholder": "e.g. Monthly electricity bill",
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "saveChanges": "Save Changes",
+      "addExpense": "Add Expense"
+    },
+    "delete": {
+      "title": "Delete \"{{description}}\"?",
+      "description": "This can't be undone.",
+      "confirm": "Delete Expense"
+    },
+    "toasts": {
+      "validationError": "Category, amount, description, and date are required.",
+      "amountError": "Amount must be a non-negative number.",
+      "updated": "Expense updated",
+      "recorded": "Expense recorded",
+      "updateFailed": "Update failed",
+      "recordFailed": "Could not record expense",
+      "deleted": "Expense deleted",
+      "deleteFailed": "Delete failed",
+      "loadFailed": "Failed to load expenses."
+    }
+  },
   "toasts": {
     "fetchStaffError": "Failed to fetch staff list",
     "attendanceLogged": "Attendance logged",
