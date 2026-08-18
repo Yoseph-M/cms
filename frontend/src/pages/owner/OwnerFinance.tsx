@@ -244,7 +244,7 @@ export const OwnerFinance: React.FC = () => {
   }, [topItm.data, topItemsMode]);
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold">Finance</h2>
