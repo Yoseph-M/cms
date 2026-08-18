@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ShieldCheck, Users, FileText, Printer, Settings as SettingsIcon } from 'lucide-react';
+import { ShieldCheck, Users, FileText, Printer } from 'lucide-react';
 import { OwnerStaff } from './OwnerStaff';
 import { OwnerAudit } from './OwnerAudit';
 import { OwnerPrinters } from './OwnerPrinters';
 import { OwnerPrintAgents } from './OwnerPrintAgents';
-import { OwnerSettings } from '../settings/OwnerSettings';
 import { cn } from '../../lib/utils';
 
-type TabId = 'staff' | 'audit' | 'printers' | 'settings';
+type TabId = 'staff' | 'audit' | 'printers';
 
-const TAB_IDS: readonly TabId[] = ['staff', 'audit', 'printers', 'settings'] as const;
+const TAB_IDS: readonly TabId[] = ['staff', 'audit', 'printers'] as const;
 
 export const SystemAdminPage: React.FC = () => {
   const { t } = useTranslation('owner');
@@ -21,8 +20,6 @@ export const SystemAdminPage: React.FC = () => {
     tabFromUrl && TAB_IDS.includes(tabFromUrl) ? tabFromUrl : 'staff',
   );
 
-  // Keep the URL in sync with the active tab so the bottom-of-sidebar
-  // "System Settings" link (`/owner/admin?tab=settings`) can deep-link in.
   useEffect(() => {
     if (searchParams.get('tab') !== activeTab) {
       const next = new URLSearchParams(searchParams);
@@ -36,7 +33,6 @@ export const SystemAdminPage: React.FC = () => {
     { id: 'staff' as const, label: 'Staff Management', icon: Users },
     { id: 'audit' as const, label: 'Audit Logs', icon: FileText },
     { id: 'printers' as const, label: 'LAN Printers', icon: Printer },
-    { id: 'settings' as const, label: 'System Settings', icon: SettingsIcon },
   ] as const;
 
   return (
@@ -94,7 +90,6 @@ export const SystemAdminPage: React.FC = () => {
             <OwnerPrintAgents />
           </>
         )}
-        {activeTab === 'settings' && <OwnerSettings />}
       </div>
     </div>
   );
