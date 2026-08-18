@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useSocketStore } from '../../store/socketStore';
 import { useToastStore } from '../../store/toastStore';
+import { useAuthStore } from '../../store/authStore';
 import { Order, PaymentMethod } from '../../types';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { formatCurrency } from '../../utils/currency';
@@ -226,6 +227,7 @@ const BigCollectButton: React.FC<{
 export const CashierDashboard: React.FC = () => {
   const { socket } = useSocketStore();
   const { addToast } = useToastStore();
+  const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { t } = useTranslation('cashier');
 
@@ -414,11 +416,9 @@ export const CashierDashboard: React.FC = () => {
     };
   }, [socket, addToast]);
 
-  /* ─────────────────────────────────────────────────────────
-   * Actions
-   * ───────────────────────────────────────────────────────── */
-  const MAX_SETTLE_RETRIES = 3;
-  const SETTLE_BACKOFF_MS = [500, 1000, 2000];
+  /* ─── Actions ─── */
+  const MAX_SETTLE_RETRIES = 5;
+  const SETTLE_BACKOFF_MS = [500, 1000, 2000, 4000, 5000];
 
   const handleMarkPaid = async (orderId: string, retryCount = 0) => {
     if (retryCount === 0 && isSettlingRef.current) return;
@@ -429,6 +429,14 @@ export const CashierDashboard: React.FC = () => {
       const order = orders.find((o) => o.id === orderId);
       if (!order) throw new Error('Order not found');
 
+      // If the order is already settled in our local state, don't even try.
+      // This can happen if a socket message arrived while we were waiting to retry.
+      if (order.settlementStatus === 'SETTLED' || order.status === 'PAID') {
+        setPhase('idle');
+        isSettlingRef.current = false;
+        return;
+      }
+
       const res = await axiosClient.post(
         `/orders/${orderId}/settlements`,
         {
@@ -437,10 +445,11 @@ export const CashierDashboard: React.FC = () => {
           reference: '',
           note: 'Settlement recorded via Cashier Dashboard',
         },
-        { headers: { 'Idempotency-Key': `settle-full-${orderId}` } },
+        { headers: { 'Idempotency-Key': `settle-full-${orderId}-${user?.id || 'anon'}` } },
       );
 
       setOrders((prev) => prev.map((o) => (o.id === orderId ? res.data.order : o)));
+      isSettlingRef.current = false; // Clear ref on success
 
       const tableText = res.data.order.tableNumber
         ? t('toasts.tableText', { table: res.data.order.tableNumber })
@@ -489,13 +498,11 @@ export const CashierDashboard: React.FC = () => {
           message: errorMessage,
         });
         
-        if (retryCount === 0) {
-          isSettlingRef.current = false;
-        }
+        isSettlingRef.current = false; // Clear ref on terminal error
         return;
       }
       
-      // Retry only for concurrent modification errors, with a max of 3 attempts
+      // Retry only for concurrent modification errors, with a max of 5 attempts
       if (isConcurrent && retryCount < MAX_SETTLE_RETRIES) {
         const delay = SETTLE_BACKOFF_MS[retryCount];
         if (retryCount === 0) {
@@ -504,12 +511,20 @@ export const CashierDashboard: React.FC = () => {
             title: 'Retrying…',
             message: 'Order is being updated. Retrying automatically.',
           });
+        } else if (retryCount === 2) {
+          // Additional notification for persistent conflicts
+          addToast({
+            type: 'warning',
+            title: 'Busy Order',
+            message: 'This order is still being modified. Still trying…',
+          });
         }
         setTimeout(() => handleMarkPaid(orderId, retryCount + 1), delay);
         return;
       }
       
       setPhase('idle');
+      isSettlingRef.current = false; // Clear ref on terminal error
       
       // Provide specific error messages for other scenarios
       let errorMessage = extractErrorMessage(err);
@@ -535,9 +550,8 @@ export const CashierDashboard: React.FC = () => {
         message: errorMessage,
       });
     } finally {
-      if (retryCount === 0 || !isSettlingRef.current) {
-        isSettlingRef.current = false;
-      }
+      // Only clear the ref if we are not retrying and not in a nested call
+      // The catch block already handles terminal errors and retries
     }
   };
 
@@ -680,7 +694,6 @@ export const CashierDashboard: React.FC = () => {
             kind="currency"
             icon={TrendingUp}
             tone="mint"
-            hint={`${settledCount} settled`}
           />
           <KpiCard
             label="Active tickets"
@@ -688,7 +701,6 @@ export const CashierDashboard: React.FC = () => {
             kind="number"
             icon={ListOrdered}
             tone="cream"
-            hint={activeOrders.length === 0 ? 'All clear' : 'On the floor'}
           />
           <KpiCard
             label="Avg ticket"
@@ -703,7 +715,6 @@ export const CashierDashboard: React.FC = () => {
             kind="number"
             icon={Timer}
             tone={oldestWaitMinutes >= 15 ? 'blush' : 'cream'}
-            hint={oldestWaitMinutes >= 30 ? 'Check now' : oldestWaitMinutes >= 15 ? 'Watch' : 'm'}
           />
         </div>
 
