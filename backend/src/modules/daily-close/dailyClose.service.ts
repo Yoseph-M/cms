@@ -21,7 +21,7 @@
  */
 
 import { prisma } from '../../services/prisma.service';
-import { recordAudit } from '../../services/audit.service';
+import { recordAudit, SYSTEM_USER_ID } from '../../services/audit.service';
 import { emitToRoom } from '../../services/socket.service';
 import { DailyCloseStatus, ShiftStatus, VarianceReviewStatus } from '@prisma/client';
 import { executeInCriticalTransaction } from '../../utils/transaction';
@@ -122,7 +122,7 @@ export async function startDailyClose(params: StartDailyCloseParams) {
     const nonCriticalCount = integrityResult.issuesFound - criticalIssues.length;
     if (nonCriticalCount > 0) {
       await recordAudit({
-        actorId: 'SYSTEM',
+        actorId: SYSTEM_USER_ID,
         actionType: 'DAILY_CLOSE_WITH_WARNINGS',
         targetType: 'DailyClose',
         details: {
