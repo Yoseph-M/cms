@@ -158,6 +158,13 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     }
 
     // 2. Load order WITHIN the transaction for authoritative state
+    // We use an update on updatedAt to take an exclusive lock on the order document
+    // This prevents deadlocks and ensures only one transaction can settle this order at a time.
+    await tx.order.update({
+      where: { id: orderId },
+      data: { updatedAt: new Date() },
+    });
+
     const order = await tx.order.findUnique({
       where: { id: orderId },
       include: { settlements: true },
@@ -216,18 +223,40 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
       shiftId = activeShift.id;
     }
     
-    const settlement = await tx.settlement.create({
-      data: {
-        orderId,
-        amountMinor,
-        method,
-        reference,
-        note,
-        recordedById,
-        shiftId,
-        idempotencyKey,
-      },
-    });
+    let settlement;
+    try {
+      settlement = await tx.settlement.create({
+        data: {
+          orderId,
+          amountMinor,
+          method,
+          reference,
+          note,
+          recordedById,
+          shiftId,
+          idempotencyKey,
+        },
+      });
+    } catch (error: any) {
+      // Handle unique constraint violation on idempotencyKey
+      if (error.code === 'P2002' && error.meta?.target?.includes('idempotencyKey')) {
+        // If we hit this, it means a concurrent request succeeded between our check and our create.
+        // We fetch the existing record to return it, making this operation truly idempotent.
+        const existing = await tx.settlement.findUnique({
+          where: { idempotencyKey: idempotencyKey! },
+          include: { order: true },
+        });
+        if (existing) {
+          return {
+            settlement: existing,
+            order: existing.order,
+          };
+        }
+        // If for some reason we can't find it, throw the concurrent modification error
+        throw new ConcurrentModificationError('Settlement request is already in progress');
+      }
+      throw error;
+    }
 
     // 4.5. Auto-create CASH_SETTLEMENT ledger entry if CASH
     if (method === PaymentMethod.CASH && shiftId) {
@@ -247,7 +276,14 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     // 5. Update order settlement status atomically using optimistic locking
     // This ensures we don't overwrite if status changed since we read
     
-    const updateData: any = {
+    const updateData: {
+      settlementStatus: SettlementStatus;
+      status?: OrderStatus;
+      isPaid?: boolean;
+      paidAt?: Date;
+      cashierId?: string;
+      paymentMethod?: PaymentMethod;
+    } = {
       settlementStatus: newSettlementStatus,
     };
     
