@@ -2,8 +2,9 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { emitToLiveOrders } from '../../services/socket.service';
-import { triggerKitchenPrint } from '../../services/printer.service';
-import { OrderStatus, PaymentMethod, Role } from '@prisma/client';
+import { enqueueKitchenPrintJob, processTCPPrintJob } from '../../services/printer.service';
+import { OrderStatus, PaymentMethod, Role, PrintTransport } from '@prisma/client';
+import { executeInTransaction } from '../../utils/transaction';
 import { canTransition } from '../../utils/orderStateMachine';
 import { recordAudit } from '../../services/audit.service';
 import { getBusinessDayStart, getBusinessDayEnd, parseBusinessDate } from '../../utils/businessTime';
@@ -33,7 +34,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   const menuItemMap = new Map(menuItems.map(m => [m.id, m]));
   let computedTotal = 0;
   
-  const validatedItems = [];
+  const validatedItems: Array<{ menuItemId: string; name: string; unitPrice: number; quantity: number; notes: string }> = [];
   for (const item of items) {
     const dbItem = menuItemMap.get(item.menuItemId);
     if (!dbItem) {
@@ -70,17 +71,38 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   }
 
   let order;
+  let createdPrintJobId: string | null = null;
+  let printTransport: PrintTransport | null = null;
+  
   try {
-    order = await prisma.order.create({
-      data: {
-        clientOrderId,
-        tableNumber,
-        waiterId,
-        items: validatedItems,
-        totalAmount: computedTotal,
-        status: OrderStatus.SUBMITTED,
-      },
-      include: includeWaiter,
+    order = await executeInTransaction(prisma, async (tx) => {
+      const newOrder = await tx.order.create({
+        data: {
+          clientOrderId,
+          tableNumber,
+          waiterId,
+          items: validatedItems,
+          totalAmount: computedTotal,
+          status: OrderStatus.SUBMITTED,
+        },
+        include: includeWaiter,
+      });
+
+      const printJob = await enqueueKitchenPrintJob(tx, {
+        id: newOrder.id,
+        clientOrderId: newOrder.clientOrderId,
+        tableNumber: newOrder.tableNumber,
+        waiterName: newOrder.waiter?.name || waiterName,
+        createdAt: newOrder.createdAt,
+        items: newOrder.items as any,
+      });
+
+      if (printJob) {
+        createdPrintJobId = printJob.id;
+        printTransport = printJob.transport;
+      }
+
+      return newOrder;
     });
   } catch (err: any) {
     // Concurrent duplicate clientOrderId — return the winner
@@ -96,15 +118,12 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     throw err;
   }
 
-  // Trigger server-side kitchen thermal print over TCP
-  triggerKitchenPrint({
-    id: order.id,
-    clientOrderId: order.clientOrderId,
-    tableNumber: order.tableNumber,
-    waiterName: order.waiter?.name || waiterName,
-    createdAt: order.createdAt,
-    items: order.items,
-  });
+  // Trigger server-side kitchen thermal print over TCP if legacy
+  if (createdPrintJobId && printTransport === PrintTransport.TCP) {
+    processTCPPrintJob(createdPrintJobId).catch(e => console.error(e));
+  } else if (createdPrintJobId && printTransport === PrintTransport.WINDOWS) {
+    emitToLiveOrders('printJob:queued', { printJobId: createdPrintJobId, station: 'kitchen' });
+  }
 
   // Broadcast live event to Socket.io orders room
   emitToLiveOrders('order:new', order as any);
@@ -433,14 +452,20 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
     return res.status(404).json({ error: 'Order not found.' });
   }
 
-  triggerKitchenPrint({
+  const printJob = await enqueueKitchenPrintJob(prisma, {
     id: order.id,
     clientOrderId: order.clientOrderId,
     tableNumber: order.tableNumber,
     waiterName: order.waiter?.name || 'Staff',
     createdAt: order.createdAt,
-    items: order.items,
+    items: order.items as any,
   });
+
+  if (printJob?.transport === PrintTransport.TCP) {
+    processTCPPrintJob(printJob.id).catch(e => console.error(e));
+  } else if (printJob?.transport === PrintTransport.WINDOWS) {
+    emitToLiveOrders('printJob:queued', { printJobId: printJob.id, station: 'kitchen' });
+  }
 
   return res.json({ message: 'Reprint triggered successfully.' });
 }
