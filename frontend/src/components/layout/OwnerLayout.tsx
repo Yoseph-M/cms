@@ -11,7 +11,7 @@ import {
   Wallet,
   CalendarCheck,
   Receipt,
-ShieldCheck,
+  ShieldCheck,
   Settings,
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
@@ -49,10 +49,8 @@ const OwnerLayoutInner: React.FC = () => {
     ] : []),
   ] as const;
 
-  // "System Settings" is a sub-page of System Admin — give it its own
-  // quick-access link pinned to the bottom of the sidebar.
   const SYSTEM_SETTINGS = systemAdminEnabled
-    ? { to: '/owner/admin?tab=settings', label: t('nav.systemSettings', { defaultValue: 'System Settings' }), icon: Settings }
+    ? { to: '/owner/settings', label: t('nav.systemSettings', { defaultValue: 'System Settings' }), icon: Settings }
     : null;
 
   const GROUP_LABELS: Record<string, string> = {
