@@ -96,4 +96,8 @@ export const integrityApi = {
     const res = await axiosClient.post('/integrity/run');
     return res.data;
   },
+  resolveIssue: async (id: string, data: { resolutionNotes?: string }) => {
+    const res = await axiosClient.post(`/integrity/${id}/resolve`, data);
+    return res.data;
+  },
 };
