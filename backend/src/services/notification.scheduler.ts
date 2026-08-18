@@ -1,7 +1,7 @@
 import { prisma } from './prisma.service';
 import { createNotification } from './notification.service';
 import { emitToLiveOrders } from './socket.service';
-import { recordAudit } from './audit.service';
+import { recordAudit, SYSTEM_USER_ID } from './audit.service';
 import { Role, OrderStatus, SettlementStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 
@@ -151,7 +151,7 @@ export async function autoCancelStaleOrders() {
       });
       
       await recordAudit({
-        actorId: 'SYSTEM',
+        actorId: SYSTEM_USER_ID,
         actionType: 'ORDER_CANCELLED',
         targetType: 'Order',
         targetId: order.id,
