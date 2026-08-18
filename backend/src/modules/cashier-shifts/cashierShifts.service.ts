@@ -284,7 +284,10 @@ interface ShiftHistoryParams {
 export async function getShiftHistory(params: ShiftHistoryParams) {
   const { cashierId, status, limit = 50, offset = 0 } = params;
 
-  const where: any = {};
+  const where: {
+    cashierId?: string;
+    status?: ShiftStatus;
+  } = {};
   if (cashierId) where.cashierId = cashierId;
   if (status) where.status = status;
 
