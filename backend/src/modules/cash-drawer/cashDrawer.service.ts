@@ -19,6 +19,26 @@
  * 
  * The expected cash formula:
  *   expected = opening_balance + cash_settlements - payouts - petty_cash ± adjustments
+ * 
+ * ============================================================================
+ * MODULE STATUS: BACKEND-ONLY (No Direct UI)
+ * ============================================================================
+ * This module is intentionally backend-only. Cash drawer events are created:
+ * 1. Automatically: CASH_SETTLEMENT events are auto-created by settlement.service.ts
+ *    when recording cash payments
+ * 2. Automatically: OPENING_BALANCE events are auto-created by cashierShifts.service.ts
+ *    when opening a shift
+ * 3. Via API endpoints: Cashiers/Managers can record CASH_PAYOUT and PETTY_CASH via
+ *    the API routes defined in cashDrawer.routes.ts (available to frontend if needed)
+ * 
+ * The cashDrawerApi client exists in frontend/src/api/phase9Api.ts but is currently
+ * unused. Cash drawer functionality is accessible through:
+ * - Shift management UI (opening shifts creates OPENING_BALANCE)
+ * - Settlement recording UI (cash payments create CASH_SETTLEMENT)
+ * - Direct API calls (if a Manager/Cashier UI for payouts is added later)
+ * 
+ * The ledger is viewable in the shift detail view through the getLedger endpoint.
+ * ============================================================================
  */
 
 import { prisma } from '../../services/prisma.service';
