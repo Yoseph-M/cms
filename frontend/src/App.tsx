@@ -41,6 +41,9 @@ const OwnerSettings = lazy(() =>
 const ManagerSettings = lazy(() =>
   import('./pages/settings/ManagerSettings').then((m) => ({ default: m.ManagerSettings }))
 );
+const CashierSettings = lazy(() =>
+  import('./pages/settings/CashierSettings').then((m) => ({ default: m.CashierSettings }))
+);
 const CashierOrderingPanel = lazy(() =>
   import('./components/cashier/CashierOrderingPanel').then((m) => ({
     default: m.CashierOrderingPanel,
@@ -75,6 +78,9 @@ const ProfilePage = lazy(() =>
 );
 const GlobalSettlementHistory = lazy(() =>
   import('./pages/shared/GlobalSettlementHistory').then((m) => ({ default: m.GlobalSettlementHistory }))
+);
+const LoginHistory = lazy(() =>
+  import('./pages/owner/LoginHistory').then((m) => ({ default: m.LoginHistory }))
 );
 
 const Lazy: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -167,6 +173,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="attendance" element={<Lazy><AttendanceCalendar isOwner /></Lazy>} />
           <Route path="payroll" element={<Lazy><OwnerPayroll /></Lazy>} />
           <Route path="admin" element={<Lazy><SystemAdminPage /></Lazy>} />
+          <Route path="login-history" element={<Lazy><LoginHistory /></Lazy>} />
           <Route path="settings" element={<Lazy><OwnerSettings /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
@@ -206,7 +213,7 @@ export const AppRoutes: React.FC = () => {
           <Route index element={<Lazy><ShiftManager><CashierDashboard /></ShiftManager></Lazy>} />
           <Route path="menu" element={<Lazy><MenuCatalog canEdit={settings['cashierMenuManagementEnabled'] === 'true'} /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
-          <Route path="settings" element={<Navigate to="profile" replace />} />
+          <Route path="settings" element={<Lazy><CashierSettings /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/cashier" replace />} />
         </Route>
