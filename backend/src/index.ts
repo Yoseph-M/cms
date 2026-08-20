@@ -4,6 +4,7 @@ import { config } from './config';
 import { connectDatabase, prisma } from './services/prisma.service';
 import { initSocketService } from './services/socket.service';
 import { startNotificationScheduler } from './services/notification.scheduler';
+import { printJobRecoveryService } from './services/print-job-recovery.service';
 import { logger } from './utils/logger';
 import { requireTransactionSupport, detectTransactionSupport, getTransactionCapability } from './utils/transaction';
 import { initBusinessTimezone } from './utils/businessTime';
@@ -73,6 +74,12 @@ async function startServer() {
   // Start notification scheduler in non-test environments
   if (config.nodeEnv !== 'test') {
     startNotificationScheduler();
+  }
+
+  // Start print job recovery service in non-test environments
+  if (config.nodeEnv !== 'test') {
+    printJobRecoveryService.start();
+    logger.info('Print job recovery service started');
   }
 
   server.listen(config.port, () => {
