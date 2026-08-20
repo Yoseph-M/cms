@@ -111,7 +111,7 @@ export const ManagerPayroll: React.FC = () => {
       setRefSalary(salary);
       setPaidAmount(String(salary));
     } catch (err: any) {
-      addToast({ type: 'error', title: t('toasts.refSalaryError', { defaultValue: 'Could not load salary reference' }), message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: 'Unable to load salary reference', message: extractErrorMessage(err) || 'Could not fetch salary information.' });
     } finally {
       setIsLoadingRef(false);
     }
@@ -119,12 +119,12 @@ export const ManagerPayroll: React.FC = () => {
 
   const handleRecordEntry = async () => {
     if (!userId || !paidAmount) {
-      addToast({ type: 'error', title: t('toasts.staffAmountRequired', { defaultValue: 'Staff and paid amount are required.' }) });
+      addToast({ type: 'error', title: 'Please select a staff member and enter the amount paid.' });
       return;
     }
     const amount = parseFloat(paidAmount);
     if (!Number.isFinite(amount) || amount < 0) {
-      addToast({ type: 'error', title: t('toasts.invalidAmount', { defaultValue: 'Paid amount must be a non-negative number.' }) });
+      addToast({ type: 'error', title: 'Please enter a valid amount (must be zero or greater).' });
       return;
     }
     setIsSubmitting(true);
@@ -136,7 +136,7 @@ export const ManagerPayroll: React.FC = () => {
         paidAmount: amount,
         note: note.trim() || undefined,
       });
-      addToast({ type: 'success', title: t('toasts.payrollRecorded', { defaultValue: 'Payroll entry recorded' }) });
+      addToast({ type: 'success', title: 'Payroll recorded', message: 'The payment has been recorded successfully.' });
       setFormOpen(false);
       resetForm();
       fetchLedger();
@@ -144,8 +144,8 @@ export const ManagerPayroll: React.FC = () => {
       const detail = err.response?.data?.details?.[0]?.error;
       addToast({
         type: 'error',
-        title: t('toasts.payrollRecordError', { defaultValue: 'Could not record entry' }),
-        message: detail || extractErrorMessage(err),
+        title: 'Unable to record payroll',
+        message: detail || extractErrorMessage(err) || 'Something went wrong. Please try again.',
       });
     } finally {
       setIsSubmitting(false);
