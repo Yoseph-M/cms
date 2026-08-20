@@ -55,15 +55,25 @@ export async function requestCancellation(params: CreateCancellationRequestParam
   }
 
   // Check order exists and is eligible for cancellation
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { 
-      settlements: true,
-    },
-  });
+  const [order, requester] = await Promise.all([
+    prisma.order.findUnique({
+      where: { id: orderId },
+      include: { 
+        settlements: true,
+      },
+    }),
+    prisma.user.findUnique({
+      where: { id: requestedById },
+      select: { role: true },
+    }),
+  ]);
 
   if (!order) {
     throw new NotFoundError('Order', orderId);
+  }
+
+  if (!requester) {
+    throw new NotFoundError('User', requestedById);
   }
 
   // Cannot request cancellation for already cancelled orders
@@ -76,8 +86,11 @@ export async function requestCancellation(params: CreateCancellationRequestParam
     throw new CannotCancelSettledOrderError(orderId);
   }
 
+  // Auto-approve if requester is a WAITER
+  const isWaiter = requester.role === 'WAITER';
+
   // Use critical transaction to prevent duplicate requests
-  const requestId = await executeInCriticalTransaction(prisma, async (tx) => {
+  const result = await executeInCriticalTransaction(prisma, async (tx) => {
     // Check if there's already a pending cancellation request
     const pendingRequest = await tx.orderCancellationRequest.findFirst({
       where: { 
@@ -105,66 +118,75 @@ export async function requestCancellation(params: CreateCancellationRequestParam
       throw new CannotCancelSettledOrderError(orderId);
     }
 
-    // Create cancellation request (without includes to keep transaction fast)
-    const created = await tx.orderCancellationRequest.create({
+    // Create cancellation request
+    const request = await tx.orderCancellationRequest.create({
       data: {
         orderId,
         requestedById,
         reason: reason.trim(),
-        status: PENDING_STATUS,
+        status: isWaiter ? APPROVED_STATUS : PENDING_STATUS,
+        approvedById: isWaiter ? requestedById : null,
+        approvedAt: isWaiter ? new Date() : null,
       },
-      select: { id: true }, // Only return ID to keep transaction fast
+      include: {
+        order: true,
+        requestedBy: {
+          select: { id: true, name: true, role: true },
+        },
+      },
     });
 
-    return created.id;
-  });
+    // If auto-approved, also cancel the order
+    if (isWaiter) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: OrderStatus.CANCELLED,
+          cancellationReason: reason.trim(),
+          cancelledById: requestedById,
+        },
+      });
+    }
 
-  // Fetch full request details OUTSIDE transaction (not time-sensitive)
-  const request = await prisma.orderCancellationRequest.findUnique({
-    where: { id: requestId },
-    include: {
-      order: true,
-      requestedBy: {
-        select: { id: true, name: true, role: true },
-      },
-    },
+    return request;
   });
-
-  if (!request) {
-    throw new NotFoundError('CancellationRequest', requestId);
-  }
 
   // Audit log
   await recordAudit({
     actorId: requestedById,
-    actionType: 'CANCELLATION_REQUESTED',
+    actionType: isWaiter ? 'ORDER_CANCELLED' : 'CANCELLATION_REQUESTED',
     targetType: 'Order',
     targetId: orderId,
     details: {
-      requestId: request.id,
+      requestId: result.id,
       reason: reason.trim(),
+      autoApproved: isWaiter,
     },
   });
 
-  // Emit socket notification to managers/owners
-  emitToLiveOrders('cancellation:requested', {
-    request: {
-      id: request.id,
-      orderId: request.orderId,
-      requestedBy: request.requestedBy,
-      reason: request.reason,
-      status: request.status,
-      createdAt: request.createdAt,
-    },
-    order: {
-      id: request.order.id,
-      clientOrderId: request.order.clientOrderId,
-      tableNumber: request.order.tableNumber,
-      totalAmount: request.order.totalAmount,
-    },
-  });
+  // Emit socket notification
+  if (isWaiter) {
+    emitToLiveOrders('order:cancelled', result.order as any);
+  } else {
+    emitToLiveOrders('cancellation:requested', {
+      request: {
+        id: result.id,
+        orderId: result.orderId,
+        requestedBy: result.requestedBy,
+        reason: result.reason,
+        status: result.status,
+        createdAt: result.createdAt,
+      },
+      order: {
+        id: result.order.id,
+        clientOrderId: result.order.clientOrderId,
+        tableNumber: result.order.tableNumber,
+        totalAmount: result.order.totalAmount,
+      },
+    });
+  }
 
-  return request;
+  return result;
 }
 
 /**
