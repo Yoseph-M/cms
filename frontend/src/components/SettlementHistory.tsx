@@ -20,7 +20,7 @@ interface Settlement {
     id: string;
     name: string;
   };
-  recordedAt: string;
+  createdAt: string;
 }
 
 interface SettlementHistoryProps {
@@ -42,7 +42,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
 
   useEffect(() => {
     fetchSettlements();
-  }, [orderId]);
+  }, [orderId, onSettlementAdded]);
 
   const fetchSettlements = async () => {
     try {
@@ -205,7 +205,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
                   </p>
                 </div>
                 <div className="text-right text-sm text-gray-500">
-                  <p>{formatDate(settlement.recordedAt)}</p>
+                  <p>{formatDate(settlement.createdAt)}</p>
                 </div>
               </div>
 
