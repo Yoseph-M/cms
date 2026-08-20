@@ -188,6 +188,8 @@ export type SocketEventName =
   | 'printJob:queued'
   | 'printJob:updated'
   | 'printJob:retry'
+  | 'printJob:recovered'
+  | 'printJob:failed'
   | 'integrity:alert'
   | 'variance:reviewed'
   | 'shift:opened'
