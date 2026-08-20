@@ -205,22 +205,28 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     }
 
     // 4. Create settlement record WITHIN transaction
-    // For CASH settlements: find active shift and link
+    // For settlements: find active shift and link if shift management is enabled
     let shiftId: string | null = null;
     
-    if (method === PaymentMethod.CASH) {
+    const shiftSetting = await tx.systemSetting.findUnique({
+      where: { key: 'shiftManagementEnabled' },
+    });
+    const shiftEnabled = shiftSetting ? shiftSetting.value === 'true' : true;
+
+    if (shiftEnabled) {
       const activeShift = await tx.cashierShift.findFirst({
         where: { cashierId: recordedById, status: 'OPEN' },
       });
       
-      if (!activeShift) {
+      if (activeShift) {
+        shiftId = activeShift.id;
+      } else if (method === PaymentMethod.CASH) {
+        // CASH still requires a shift if management is enabled
         throw new ValidationError(
           'CASH settlements require an active cashier shift. Please open a shift first.',
           'method'
         );
       }
-      
-      shiftId = activeShift.id;
     }
     
     let settlement;
@@ -334,27 +340,7 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     },
   });
 
-  return {
-    settlement: {
-      id: result.settlement.id,
-      orderId: result.settlement.orderId,
-      amountMinor: result.settlement.amountMinor,
-      method: result.settlement.method as PaymentMethod,
-      reference: result.settlement.reference,
-      note: result.settlement.note,
-      recordedById: result.settlement.recordedById,
-      shiftId: result.settlement.shiftId,
-      idempotencyKey: result.settlement.idempotencyKey,
-      createdAt: result.settlement.createdAt,
-    },
-    order: {
-      id: result.order.id,
-      clientOrderId: result.order.clientOrderId,
-      totalAmount: result.order.totalAmount,
-      settlementStatus: result.order.settlementStatus as SettlementStatus,
-      status: result.order.status as OrderStatus,
-    },
-  };
+  return result;
 }
 
 /**
