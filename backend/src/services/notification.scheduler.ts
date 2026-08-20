@@ -36,10 +36,19 @@ async function checkMissingAttendance() {
     });
     if (already) continue;
 
+    // Format date in a more readable way
+    const dateObj = new Date(date);
+    const formattedDate = dateObj.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
+
     await createNotification({
       type: 'MISSING_ATTENDANCE',
       severity: 'warning',
-      message: `No attendance recorded for ${user.name} (${user.role}) on ${date}.`,
+      message: `${user.name} hasn't clocked in today (${formattedDate}). Please mark their attendance.`,
       relatedId: user.id,
     });
   }
@@ -53,6 +62,9 @@ async function checkPayrollPeriodDue() {
 
   const periodMonth = now.getMonth() + 1;
   const periodYear = now.getFullYear();
+  
+  // Format month name for better readability
+  const monthName = now.toLocaleDateString('en-US', { month: 'long' });
 
   const staff = await prisma.user.findMany({
     where: { isActive: true, role: { not: Role.OWNER } },
@@ -83,7 +95,7 @@ async function checkPayrollPeriodDue() {
     await createNotification({
       type: 'PAYROLL_PERIOD_DUE',
       severity: 'info',
-      message: `No payroll entry recorded yet for ${user.name} for ${periodMonth}/${periodYear}.`,
+      message: `Payroll reminder: ${user.name}'s salary for ${monthName} ${periodYear} hasn't been recorded yet.`,
       relatedId: user.id,
     });
   }
@@ -108,7 +120,7 @@ async function checkUnavailableMenuItems() {
     await createNotification({
       type: 'MENU_ITEM_UNAVAILABLE',
       severity: 'info',
-      message: `"${item.name}" has been unavailable for over 7 days. Consider re-enabling it.`,
+      message: `"${item.name}" has been marked as unavailable for over a week. Consider making it available again or removing it from the menu.`,
       relatedId: item.id,
     });
   }
