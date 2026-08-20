@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Users, UtensilsCrossed, ReceiptText, Zap } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { formatCurrency } from '../../utils/currency';
 
 type Results = { staff: any[]; menuItems: any[]; orders: any[] };
@@ -11,11 +12,14 @@ const emptyResults: Results = { staff: [], menuItems: [], orders: [] };
 
 export const CommandPalette: React.FC = () => {
   const { user } = useAuthStore();
+  const { settings } = useSettingsStore();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Results>(emptyResults);
   const role = user?.role === 'MANAGER' ? 'manager' : 'owner';
+  
+  const systemAdminEnabled = settings['systemAdministrationEnabled'] !== 'false';
 
   useEffect(() => {
     if (user?.role !== 'OWNER' && user?.role !== 'MANAGER') return;
@@ -52,8 +56,23 @@ export const CommandPalette: React.FC = () => {
 
   if (user?.role !== 'OWNER' && user?.role !== 'MANAGER') return null;
   const go = (path: string) => { setOpen(false); setQuery(''); navigate(path); };
+  
+  // Build navigation pages array, conditionally including Settings for OWNER
+  const ownerPages: [string, string][] = [
+    ['Dashboard', '/owner'], 
+    ['Staff', '/owner/staff'], 
+    ['Menu', '/owner/menu'], 
+    ['Attendance', '/owner/attendance'], 
+    ['Payroll', '/owner/payroll'], 
+    ['Expenses', '/owner/expenses'], 
+    ['Finance', '/owner/finance'], 
+    ['Audit log', '/owner/audit'], 
+    ['Printers', '/owner/printers'],
+    ['Settings', '/owner/settings'] // Settings is always accessible
+  ];
+  
   const pages = user.role === 'OWNER'
-    ? [['Dashboard', '/owner'], ['Staff', '/owner/staff'], ['Menu', '/owner/menu'], ['Attendance', '/owner/attendance'], ['Payroll', '/owner/payroll'], ['Expenses', '/owner/expenses'], ['Finance', '/owner/finance'], ['Audit log', '/owner/audit'], ['Printers', '/owner/printers'], ['Settings', '/owner/settings']]
+    ? ownerPages
     : [['Dashboard', '/manager'], ['People', '/manager/people'], ['Menu', '/manager/menu'], ['Attendance', '/manager/attendance'], ['Payroll', '/manager/payroll'], ['Expenses', '/manager/expenses'], ['Settings', '/manager/settings']];
 
   return <Command.Dialog open={open} onOpenChange={setOpen} label="Global command palette" className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4 pt-[12vh]">
