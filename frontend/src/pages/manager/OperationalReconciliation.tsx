@@ -46,7 +46,12 @@ export const OperationalReconciliation: React.FC = () => {
   const runIntegrityMutation = useMutation({
     mutationFn: () => integrityApi.runCheck(),
     onSuccess: (data) => {
-      addToast({ title: `Integrity check complete. ${data.passed ? 'Passed!' : `${data.newIssuesLogged} new issues found.`}`, type: data.passed ? 'success' : 'error' });
+      addToast({ 
+        title: data.passed 
+          ? 'All systems check passed!' 
+          : `Found ${data.newIssuesLogged} issue${data.newIssuesLogged === 1 ? '' : 's'} that need attention.`, 
+        type: data.passed ? 'success' : 'error' 
+      });
       refetchIntegrity();
     }
   });
@@ -57,11 +62,11 @@ export const OperationalReconciliation: React.FC = () => {
       return dailyCloseApi.startDailyClose(today);
     },
     onSuccess: () => {
-      addToast({ title: 'Daily Close pre-flight successful.', type: 'success' });
+      addToast({ title: 'Daily close started successfully', message: 'All pre-flight checks passed. You can now finalize the business day.', type: 'success' });
       refetchClose();
     },
     onError: (err: any) => {
-      addToast({ title: err.response?.data?.error?.message || 'Failed to start daily close', type: 'error' });
+      addToast({ title: 'Unable to start daily close', message: err.response?.data?.error?.message || 'Please resolve any outstanding issues and try again.', type: 'error' });
     }
   });
 
@@ -71,12 +76,12 @@ export const OperationalReconciliation: React.FC = () => {
       return dailyCloseApi.finalizeDailyClose(today, { reviewNotes });
     },
     onSuccess: () => {
-      addToast({ title: 'Business day closed successfully.', type: 'success' });
+      addToast({ title: 'Business day closed', message: 'The day has been finalized successfully. All records are now locked.', type: 'success' });
       refetchClose();
       setReviewNotes('');
     },
     onError: (err: any) => {
-      addToast({ title: err.response?.data?.error?.message || 'Failed to finalize daily close', type: 'error' });
+      addToast({ title: 'Unable to finalize', message: err.response?.data?.error?.message || 'Something went wrong. Please try again.', type: 'error' });
     }
   });
 
@@ -84,7 +89,7 @@ export const OperationalReconciliation: React.FC = () => {
     mutationFn: ({ id, status, managerNotes }: { id: string, status: 'APPROVED' | 'REJECTED', managerNotes: string }) => 
       varianceApi.reviewVariance(id, { status, managerNotes }),
     onSuccess: () => {
-      addToast({ title: 'Variance reviewed successfully', type: 'success' });
+      addToast({ title: 'Variance reviewed', message: 'Your review has been recorded successfully.', type: 'success' });
       refetchVariances();
       refetchShifts();
     }
@@ -94,11 +99,11 @@ export const OperationalReconciliation: React.FC = () => {
     mutationFn: ({ id, resolutionNotes }: { id: string, resolutionNotes?: string }) => 
       integrityApi.resolveIssue(id, { resolutionNotes }),
     onSuccess: () => {
-      addToast({ title: 'Integrity issue resolved successfully', type: 'success' });
+      addToast({ title: 'Issue resolved', message: 'The integrity issue has been marked as resolved.', type: 'success' });
       refetchIntegrity();
     },
     onError: (err: any) => {
-      addToast({ title: err.response?.data?.error?.message || 'Failed to resolve issue', type: 'error' });
+      addToast({ title: 'Unable to resolve issue', message: err.response?.data?.error?.message || 'Something went wrong. Please try again.', type: 'error' });
     }
   });
 
@@ -108,8 +113,8 @@ export const OperationalReconciliation: React.FC = () => {
     
     const onIntegrityAlert = (issue: any) => {
       addToast({ 
-        title: 'New Integrity Issue Detected', 
-        message: issue.description,
+        title: 'Data integrity alert', 
+        message: issue.description || 'A potential issue has been detected in the system data.',
         type: 'error' 
       });
       refetchIntegrity();
@@ -195,11 +200,30 @@ export const OperationalReconciliation: React.FC = () => {
               <ul className="space-y-4 mt-2">
                 {pendingVariances?.map((review: any) => (
                   <li key={review.id} className="text-sm bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-semibold">{review.shift?.cashier?.name}</span>
-                      <Badge variant={review.shift?.varianceMinor < 0 ? 'error' : 'warning'}>
-                        {formatCurrency(review.shift?.varianceMinor / 100)}
-                      </Badge>
+                    <div className="flex flex-col gap-1 mb-3">
+                      <div className="font-semibold mb-1">{review.shift?.cashier?.name}</div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-muted-foreground">Cash Variance:</span>
+                        <Badge variant={review.shift?.varianceMinor < 0 ? 'error' : 'warning'}>
+                          {formatCurrency(review.shift?.varianceMinor / 100)}
+                        </Badge>
+                      </div>
+                      {(review.cardVarianceMinor !== 0) && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-muted-foreground">Card Variance:</span>
+                          <span className={review.cardVarianceMinor < 0 ? 'text-destructive font-semibold' : 'text-amber-600 font-semibold'}>
+                            {formatCurrency(review.cardVarianceMinor / 100)}
+                          </span>
+                        </div>
+                      )}
+                      {(review.mobileVarianceMinor !== 0) && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-muted-foreground">Mobile Variance:</span>
+                          <span className={review.mobileVarianceMinor < 0 ? 'text-destructive font-semibold' : 'text-amber-600 font-semibold'}>
+                            {formatCurrency(review.mobileVarianceMinor / 100)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="text-muted-foreground text-xs italic mb-3">"{review.shift?.notes || 'No notes provided by cashier'}"</div>
                     <div className="flex gap-2">
