@@ -12,15 +12,50 @@ export const FeatureToggles: React.FC = () => {
   // Helper to get boolean state, defaulting to true if undefined
   const isEnabled = (key: string) => settings[key] !== 'false';
 
+  // Human-readable feature names for notifications
+  const featureNames: Record<string, { name: string; action: string }> = {
+    'managerDashboardEnabled': { 
+      name: 'Manager Dashboard', 
+      action: 'Managers can now' 
+    },
+    'systemAdministrationEnabled': { 
+      name: 'System Administration', 
+      action: 'You can now' 
+    },
+    'cashierMenuManagementEnabled': { 
+      name: 'Cashier Menu Management', 
+      action: 'Cashiers can now' 
+    },
+    'shiftManagementEnabled': { 
+      name: 'Shift Management', 
+      action: 'Cashiers must now' 
+    },
+  };
+
   const handleToggle = async (key: string) => {
     const newValue = isEnabled(key) ? 'false' : 'true';
+    const isEnabling = newValue === 'true';
+    const feature = featureNames[key] || { name: key, action: 'Users can now' };
+    
     setLoadingKey(key);
     try {
       await axiosClient.patch(`/settings/system/${key}`, { value: newValue });
       await fetchSettings();
-      addToast({ title: 'Feature setting updated successfully', type: 'success' });
+      
+      // Show user-friendly message based on action
+      const message = isEnabling 
+        ? `${feature.name} has been enabled. ${feature.action} access this feature.`
+        : `${feature.name} has been disabled. Access has been restricted.`;
+      
+      addToast({ 
+        title: message, 
+        type: 'success' 
+      });
     } catch (error) {
-      addToast({ title: 'Failed to update feature setting', type: 'error' });
+      addToast({ 
+        title: `Unable to ${isEnabling ? 'enable' : 'disable'} ${feature.name}. Please try again.`, 
+        type: 'error' 
+      });
     } finally {
       setLoadingKey(null);
     }
@@ -67,6 +102,20 @@ export const FeatureToggles: React.FC = () => {
           checked={isEnabled('cashierMenuManagementEnabled')}
           onCheckedChange={() => handleToggle('cashierMenuManagementEnabled')}
           disabled={loadingKey === 'cashierMenuManagementEnabled'}
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <label className="text-sm font-semibold">Shift Management</label>
+          <p className="text-xs text-muted-foreground">
+            Require cashiers to open and close shifts for cash drawer tracking. Disable for small cafes without shift-based operations.
+          </p>
+        </div>
+        <Switch
+          checked={isEnabled('shiftManagementEnabled')}
+          onCheckedChange={() => handleToggle('shiftManagementEnabled')}
+          disabled={loadingKey === 'shiftManagementEnabled'}
         />
       </div>
     </div>
