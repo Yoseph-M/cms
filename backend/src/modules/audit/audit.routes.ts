@@ -10,5 +10,6 @@ router.use(requireAuth);
 router.use(requireRole([Role.OWNER]));
 
 router.get('/', AnalyticsController.getAuditLogs);
+router.get('/login-history', AnalyticsController.getLoginHistory);
 
 export default router;
