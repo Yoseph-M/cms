@@ -9,6 +9,7 @@ import { Card } from '../ui/Card';
 import { LoadingState } from '../common/LoadingState';
 import { ErrorState } from '../common/ErrorState';
 import { useToastStore } from '../../store/toastStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { motion } from 'framer-motion';
 import { LogOut, PlayCircle, StopCircle, DollarSign, Wallet } from 'lucide-react';
 
@@ -22,6 +23,8 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
   const { addToast } = useToastStore();
   const [openingCash, setOpeningCash] = useState<string>('');
   const [closingCash, setClosingCash] = useState<string>('');
+  const [closingCard, setClosingCard] = useState<string>('');
+  const [closingMobile, setClosingMobile] = useState<string>('');
   const [closingNotes, setClosingNotes] = useState<string>('');
   const [isClosing, setIsClosing] = useState(false);
 
@@ -29,6 +32,9 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
     queryKey: ['currentShift'],
     queryFn: () => shiftApi.getCurrentShift(),
   });
+
+  const { settings } = useSettingsStore();
+  const shiftEnabled = settings['shiftManagementEnabled'] !== 'false';
 
   const openShiftMutation = useMutation({
     mutationFn: (amountMinor: number) => shiftApi.openShift({ openingCashMinor: amountMinor }),
@@ -43,19 +49,23 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
   });
 
   const closeShiftMutation = useMutation({
-    mutationFn: (data: { declaredCashMinor: number; notes: string }) => 
+    mutationFn: (data: { declaredCashMinor: number; declaredCardMinor?: number; declaredMobileMinor?: number; notes: string }) => 
       shiftApi.closeShift(currentShift?.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['currentShift'] });
       addToast({ title: 'Shift closed successfully. Pending variance review.', type: 'success' });
       setIsClosing(false);
       setClosingCash('');
+      setClosingCard('');
+      setClosingMobile('');
       setClosingNotes('');
     },
     onError: (err: any) => {
       addToast({ title: err.response?.data?.error?.message || 'Failed to close shift', type: 'error' });
     },
   });
+
+  if (!shiftEnabled) return <>{children}</>;
 
   if (isLoading) return <LoadingState message="Checking shift status..." />;
   if (error) return <ErrorState message="Failed to load shift status" onRetry={refetch} />;
@@ -76,19 +86,55 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Declared Cash Amount</label>
+                <label className="block text-sm font-medium mb-1 text-green-600">Declared Cash Amount</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span className="text-slate-500">$</span>
+                    <span className="text-green-600 font-bold">$</span>
                   </div>
                   <Input
                     type="number"
                     min="0"
                     step="0.01"
                     placeholder="0.00"
-                    className="pl-7 text-lg h-12"
+                    className="pl-7 text-lg h-12 border-green-200"
                     value={closingCash}
                     onChange={(e) => setClosingCash(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1 text-blue-600">Declared Card Amount</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-blue-600 font-bold">$</span>
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="pl-7 text-lg h-12 border-blue-200"
+                    value={closingCard}
+                    onChange={(e) => setClosingCard(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1 text-purple-600">Declared Mobile Amount</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-purple-600 font-bold">$</span>
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="pl-7 text-lg h-12 border-purple-200"
+                    value={closingMobile}
+                    onChange={(e) => setClosingMobile(e.target.value)}
                   />
                 </div>
               </div>
@@ -97,7 +143,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
                 <label className="block text-sm font-medium mb-1">Closing Notes (Optional)</label>
                 <textarea
                   className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm min-h-[80px]"
-                  placeholder="Any explanations for over/short..."
+                  placeholder="Any explanations for revenue variances..."
                   value={closingNotes}
                   onChange={(e: any) => setClosingNotes(e.target.value)}
                 />
@@ -116,8 +162,15 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
                   variant="default" 
                   className="w-full"
                   onClick={() => {
-                    const amountMinor = Math.round(parseFloat(closingCash || '0') * 100);
-                    closeShiftMutation.mutate({ declaredCashMinor: amountMinor, notes: closingNotes });
+                    const cashMinor = Math.round(parseFloat(closingCash || '0') * 100);
+                    const cardMinor = Math.round(parseFloat(closingCard || '0') * 100);
+                    const mobileMinor = Math.round(parseFloat(closingMobile || '0') * 100);
+                    closeShiftMutation.mutate({ 
+                      declaredCashMinor: cashMinor, 
+                      declaredCardMinor: cardMinor,
+                      declaredMobileMinor: mobileMinor,
+                      notes: closingNotes 
+                    });
                   }}
                   disabled={closeShiftMutation.isPending || !closingCash}
                 >
