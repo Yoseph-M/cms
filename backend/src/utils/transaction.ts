@@ -135,12 +135,17 @@ export async function executeInCriticalTransaction<T>(
     await detectTransactionSupport(prisma);
   }
 
-  // Critical operations MUST have real transactions
+  // Critical operations MUST have real transactions in production
   if (transactionCapability !== 'SUPPORTED') {
-    throw new Error(
-      'CRITICAL: Cannot perform financial operation without transaction support. ' +
-      'MongoDB replica set is required.'
-    );
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'CRITICAL: Cannot perform financial operation without transaction support. ' +
+        'MongoDB replica set is required.'
+      );
+    } else {
+      logger.warn('Executing CRITICAL operation without transaction (standalone mode fallback)');
+      return await callback(prisma);
+    }
   }
 
   const maxRetries = options?.maxRetries ?? 3;
