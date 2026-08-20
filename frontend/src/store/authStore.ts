@@ -7,11 +7,13 @@ interface AuthState {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isRefreshing: boolean;
   setAuth: (user: User, accessToken: string) => void;
   setAccessToken: (accessToken: string) => void;
   setUser: (user: User) => void;
   logout: () => void;
   bootstrapSession: () => Promise<void>;
+  refreshSession: () => Promise<string | null>;
 }
 
 // Only persist user for UI display (NOT for auth decisions)
@@ -26,8 +28,8 @@ function clearLocalAuth(set: (partial: Partial<AuthState>) => void) {
 // Setup BroadcastChannel for cross-tab synchronization
 const authChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('auth_channel') : null;
 
-// Guard against concurrent bootstrap calls (e.g. React StrictMode or multiple tabs)
-let bootstrapPromise: Promise<void> | null = null;
+// Guard against concurrent refresh/bootstrap calls (in-tab)
+let activeRefreshPromise: Promise<string | null> | null = null;
 
 export const useAuthStore = create<AuthState>((set, get) => {
   // Listen for cross-tab auth events
@@ -39,9 +41,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
         const { user, accessToken } = event.data;
         if (user && accessToken) {
           localStorage.setItem('pos_user', JSON.stringify(user));
-          set({ user, accessToken, isAuthenticated: true, isLoading: false });
+          set({ user, accessToken, isAuthenticated: true, isLoading: false, isRefreshing: false });
         } else if (accessToken) {
-          set({ accessToken, isAuthenticated: true });
+          set({ accessToken, isAuthenticated: true, isRefreshing: false });
         }
       }
     };
@@ -52,14 +54,15 @@ export const useAuthStore = create<AuthState>((set, get) => {
     accessToken: null,
     isAuthenticated: false,
     isLoading: true,
+    isRefreshing: false,
 
     setAuth: (user, accessToken) => {
       localStorage.setItem('pos_user', JSON.stringify(user));
-      set({ user, accessToken, isAuthenticated: true, isLoading: false });
+      set({ user, accessToken, isAuthenticated: true, isLoading: false, isRefreshing: false });
     },
 
     setAccessToken: (accessToken) => {
-      set({ accessToken, isAuthenticated: true });
+      set({ accessToken, isAuthenticated: true, isRefreshing: false });
     },
 
     setUser: (user) => {
@@ -80,38 +83,43 @@ export const useAuthStore = create<AuthState>((set, get) => {
     },
 
     bootstrapSession: async () => {
-      if (bootstrapPromise) return bootstrapPromise;
-      if (get().accessToken && get().isAuthenticated) return;
+      // If already authenticated, nothing to do
+      if (get().accessToken && get().isAuthenticated) {
+        set({ isLoading: false });
+        return;
+      }
 
-      bootstrapPromise = (async () => {
+      try {
+        set({ isLoading: true });
+        await get().refreshSession();
+      } catch (error) {
+        // refreshSession already handles clearing state
+      } finally {
+        set({ isLoading: false });
+      }
+    },
+
+    refreshSession: async () => {
+      // 1. If there's an active refresh in this tab, return it
+      if (activeRefreshPromise) {
+        return activeRefreshPromise;
+      }
+
+      // 2. Define the refresh operation
+      const performRefresh = async () => {
         try {
-          set({ isLoading: true });
-
-          const performRequest = async () => {
-            // Check again inside the lock if another tab already finished
-            if (get().accessToken && get().isAuthenticated) {
-              return null;
-            }
-
-            const response = await axiosClient.post('/auth/refresh', {}, { 
-              withCredentials: true 
-            });
-            return response.data;
-          };
-
-          let data;
-          if (typeof navigator !== 'undefined' && navigator.locks) {
-            data = await navigator.locks.request('auth_bootstrap_lock', performRequest);
-          } else {
-            data = await performRequest();
+          // 3. Double-check auth inside the lock to handle cross-tab or concurrent calls
+          if (get().accessToken && get().isAuthenticated) {
+            return get().accessToken;
           }
+
+          set({ isRefreshing: true });
           
-          if (!data) {
-            set({ isLoading: false });
-            return;
-          }
-
-          const { accessToken, user: serverUser } = data;
+          const response = await axiosClient.post('/auth/refresh', {}, { 
+            withCredentials: true 
+          });
+          
+          const { accessToken, user: serverUser } = response.data;
           
           if (accessToken && serverUser) {
             localStorage.setItem('pos_user', JSON.stringify(serverUser));
@@ -119,26 +127,47 @@ export const useAuthStore = create<AuthState>((set, get) => {
               user: serverUser, 
               accessToken, 
               isAuthenticated: true, 
-              isLoading: false 
+              isRefreshing: false,
+              isLoading: false
             });
             
-            // Notify other tabs that we refreshed successfully
             if (authChannel) {
               authChannel.postMessage({ type: 'SESSION_REFRESHED', accessToken, user: serverUser });
             }
-          } else {
-            set({ isLoading: false, isAuthenticated: false });
+
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('auth:refreshed', { detail: { accessToken } }));
+            }
+
+            return accessToken;
           }
+          
+          throw new Error('Invalid refresh response');
         } catch (error) {
-          localStorage.removeItem('pos_user');
-          set({ user: null, accessToken: null, isAuthenticated: false, isLoading: false });
-          // Don't rethrow, just handle the state
+          clearLocalAuth(set);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth:login_failed', { detail: { error } }));
+          }
+          throw error;
         } finally {
-          bootstrapPromise = null;
+          set({ isRefreshing: false });
+          activeRefreshPromise = null;
+        }
+      };
+
+      // 4. Wrap with Web Lock for cross-tab safety
+      activeRefreshPromise = (async () => {
+        if (typeof navigator !== 'undefined' && navigator.locks) {
+          // navigator.locks.request returns a promise that resolves to the return value of the callback
+          // If the callback is async, it returns a promise, so we get a nested promise.
+          // Awaiting it here flattens it.
+          return await navigator.locks.request('auth_sync_lock', performRefresh);
+        } else {
+          return await performRefresh();
         }
       })();
 
-      return bootstrapPromise;
+      return activeRefreshPromise;
     },
   };
 });
