@@ -110,7 +110,7 @@ export async function getCurrentShift(req: AuthenticatedRequest, res: Response, 
 export async function closeShift(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const { declaredCashMinor, notes, reason } = req.body;
+    const { declaredCashMinor, declaredCardMinor, declaredMobileMinor, notes, reason } = req.body;
     const closedById = req.user!.userId;
     const userRole = req.user!.role;
     const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
@@ -133,6 +133,8 @@ export async function closeShift(req: AuthenticatedRequest, res: Response, next:
     const shift = await ShiftService.closeShift({
       shiftId: id,
       declaredCashMinor,
+      declaredCardMinor,
+      declaredMobileMinor,
       notes,
       reason,
       closedById,
