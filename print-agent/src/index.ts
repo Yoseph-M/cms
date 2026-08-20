@@ -13,8 +13,10 @@ import { discoverWindowsPrinters } from './printer-discovery';
 class PrintAgent {
   private apiClient: CMSApiClient;
   private pollTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
   private isShuttingDown = false;
   private reconnectAttempts = 0;
+  private currentReconnectDelay = config.reconnectDelayMs;
 
   constructor() {
     this.apiClient = new CMSApiClient();
@@ -26,8 +28,9 @@ class PrintAgent {
   async start(): Promise<void> {
     logger.info({ 
       name: config.agentName,
-      stations: config.stations,
-      apiUrl: config.cmsApiUrl 
+      station: config.station,
+      apiUrl: config.cmsApiUrl,
+      version: config.version
     }, 'Starting CMS Print Agent');
 
     // Discover printers
@@ -49,11 +52,18 @@ class PrintAgent {
       return;
     }
 
-    // Reset reconnect counter on successful connection
+    // Reset reconnect counter and delay on successful connection
     this.reconnectAttempts = 0;
+    this.currentReconnectDelay = config.reconnectDelayMs;
+
+    // Send initial heartbeat
+    await this.sendHeartbeat();
 
     // Start polling for print jobs
     this.startPolling();
+
+    // Start periodic heartbeat
+    this.startHeartbeat();
 
     logger.info('Print agent is now running');
   }
@@ -70,32 +80,39 @@ class PrintAgent {
   }
 
   /**
+   * Send heartbeat to backend
+   */
+  private async sendHeartbeat(): Promise<void> {
+    try {
+      await this.apiClient.sendHeartbeat(config.version);
+    } catch (err: any) {
+      logger.error({ err: err.message }, 'Heartbeat failed');
+    }
+  }
+
+  /**
    * Schedule reconnection attempt with exponential backoff
+   * NO MAXIMUM ATTEMPTS - POS systems must keep trying indefinitely
    */
   private async scheduleReconnect(): Promise<void> {
     if (this.isShuttingDown) return;
 
     this.reconnectAttempts++;
 
-    if (this.reconnectAttempts > config.maxReconnectAttempts) {
-      logger.error('Max reconnection attempts reached. Agent shutting down.');
-      process.exit(1);
-    }
-
-    const delay = Math.min(
-      config.reconnectDelayMs * Math.pow(2, this.reconnectAttempts - 1),
-      60000 // Max 60 seconds
+    // Exponential backoff with maximum delay cap
+    this.currentReconnectDelay = Math.min(
+      config.reconnectDelayMs * Math.pow(2, Math.min(this.reconnectAttempts - 1, 6)),
+      config.maxReconnectDelayMs
     );
 
     logger.info({ 
       attempt: this.reconnectAttempts, 
-      maxAttempts: config.maxReconnectAttempts,
-      delayMs: delay 
-    }, 'Scheduling reconnection attempt');
+      delayMs: this.currentReconnectDelay 
+    }, 'Scheduling reconnection attempt (unlimited retries)');
 
     setTimeout(() => {
       this.start();
-    }, delay);
+    }, this.currentReconnectDelay);
   }
 
   /**
@@ -112,7 +129,7 @@ class PrintAgent {
       if (this.isShuttingDown) return;
 
       try {
-        await processPendingJobs(this.apiClient, config.stations);
+        await processPendingJobs(this.apiClient);
       } catch (err: any) {
         logger.error({ err: err.message }, 'Error during job polling cycle');
         
@@ -120,10 +137,27 @@ class PrintAgent {
         if (err.code === 'ECONNREFUSED' || err.response?.status === 401) {
           logger.warn('Backend connection lost. Attempting to reconnect...');
           this.stopPolling();
+          this.stopHeartbeat();
           await this.scheduleReconnect();
         }
       }
     }, config.pollIntervalMs);
+  }
+
+  /**
+   * Start periodic heartbeat
+   */
+  private startHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+    }
+
+    logger.info({ intervalMs: config.heartbeatIntervalMs }, 'Starting heartbeat');
+
+    this.heartbeatTimer = setInterval(async () => {
+      if (this.isShuttingDown) return;
+      await this.sendHeartbeat();
+    }, config.heartbeatIntervalMs);
   }
 
   /**
@@ -138,6 +172,17 @@ class PrintAgent {
   }
 
   /**
+   * Stop heartbeat
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+      logger.info('Stopped heartbeat');
+    }
+  }
+
+  /**
    * Graceful shutdown
    */
   async shutdown(): Promise<void> {
@@ -147,6 +192,7 @@ class PrintAgent {
     logger.info('Shutting down print agent...');
     
     this.stopPolling();
+    this.stopHeartbeat();
     
     logger.info('Print agent stopped');
     process.exit(0);
