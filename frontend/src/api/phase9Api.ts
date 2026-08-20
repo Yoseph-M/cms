@@ -22,7 +22,7 @@ export const shiftApi = {
     const res = await axiosClient.get('/shifts/open');
     return res.data;
   },
-  closeShift: async (id: string, data: { declaredCashMinor: number; notes?: string; reason?: string }) => {
+  closeShift: async (id: string, data: { declaredCashMinor: number; declaredCardMinor?: number; declaredMobileMinor?: number; notes?: string; reason?: string }) => {
     const res = await axiosClient.post(`/shifts/${id}/close`, data);
     return res.data;
   },
