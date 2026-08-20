@@ -34,12 +34,13 @@ export class CMSApiClient {
   }
 
   /**
-   * Fetch pending print jobs for configured stations
+   * Fetch pending print jobs for this agent's assigned station
+   * Station is determined server-side based on agent authentication
    */
-  async getPendingJobs(station?: string): Promise<PrintJob[]> {
+  async getPendingJobs(): Promise<PrintJob[]> {
     try {
-      const params = station ? { station } : {};
-      const response = await this.client.get('/print-jobs/pending', { params });
+      // No station parameter - backend determines from agent's assignment
+      const response = await this.client.get('/print-jobs/pending');
       return response.data;
     } catch (err: any) {
       logger.error({ err: err.message }, 'Failed to fetch pending jobs');
@@ -91,6 +92,23 @@ export class CMSApiClient {
       return true;
     } catch (err) {
       logger.error('Backend connection test failed');
+      return false;
+    }
+  }
+
+  /**
+   * Send heartbeat to backend with version information
+   */
+  async sendHeartbeat(version: string): Promise<boolean> {
+    try {
+      await this.client.post('/print-agents/heartbeat', {
+        version,
+        printerStatus: 'online', // Could be enhanced to check actual printer status
+      });
+      logger.debug('Heartbeat sent successfully');
+      return true;
+    } catch (err: any) {
+      logger.error({ err: err.message }, 'Failed to send heartbeat');
       return false;
     }
   }
