@@ -169,6 +169,7 @@ model User {
   paymentsReceived  UserPayment[]  @relation("PaymentRecipient")
   payrollsProcessed UserPayment[]  @relation("PayrollProcessor")
   loginAttempt      LoginAttempt?
+  loginHistory      LoginHistory[]
   refreshTokens     RefreshToken[]
   auditLogs         AuditLog[]
   adjustmentsProcessed PayrollAdjustment[] @relation("AdjustmentProcessor")
@@ -335,6 +336,19 @@ model LoginAttempt {
   @@map("login_attempts")
 }
 
+model LoginHistory {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  ip        String?
+  userAgent String?
+  outcome   String   // "SUCCESS", "FAILURE", "LOCKED"
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("login_history")
+}
+
 model RefreshToken {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   tokenHash String   @unique // Store hash of refresh token
@@ -378,6 +392,7 @@ model PrinterStation {
 model PrintAgent {
   id              String    @id @default(auto()) @map("_id") @db.ObjectId
   name            String    @unique
+  station         String    // Required: kitchen, bar, cashier, etc.
   tokenHash       String    @unique
   isRevoked       Boolean   @default(false)
   lastHeartbeat   DateTime?
@@ -387,6 +402,7 @@ model PrintAgent {
 
   printJobs       PrintJob[] @relation("AgentPrintJobs")
 
+  @@index([station, isRevoked])
   @@map("print_agents")
 }
 
@@ -406,13 +422,16 @@ model PrintJob {
   lastError     String?
   claimedById   String?        @db.ObjectId
   claimedBy     PrintAgent?    @relation("AgentPrintJobs", fields: [claimedById], references: [id])
+  claimedAt     DateTime?      // When job was claimed (for lease tracking)
   printedAt     DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
+  @@index([status, station, createdAt])
   @@index([status, createdAt])
   @@index([orderId, createdAt])
   @@index([station, status])
+  @@index([claimedById, status])
   @@map("print_jobs")
 }
 
@@ -479,6 +498,12 @@ model CashierShift {
   expectedCashMinor Int?         // CALCULATED from ledger: opening + sales - payouts ± adjustments
   declaredCashMinor Int?         // PHYSICAL COUNT: what cashier actually counted
   varianceMinor     Int?         // DERIVED: declaredCashMinor - expectedCashMinor
+  
+  expectedCardMinor   Int?       // CALCULATED from settlements
+  declaredCardMinor   Int?       // PHYSICAL COUNT from cashier
+  expectedMobileMinor Int?       // CALCULATED from settlements
+  declaredMobileMinor Int?       // PHYSICAL COUNT from cashier
+  
   openedById        String       @db.ObjectId
   openedBy          User         @relation("ShiftOpenedBy", fields: [openedById], references: [id])
   closedById        String?      @db.ObjectId
@@ -521,7 +546,9 @@ model VarianceReview {
   id              String                 @id @default(auto()) @map("_id") @db.ObjectId
   shiftId         String                 @db.ObjectId
   shift           CashierShift           @relation(fields: [shiftId], references: [id])
-  varianceMinor   Int
+  varianceMinor   Int                    // Cash variance
+  cardVarianceMinor   Int?               // Card variance
+  mobileVarianceMinor Int?               // Mobile variance
   classification  VarianceClassification
   cashierReason   String
   reviewStatus    VarianceReviewStatus   @default(PENDING)
