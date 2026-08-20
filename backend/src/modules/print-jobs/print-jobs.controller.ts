@@ -15,25 +15,71 @@ export async function claimPrintJob(req: AuthenticatedRequest, res: Response) {
     return res.status(401).json({ error: 'Agent authentication required' });
   }
 
+  // Fetch agent to verify station authorization
+  const agent = await prisma.printAgent.findUnique({ where: { id: printAgentId } });
+  
+  if (!agent) {
+    return res.status(401).json({ error: 'Agent not found' });
+  }
+
+  if (agent.isRevoked) {
+    return res.status(401).json({ error: 'Agent has been revoked' });
+  }
+
+  // Fetch job to verify it exists and check authorization BEFORE claiming
+  const job = await prisma.printJob.findUnique({ where: { id: jobId } });
+
+  if (!job) {
+    return res.status(404).json({ error: 'Print job not found' });
+  }
+
+  // SECURITY: Verify job belongs to agent's assigned station
+  if (job.station !== agent.station) {
+    logger.warn({ 
+      agentId: agent.id, 
+      agentStation: agent.station, 
+      jobStation: job.station, 
+      jobId 
+    }, 'Agent attempted to claim job from unauthorized station');
+    return res.status(403).json({ error: 'Job does not belong to your assigned station' });
+  }
+
+  // SECURITY: Verify job transport matches
+  if (job.transport !== 'WINDOWS') {
+    return res.status(400).json({ error: 'Job is not a Windows print job' });
+  }
+
   // Optimistic locking: Update where status is QUEUED
   const updateResult = await prisma.printJob.updateMany({
     where: {
       id: jobId,
       status: PrintJobStatus.QUEUED,
+      station: agent.station, // Double-check station in atomic update
     },
     data: {
       status: PrintJobStatus.PRINTING,
       claimedById: printAgentId,
+      claimedAt: new Date(), // Record claim timestamp for lease tracking
       attempts: { increment: 1 },
     },
   });
 
   if (updateResult.count === 0) {
+    logger.debug({ jobId, agentId: agent.id }, 'Job already claimed or not queued');
     return res.status(409).json({ error: 'Job already claimed or not queued' });
   }
 
-  const job = await prisma.printJob.findUnique({ where: { id: jobId } });
-  return res.status(200).json(job);
+  const claimedJob = await prisma.printJob.findUnique({ where: { id: jobId } });
+  
+  logger.info({ 
+    jobId, 
+    agentId: agent.id, 
+    agentName: agent.name, 
+    station: agent.station,
+    orderId: claimedJob?.orderId 
+  }, 'Print job claimed by agent');
+
+  return res.status(200).json(claimedJob);
 }
 
 export async function ackPrintJob(req: AuthenticatedRequest, res: Response) {
@@ -45,17 +91,70 @@ export async function ackPrintJob(req: AuthenticatedRequest, res: Response) {
     return res.status(401).json({ error: 'Agent authentication required' });
   }
 
+  // Validate status
+  if (status !== 'PRINTED' && status !== 'FAILED') {
+    return res.status(400).json({ error: 'Status must be PRINTED or FAILED' });
+  }
+
+  // Fetch agent for logging and verification
+  const agent = await prisma.printAgent.findUnique({ where: { id: printAgentId } });
+  
+  if (!agent) {
+    return res.status(401).json({ error: 'Agent not found' });
+  }
+
+  if (agent.isRevoked) {
+    return res.status(401).json({ error: 'Agent has been revoked' });
+  }
+
   const job = await prisma.printJob.findUnique({ where: { id: jobId } });
+  
   if (!job) {
     return res.status(404).json({ error: 'Job not found' });
   }
 
+  // SECURITY: Verify job was claimed by THIS agent
   if (job.claimedById !== printAgentId) {
-    return res.status(403).json({ error: 'Job claimed by another agent' });
+    logger.warn({ 
+      jobId, 
+      jobClaimedBy: job.claimedById, 
+      attemptedBy: printAgentId,
+      agentName: agent.name 
+    }, 'Agent attempted to ACK job claimed by another agent');
+    return res.status(403).json({ error: 'Job was not claimed by your agent' });
   }
 
+  // SECURITY: Additional station verification
+  if (job.station !== agent.station) {
+    logger.warn({ 
+      jobId, 
+      jobStation: job.station, 
+      agentStation: agent.station,
+      agentName: agent.name 
+    }, 'Agent attempted to ACK job from unauthorized station');
+    return res.status(403).json({ error: 'Job does not belong to your assigned station' });
+  }
+
+  // IDEMPOTENCY: Allow re-ACK if already in the same terminal state
   const updatedStatus = status === 'PRINTED' ? PrintJobStatus.PRINTED : PrintJobStatus.FAILED;
   
+  if (job.status === updatedStatus) {
+    // Already in this state - idempotent success
+    logger.debug({ jobId, status: updatedStatus, agentId: agent.id }, 'Idempotent ACK - job already in requested state');
+    return res.status(200).json({ success: true, idempotent: true });
+  }
+
+  // Verify job is in a claimable state
+  if (job.status !== PrintJobStatus.PRINTING) {
+    logger.warn({ 
+      jobId, 
+      currentStatus: job.status, 
+      requestedStatus: updatedStatus,
+      agentId: agent.id 
+    }, 'Attempted to ACK job not in PRINTING state');
+    return res.status(400).json({ error: `Cannot ACK job in ${job.status} state` });
+  }
+
   await prisma.printJob.update({
     where: { id: jobId },
     data: {
@@ -64,6 +163,17 @@ export async function ackPrintJob(req: AuthenticatedRequest, res: Response) {
       printedAt: updatedStatus === PrintJobStatus.PRINTED ? new Date() : null,
     },
   });
+
+  logger.info({ 
+    jobId, 
+    status: updatedStatus, 
+    agentId: agent.id, 
+    agentName: agent.name,
+    station: agent.station,
+    orderId: job.orderId,
+    attempts: job.attempts,
+    error: error || null
+  }, 'Print job acknowledged by agent');
 
   emitToLiveOrders('printJob:updated', { jobId, status: updatedStatus, error });
 
@@ -79,16 +189,28 @@ export async function getPendingJobs(req: AuthenticatedRequest, res: Response) {
     return res.status(401).json({ error: 'Agent not found' });
   }
 
-  const { station } = req.query;
+  if (agent.isRevoked) {
+    return res.status(401).json({ error: 'Agent has been revoked' });
+  }
 
+  // SECURITY: Agent can ONLY access jobs for its assigned station
+  // Do NOT trust query parameters - use agent's station assignment
   const jobs = await prisma.printJob.findMany({
     where: {
       status: PrintJobStatus.QUEUED,
       transport: 'WINDOWS',
-      ...(station ? { station: String(station) } : {}),
+      station: agent.station, // Enforce agent's assigned station
     },
     orderBy: { createdAt: 'asc' },
+    take: 50, // Limit batch size to prevent overwhelming agent
   });
+
+  logger.debug({ 
+    agentId: agent.id, 
+    agentName: agent.name, 
+    station: agent.station, 
+    jobCount: jobs.length 
+  }, 'Agent fetched pending jobs');
 
   return res.status(200).json(jobs);
 }
