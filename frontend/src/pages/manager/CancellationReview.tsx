@@ -67,12 +67,12 @@ export const CancellationReview: React.FC = () => {
 
     socket.on('cancellation:requested', () => {
       fetchRequests();
-      addToast({ type: 'info', title: 'New Cancellation Request', message: 'A new cancellation request needs review' });
+      addToast({ type: 'info', title: 'New cancellation request', message: 'A staff member is requesting to cancel an order. Please review it now.' });
     });
 
     socket.on('cancellation:approved', (payload: { request: { id: string } }) => {
       setRequests((prev) => prev.filter((r) => r.id !== payload.request.id));
-      addToast({ type: 'success', title: 'Cancellation Approved', message: 'The cancellation has been processed' });
+      addToast({ type: 'success', title: 'Order cancelled successfully', message: 'The cancellation has been approved and the order is now cancelled.' });
     });
 
     socket.on('cancellation:rejected', (payload: { request: { id: string } }) => {
@@ -96,12 +96,12 @@ export const CancellationReview: React.FC = () => {
     setIsProcessing(true);
     try {
       await axiosClient.patch(`/cancellation-requests/${requestId}/approve`);
-      addToast({ type: 'success', title: 'Cancellation Approved', message: 'Order has been cancelled' });
+      addToast({ type: 'success', title: 'Order cancelled', message: 'The cancellation has been approved. The order is now cancelled.' });
       setRequests((prev) => prev.filter((r) => r.id !== requestId));
       setSelectedRequest(null);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
-      addToast({ type: 'error', title: 'Approval Failed', message: error.response?.data?.error || 'Failed to approve cancellation' });
+      addToast({ type: 'error', title: 'Unable to approve cancellation', message: error.response?.data?.error || 'Something went wrong. Please try again.' });
     } finally {
       setIsProcessing(false);
     }
@@ -123,14 +123,14 @@ export const CancellationReview: React.FC = () => {
       await axiosClient.patch(`/cancellation-requests/${selectedRequest.id}/reject`, {
         rejectedReason: rejectReason,
       });
-      addToast({ type: 'success', title: 'Cancellation Rejected', message: 'The cancellation request has been denied' });
+      addToast({ type: 'success', title: 'Cancellation request rejected', message: 'You have declined this cancellation. The order remains active.' });
       setRequests((prev) => prev.filter((r) => r.id !== selectedRequest.id));
       setShowRejectModal(false);
       setSelectedRequest(null);
       setRejectReason('');
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
-      addToast({ type: 'error', title: 'Rejection Failed', message: error.response?.data?.error || 'Failed to reject cancellation' });
+      addToast({ type: 'error', title: 'Unable to reject cancellation', message: error.response?.data?.error || 'Something went wrong. Please try again.' });
     } finally {
       setIsProcessing(false);
     }
