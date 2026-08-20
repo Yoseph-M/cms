@@ -43,3 +43,32 @@ export const reprintLimiter = rateLimit({
     return (req as any).user?.userId || req.ip || 'anonymous';
   },
 });
+
+/**
+ * Rate limiter for print job retry requests
+ */
+export const retryPrintLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 30, // Max 30 retries per 5 minutes
+  message: { error: 'Too many retry requests. Please wait before retrying.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => {
+    return (req as any).user?.userId || req.ip || 'anonymous';
+  },
+});
+
+/**
+ * Rate limiter for agent heartbeat (prevent DoS from compromised agents)
+ */
+export const agentHeartbeatLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // Max 100 heartbeats per minute per agent (more than enough for 30s interval)
+  message: { error: 'Heartbeat rate limit exceeded' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => {
+    // Rate limit by agent ID
+    return (req as any).agentId || req.ip || 'anonymous';
+  },
+});
