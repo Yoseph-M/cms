@@ -19,6 +19,7 @@ import settingsRoutes from './modules/settings/settings.routes';
 import searchRoutes from './modules/search/search.routes';
 import settlementsRoutes from './modules/settlements/settlements.routes';
 import cancellationRoutes from './modules/cancellation/cancellation.routes';
+import loginHistoryRoutes from './modules/login-history/loginHistory.routes';
 
 // Phase 9 Domains
 import cashierShiftsRoutes from './modules/cashier-shifts/cashierShifts.routes';
@@ -117,6 +118,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api', settlementsRoutes); // Settlements routes include /orders/:orderId/settlements
 app.use('/api', requireManagerDashboard, cancellationRoutes); // Cancellation routes include /orders/:orderId/cancellation-request
+app.use('/api', loginHistoryRoutes); // Login history - OWNER only for security monitoring
 
 // Phase 9 API Routes
 app.use('/api/shifts', cashierShiftsRoutes); // Used by Cashier
@@ -257,6 +259,7 @@ export async function seedInitialData() {
       managerDashboardEnabled: 'true',
       systemAdministrationEnabled: 'true',
       cashierMenuManagementEnabled: 'true',
+      shiftManagementEnabled: 'true',
     };
     for (const [key, value] of Object.entries(businessDefaults)) {
       const existing = await prisma.systemSetting.findUnique({ where: { key } });
