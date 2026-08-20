@@ -21,7 +21,6 @@ axiosClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (reason?: any) => void }> = [];
 
 const authChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('auth_channel') : null;
@@ -29,8 +28,12 @@ const authChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChann
 if (authChannel) {
   authChannel.onmessage = (event) => {
     if (event.data.type === 'SESSION_REFRESHED') {
-      const accessToken = event.data.accessToken;
-      useAuthStore.getState().setAccessToken(accessToken);
+      const { accessToken, user } = event.data;
+      if (user) {
+        useAuthStore.getState().setAuth(user, accessToken);
+      } else {
+        useAuthStore.getState().setAccessToken(accessToken);
+      }
       processQueue(null, accessToken);
     } else if (event.data.type === 'SESSION_LOGGED_OUT') {
       processQueue(new Error('Logged out in another tab'), null);
@@ -49,36 +52,14 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
-async function performRefreshWithLock() {
-  if (typeof navigator !== 'undefined' && navigator.locks) {
-    return navigator.locks.request('auth_refresh_lock', { mode: 'exclusive' }, async () => {
-      // Once we get the lock, check if another tab already refreshed the token
-      // We know if they did because the BroadcastChannel would have fired and cleared our queue,
-      // or we can just try refreshing. If the backend fails us, it fails.
-      // But wait, if they refreshed, our accessToken in store might be updated.
-      // For simplicity, we just do the refresh.
-      return doRefresh();
-    });
-  } else {
-    // Fallback if Web Locks not supported
-    return doRefresh();
-  }
-}
-
-async function doRefresh() {
-  const res = await axios.post('/api/auth/refresh', {}, { withCredentials: true });
-  const { accessToken, user } = res.data;
-  
-  if (user) {
-    useAuthStore.getState().setAuth(user, accessToken);
-  } else {
-    useAuthStore.getState().setAccessToken(accessToken);
-  }
-
-  if (authChannel) {
-    authChannel.postMessage({ type: 'SESSION_REFRESHED', accessToken, user });
-  }
-  return accessToken;
+// Listen for local refresh events to clear the queue
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth:refreshed' as any, (e: any) => {
+    processQueue(null, e.detail.accessToken);
+  });
+  window.addEventListener('auth:login_failed' as any, (e: any) => {
+    processQueue(e.detail.error, null);
+  });
 }
 
 axiosClient.interceptors.response.use(
@@ -92,6 +73,8 @@ axiosClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry && !isRefreshRequest) {
       originalRequest._retry = true;
 
+      const { isRefreshing, refreshSession } = useAuthStore.getState();
+
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
           failedQueue.push({ resolve, reject });
@@ -103,10 +86,8 @@ axiosClient.interceptors.response.use(
         });
       }
 
-      isRefreshing = true;
-
       try {
-        const accessToken = await performRefreshWithLock();
+        const accessToken = await refreshSession();
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         
         processQueue(null, accessToken);
@@ -115,10 +96,8 @@ axiosClient.interceptors.response.use(
       } catch (refreshErr) {
         console.warn('Token refresh failed, logging out user', refreshErr);
         processQueue(refreshErr, null);
-        useAuthStore.getState().logout();
+        // refreshSession already calls logout/clearLocalAuth on failure
         return Promise.reject(error);
-      } finally {
-        isRefreshing = false;
       }
     }
     return Promise.reject(error);
