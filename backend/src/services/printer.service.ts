@@ -61,6 +61,31 @@ export async function ensureDefaultPrinters(): Promise<void> {
   logger.info('Seeded default printer stations.');
 }
 
+/**
+ * IMPORTANT: ESC/POS Character Encoding
+ * 
+ * This function generates ESC/POS commands using ASCII encoding.
+ * 
+ * LIMITATION: ASCII encoding does NOT support:
+ * - Amharic script (ኣ, ብ, ሰ, etc.)
+ * - Extended Unicode characters
+ * - Special symbols outside ASCII range
+ * 
+ * For cafes using Amharic or other non-ASCII languages:
+ * 1. Ensure thermal printer supports Code Page 1252 or UTF-8
+ * 2. Update this function to use appropriate character encoding
+ * 3. Test with actual printer to verify correct rendering
+ * 4. Consider using printer-specific character set commands
+ * 
+ * Example for UTF-8 support:
+ *   commands.push(0x1b, 0x74, 0x10); // Select character code table 16 (UTF-8)
+ * 
+ * PRINTED Status Semantics:
+ * - PRINTED means: "Successfully submitted to Windows spooler" (for Windows agents)
+ * - PRINTED means: "Successfully sent to TCP printer" (for TCP transport)
+ * - PRINTED does NOT guarantee physical paper was printed
+ * - Physical confirmation requires printer-specific status polling
+ */
 export function buildEscPosKitchenTicket(order: {
   clientOrderId: string;
   tableNumber: string;
