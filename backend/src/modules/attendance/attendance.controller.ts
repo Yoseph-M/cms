@@ -45,13 +45,15 @@ export async function getAttendance(req: AuthenticatedRequest, res: Response) {
   const usersById = new Map(users.map((user) => [user.id, user]));
   const records = rawRecords.flatMap((record) => {
     const user = usersById.get(record.userId);
-    return user ? [{ ...record, user }] : [];
+    // Exclude owners from attendance records entirely
+    if (!user || user.role === Role.OWNER) return [];
+    return [{ ...record, user }];
   });
 
-  // Manager scope: exclude Owner/Manager attendance rows from response
+  // Manager scope: exclude Manager attendance rows from response (Owners already excluded)
   if (callerRole === Role.MANAGER) {
     const scoped = records.filter(
-      (r) => r.user.role !== Role.OWNER && r.user.role !== Role.MANAGER
+      (r) => r.user.role !== Role.MANAGER
     );
     return res.json(scoped);
   }
@@ -68,6 +70,10 @@ export async function createOrUpdateAttendance(req: AuthenticatedRequest, res: R
   const targetUser = await prisma.user.findUnique({ where: { id: userId } });
   if (!targetUser) {
     return res.status(404).json({ error: 'User not found.' });
+  }
+
+  if (targetUser.role === Role.OWNER) {
+    return res.status(403).json({ error: 'Attendance tracking is not required for owners.' });
   }
 
   // OWNER: reject unless ownerCanEditAttendance is enabled
