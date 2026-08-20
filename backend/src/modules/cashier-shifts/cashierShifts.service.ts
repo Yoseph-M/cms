@@ -111,6 +111,8 @@ export async function openShift(params: OpenShiftParams) {
 interface CloseShiftParams {
   shiftId: string;
   declaredCashMinor: number;
+  declaredCardMinor?: number;
+  declaredMobileMinor?: number;
   notes?: string;
   reason?: string; // Required if variance != 0
   closedById: string;
@@ -132,7 +134,16 @@ interface CloseShiftParams {
  * - varianceMinor: The difference (derived, not entered)
  */
 export async function closeShift(params: CloseShiftParams) {
-  const { shiftId, declaredCashMinor, notes, reason, closedById, idempotencyKey } = params;
+  const { 
+    shiftId, 
+    declaredCashMinor, 
+    declaredCardMinor = 0, 
+    declaredMobileMinor = 0, 
+    notes, 
+    reason, 
+    closedById, 
+    idempotencyKey 
+  } = params;
 
   if (declaredCashMinor < 0) {
     throw new ValidationError('Declared cash cannot be negative', 'declaredCashMinor');
@@ -154,7 +165,9 @@ export async function closeShift(params: CloseShiftParams) {
     // Load shift with optimistic lock check
     const shift = await tx.cashierShift.findUnique({
       where: { id: shiftId },
-      include: { cashDrawerEvents: true },
+      include: { 
+        cashDrawerEvents: true,
+      },
     });
 
     if (!shift) {
@@ -170,19 +183,36 @@ export async function closeShift(params: CloseShiftParams) {
 
     // Calculate expected cash from ledger (server authoritative)
     const expectedCashMinor = calculateExpectedCash(shift.cashDrawerEvents);
-
     const varianceMinor = declaredCashMinor - expectedCashMinor;
 
-    // Require reason if variance != 0
-    if (varianceMinor !== 0 && (!reason || reason.trim().length === 0)) {
+    // Calculate expected CARD and MOBILE totals from settlements linked to this shift
+    const shiftSettlements = await tx.settlement.findMany({
+      where: { shiftId },
+      select: { method: true, amountMinor: true },
+    });
+
+    const expectedCardMinor = shiftSettlements
+      .filter(s => s.method === 'CARD')
+      .reduce((sum, s) => sum + s.amountMinor, 0);
+      
+    const expectedMobileMinor = shiftSettlements
+      .filter(s => s.method === 'MOBILE')
+      .reduce((sum, s) => sum + s.amountMinor, 0);
+
+    const cardVariance = declaredCardMinor - expectedCardMinor;
+    const mobileVariance = declaredMobileMinor - expectedMobileMinor;
+
+    // Require reason if any variance != 0
+    const totalVariance = Math.abs(varianceMinor) + Math.abs(cardVariance) + Math.abs(mobileVariance);
+    if (totalVariance !== 0 && (!reason || reason.trim().length === 0)) {
       throw new ValidationError(
-        'A reason is required when there is a cash variance',
+        'A reason is required when there is a revenue variance',
         'reason'
       );
     }
 
     // Determine new status
-    const newStatus = varianceMinor !== 0 ? ShiftStatus.PENDING_REVIEW : ShiftStatus.CLOSED;
+    const newStatus = totalVariance !== 0 ? ShiftStatus.PENDING_REVIEW : ShiftStatus.CLOSED;
 
     // Update shift atomically
     const updateResult = await tx.cashierShift.updateMany({
@@ -193,6 +223,10 @@ export async function closeShift(params: CloseShiftParams) {
         expectedCashMinor,
         declaredCashMinor,
         varianceMinor,
+        expectedCardMinor,
+        declaredCardMinor,
+        expectedMobileMinor,
+        declaredMobileMinor,
         closedById,
         reviewNotes: notes,
         closeIdempotencyKey: idempotencyKey,
@@ -207,13 +241,15 @@ export async function closeShift(params: CloseShiftParams) {
     // The physical count is stored in the shift record itself
     // Ledger remains pure: only movements (in/out), not counts
 
-    // If variance exists, create a VarianceReview
-    if (varianceMinor !== 0) {
+    // If any variance exists, create a VarianceReview
+    if (totalVariance !== 0) {
       await tx.varianceReview.create({
         data: {
           shiftId,
           varianceMinor,
-          classification: varianceMinor > 0 ? 'OVER' : 'SHORT',
+          cardVarianceMinor: cardVariance,
+          mobileVarianceMinor: mobileVariance,
+          classification: totalVariance > 0 ? 'OVER' : 'SHORT',
           cashierReason: reason || '',
         },
       });
