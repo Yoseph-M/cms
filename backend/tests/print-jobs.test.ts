@@ -107,15 +107,16 @@ describe('Print Jobs and Print Agents', () => {
   });
 
   describe('Print Agent Registration', () => {
-    it('should allow Owner to register a print agent', async () => {
+    it('should allow Owner to register a print agent with station assignment', async () => {
       const res = await request(app)
         .post('/api/print-agents/register')
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ name: 'Test Agent 1' })
+        .send({ name: 'Test Agent 1', station: 'kitchen' })
         .expect(201);
 
       expect(res.body.agent).toBeDefined();
       expect(res.body.agent.name).toBe('Test Agent 1');
+      expect(res.body.agent.station).toBe('kitchen');
       expect(res.body.token).toBeDefined();
       expect(res.body.token).toHaveLength(64);
 
@@ -124,11 +125,27 @@ describe('Print Jobs and Print Agents', () => {
       testAgentTokenHash = crypto.createHash('sha256').update(testAgentToken).digest('hex');
     });
 
+    it('should require station during agent registration', async () => {
+      await request(app)
+        .post('/api/print-agents/register')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Test Agent Without Station' })
+        .expect(400);
+    });
+
+    it('should validate station is one of the allowed values', async () => {
+      await request(app)
+        .post('/api/print-agents/register')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Test Agent Invalid', station: 'invalid_station' })
+        .expect(400);
+    });
+
     it('should prevent duplicate agent names', async () => {
       await request(app)
         .post('/api/print-agents/register')
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ name: 'Test Agent 1' })
+        .send({ name: 'Test Agent 1', station: 'bar' })
         .expect(409);
     });
 
@@ -136,7 +153,7 @@ describe('Print Jobs and Print Agents', () => {
       await request(app)
         .post('/api/print-agents/register')
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ name: 'Test Agent 2' })
+        .send({ name: 'Test Agent 2', station: 'kitchen' })
         .expect(403);
     });
 
@@ -144,7 +161,7 @@ describe('Print Jobs and Print Agents', () => {
       await request(app)
         .post('/api/print-agents/register')
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ name: '' })
+        .send({ name: '', station: 'kitchen' })
         .expect(400);
     });
   });
@@ -253,18 +270,56 @@ describe('Print Jobs and Print Agents', () => {
       pendingJob = jobs[0];
     });
 
-    it('should allow agent to fetch pending jobs', async () => {
+    it('should allow agent to fetch pending jobs for its station', async () => {
       const res = await request(app)
-        .get('/api/print-jobs/pending?station=kitchen')
+        .get('/api/print-jobs/pending')
         .set('X-Agent-Token', testAgentToken)
         .expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body.length).toBeGreaterThan(0);
       expect(res.body[0].status).toBe(PrintJobStatus.QUEUED);
+      // All jobs should be for kitchen station (agent's assigned station)
+      expect(res.body.every((job: any) => job.station === 'kitchen')).toBe(true);
     });
 
-    it('should allow agent to claim a job', async () => {
+    it('should not return jobs from other stations', async () => {
+      // Create a bar station job
+      const barItem = await createTestMenuItem({ name: 'Cocktail', price: 1200 });
+      const barWaiter = await createTestUser(Role.WAITER);
+      const barOrder = await createTestOrder({
+        items: [{ 
+          menuItemId: barItem.id,
+          name: barItem.name,
+          unitPrice: barItem.price,
+          quantity: 1 
+        }],
+        waiterId: barWaiter.id,
+      });
+
+      // Manually create a bar print job
+      await prisma.printJob.create({
+        data: {
+          orderId: barOrder.id,
+          station: 'bar',
+          transport: PrintTransport.WINDOWS,
+          printerName: 'Bar Printer',
+          payloadBase64: Buffer.from('test').toString('base64'),
+          status: PrintJobStatus.QUEUED,
+        },
+      });
+
+      const res = await request(app)
+        .get('/api/print-jobs/pending')
+        .set('X-Agent-Token', testAgentToken)
+        .expect(200);
+
+      // Should not include bar station jobs
+      const barJobs = res.body.filter((job: any) => job.station === 'bar');
+      expect(barJobs).toHaveLength(0);
+    });
+
+    it('should allow agent to claim a job from its station', async () => {
       const res = await request(app)
         .post(`/api/print-jobs/${pendingJob.id}/claim`)
         .set('X-Agent-Token', testAgentToken)
@@ -272,7 +327,24 @@ describe('Print Jobs and Print Agents', () => {
 
       expect(res.body.status).toBe(PrintJobStatus.PRINTING);
       expect(res.body.claimedById).toBe(testAgentId);
+      expect(res.body.claimedAt).toBeDefined();
       expect(res.body.attempts).toBe(1);
+    });
+
+    it('should prevent agent from claiming job from different station', async () => {
+      // Create another agent for bar station
+      const barAgentRes = await request(app)
+        .post('/api/print-agents/register')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Bar Agent', station: 'bar' });
+
+      const barAgentToken = barAgentRes.body.token;
+
+      // Try to claim kitchen job with bar agent
+      await request(app)
+        .post(`/api/print-jobs/${pendingJob.id}/claim`)
+        .set('X-Agent-Token', barAgentToken)
+        .expect(403);
     });
 
     it('should prevent claiming already claimed job', async () => {
@@ -294,6 +366,17 @@ describe('Print Jobs and Print Agents', () => {
       const updated = await prisma.printJob.findUnique({ where: { id: pendingJob.id } });
       expect(updated!.status).toBe(PrintJobStatus.PRINTED);
       expect(updated!.printedAt).not.toBeNull();
+    });
+
+    it('should be idempotent for duplicate ACK', async () => {
+      const res = await request(app)
+        .post(`/api/print-jobs/${pendingJob.id}/ack`)
+        .set('X-Agent-Token', testAgentToken)
+        .send({ status: 'PRINTED' })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.idempotent).toBe(true);
     });
   });
 
@@ -539,11 +622,11 @@ describe('Print Jobs and Print Agents', () => {
 
   describe('Idempotency and Concurrency', () => {
     it('should prevent two agents from claiming the same job', async () => {
-      // Register second agent
+      // Register second agent for kitchen station
       const agent2Res = await request(app)
         .post('/api/print-agents/register')
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ name: 'Test Agent 2' });
+        .send({ name: 'Test Agent 2', station: 'kitchen' });
 
       const agent2Token = agent2Res.body.token;
 
@@ -580,6 +663,53 @@ describe('Print Jobs and Print Agents', () => {
 
       expect(succeeded).toHaveLength(1);
       expect(failed).toHaveLength(1);
+    });
+
+    it('should prevent agent from ACKing another agents job', async () => {
+      // Register third agent
+      const agent3Res = await request(app)
+        .post('/api/print-agents/register')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Test Agent 3', station: 'kitchen' });
+
+      const agent3Token = agent3Res.body.token;
+
+      // Create and claim job with agent 2
+      const agent2Res = await request(app)
+        .post('/api/print-agents/register')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Test Agent ACK', station: 'kitchen' });
+
+      const agent2Token = agent2Res.body.token;
+
+      const item = await createTestMenuItem({ name: 'Soup', price: 400 });
+      const waiter = await createTestUser(Role.WAITER);
+      const order = await createTestOrder({
+        items: [{ 
+          menuItemId: item.id,
+          name: item.name,
+          unitPrice: item.price,
+          quantity: 1 
+        }],
+        waiterId: waiter.id,
+      });
+
+      const job = await prisma.printJob.findFirst({
+        where: { orderId: order.id },
+      });
+
+      // Agent 2 claims
+      await request(app)
+        .post(`/api/print-jobs/${job!.id}/claim`)
+        .set('X-Agent-Token', agent2Token)
+        .expect(200);
+
+      // Agent 3 tries to ACK
+      await request(app)
+        .post(`/api/print-jobs/${job!.id}/ack`)
+        .set('X-Agent-Token', agent3Token)
+        .send({ status: 'PRINTED' })
+        .expect(403);
     });
   });
 });
