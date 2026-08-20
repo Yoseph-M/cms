@@ -75,29 +75,28 @@ export async function processPrintJob(
 }
 
 /**
- * Process all pending jobs for configured stations
+ * Process all pending jobs for this agent's assigned station
+ * Station is determined by the agent's authentication on the backend
  */
 export async function processPendingJobs(
-  apiClient: CMSApiClient,
-  stations: string[]
+  apiClient: CMSApiClient
 ): Promise<void> {
-  for (const station of stations) {
-    try {
-      const jobs = await apiClient.getPendingJobs(station);
-      
-      if (jobs.length === 0) {
-        logger.debug({ station }, 'No pending jobs');
-        continue;
-      }
-
-      logger.info({ station, count: jobs.length }, 'Found pending print jobs');
-
-      // Process jobs sequentially to avoid overwhelming the printer
-      for (const job of jobs) {
-        await processPrintJob(job, apiClient);
-      }
-    } catch (err: any) {
-      logger.error({ station, err: err.message }, 'Error checking pending jobs for station');
+  try {
+    const jobs = await apiClient.getPendingJobs();
+    
+    if (jobs.length === 0) {
+      logger.debug('No pending jobs');
+      return;
     }
+
+    logger.info({ count: jobs.length }, 'Found pending print jobs');
+
+    // Process jobs sequentially to avoid overwhelming the printer
+    for (const job of jobs) {
+      await processPrintJob(job, apiClient);
+    }
+  } catch (err: any) {
+    logger.error({ err: err.message }, 'Error checking pending jobs');
+    throw err;
   }
 }
