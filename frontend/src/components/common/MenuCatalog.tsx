@@ -429,6 +429,36 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
             )}
           </div>
         )}
+
+        {/* Filter cluster — moved to the right side of the action row */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap sm:justify-end w-full sm:w-auto sm:ml-auto">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              type="text"
+              defaultValue={search}
+              onChange={handleSearchChange}
+              placeholder="Search menu items…"
+              className="pl-9 h-9"
+              aria-label="Search menu items"
+            />
+          </div>
+          <div className="flex gap-1 p-1 bg-secondary/40 rounded-lg border border-border/50 shrink-0">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                  categoryFilter === cat
+                    ? 'bg-background text-foreground shadow-sm border border-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {cat === 'All' ? 'All' : cat.charAt(0) + cat.slice(1).toLowerCase()}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       <input
         ref={csvFileRef}
@@ -437,22 +467,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
         className="hidden"
         onChange={handleCSVImport}
       />
-
-      <div className="flex gap-1 p-1 bg-secondary/40 rounded-lg w-fit border border-border/50">
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setCategoryFilter(cat)}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-              categoryFilter === cat
-                ? 'bg-background text-foreground shadow-sm border border-border'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {cat === 'All' ? 'All' : cat.charAt(0) + cat.slice(1).toLowerCase()}
-          </button>
-        ))}
-      </div>
 
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
