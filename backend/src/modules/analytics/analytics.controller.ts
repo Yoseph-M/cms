@@ -439,6 +439,42 @@ export async function getAuditLogs(req: AuthenticatedRequest, res: Response) {
   return res.json({ logs: auditLogs, nextCursor });
 }
 
+export async function getLoginHistory(req: AuthenticatedRequest, res: Response) {
+  const { userId, outcome, dateFrom, dateTo, cursor } = req.query;
+  const take = 50;
+
+  const where: Record<string, unknown> = {};
+  if (userId) where.userId = userId;
+  if (outcome) where.outcome = outcome;
+
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) (where.createdAt as Record<string, Date>).gte = new Date(dateFrom as string);
+    if (dateTo) (where.createdAt as Record<string, Date>).lte = new Date(dateTo as string);
+  }
+
+  const logs = await prisma.loginHistory.findMany({
+    where,
+    take: take + 1,
+    skip: cursor ? 1 : 0,
+    cursor: cursor ? { id: cursor as string } : undefined,
+    include: {
+      user: {
+        select: { id: true, name: true, role: true, email: true },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  let nextCursor = null;
+  if (logs.length > take) {
+    const nextItem = logs.pop();
+    nextCursor = nextItem?.id ?? null;
+  }
+
+  return res.json({ logs, nextCursor });
+}
+
 /**
  * GET /analytics/profit-loss?from&to
  * Revenue (paid non-cancelled orders) vs payroll + other expenses → net.
