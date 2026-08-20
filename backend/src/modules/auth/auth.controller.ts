@@ -61,6 +61,19 @@ export async function login(req: Request, res: Response) {
 
   if (!user || !user.isActive) {
     logger.info({ email, found: !!user, isActive: user?.isActive, role: user?.role, outcome: 'failure' }, 'auth.login.failure');
+    
+    // Record failure if user exists but is inactive (or not found)
+    if (user) {
+      await prisma.loginHistory.create({
+        data: {
+          userId: user.id,
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+          outcome: 'FAILURE',
+        },
+      });
+    }
+
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
@@ -73,6 +86,16 @@ export async function login(req: Request, res: Response) {
   if (lockoutState) {
     if (lockoutState.lockedUntil > now) {
       const remainingMinutes = Math.ceil((lockoutState.lockedUntil - now) / 60000);
+      
+      await prisma.loginHistory.create({
+        data: {
+          userId: user.id,
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+          outcome: 'LOCKED',
+        },
+      });
+
       return res.status(429).json({
         error: `Account locked due to too many failed attempts. Try again in ${remainingMinutes} minutes.`,
         lockedUntil: lockoutState.lockedUntil,
@@ -102,6 +125,15 @@ export async function login(req: Request, res: Response) {
       create: { userId: user.id, failedCount: attempts, lockedUntil },
     });
 
+    await prisma.loginHistory.create({
+      data: {
+        userId: user.id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        outcome: attempts >= 5 ? 'LOCKED' : 'FAILURE',
+      },
+    });
+
     if (attempts >= 5) {
       logger.info({ email, attempts, outcome: 'locked' }, 'auth.login.locked');
       return res.status(429).json({
@@ -118,6 +150,31 @@ export async function login(req: Request, res: Response) {
   // Clear lockout on success
   if (lockoutState) {
     await prisma.loginAttempt.delete({ where: { userId: user.id } });
+  }
+
+  // Record success
+  await prisma.loginHistory.create({
+    data: {
+      userId: user.id,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      outcome: 'SUCCESS',
+    },
+  });
+
+  // Check if Manager Dashboard feature is disabled
+  if (user.role === Role.MANAGER) {
+    const managerDashboardSetting = await prisma.systemSetting.findUnique({
+      where: { key: 'managerDashboardEnabled' }
+    });
+    const isEnabled = managerDashboardSetting ? managerDashboardSetting.value === 'true' : true;
+    
+    if (!isEnabled) {
+      logger.info({ email, role: user.role, outcome: 'feature_disabled' }, 'auth.login.feature_disabled');
+      return res.status(403).json({ 
+        error: 'Manager Dashboard is currently disabled. Please contact the system administrator for access.' 
+      });
+    }
   }
 
   const tokenPayload = {
