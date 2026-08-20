@@ -46,12 +46,15 @@ const OwnerLayoutInner: React.FC = () => {
     { to: '/owner/payroll', label: t('nav.payroll', { defaultValue: 'Payroll' }), icon: DollarSign, group: 'people' },
     ...(systemAdminEnabled ? [
       { to: '/owner/admin', label: t('nav.systemAdmin', { defaultValue: 'System Admin' }), icon: ShieldCheck, group: 'system' },
+      { to: '/owner/login-history', label: t('nav.loginHistory', { defaultValue: 'Login History' }), icon: ShieldCheck, group: 'system' },
     ] : []),
   ] as const;
 
-  const SYSTEM_SETTINGS = systemAdminEnabled
-    ? { to: '/owner/settings', label: t('nav.systemSettings', { defaultValue: 'System Settings' }), icon: Settings }
-    : null;
+  const SYSTEM_SETTINGS = { 
+    to: '/owner/settings', 
+    label: t('nav.systemSettings', { defaultValue: 'System Settings' }), 
+    icon: Settings 
+  };
 
   const GROUP_LABELS: Record<string, string> = {
     core: t('nav.groups.core', { defaultValue: 'Insights' }),
@@ -191,46 +194,44 @@ const OwnerLayoutInner: React.FC = () => {
         </nav>
 
         {/* System Settings — pinned to the bottom of the sidebar */}
-        {SYSTEM_SETTINGS && (
-          <div
-            className={cn(
-              'shrink-0 border-t border-[#ece6dd] p-3',
-              collapsed ? 'flex justify-center' : '',
-            )}
+        <div
+          className={cn(
+            'shrink-0 border-t border-[#ece6dd] p-3',
+            collapsed ? 'flex justify-center' : '',
+          )}
+        >
+          <NavLink
+            to={SYSTEM_SETTINGS.to}
+            className={({ isActive }) =>
+              cn(
+                'group relative flex items-center rounded-2xl text-[14px] font-medium transition-colors',
+                collapsed
+                  ? 'justify-center w-12 h-12 mx-auto'
+                  : 'gap-3 px-4 h-11 w-full',
+                isActive
+                  ? 'text-orange-600 bg-[#fff5eb]'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50',
+              )
+            }
           >
-            <NavLink
-              to={SYSTEM_SETTINGS.to}
-              className={({ isActive }) =>
-                cn(
-                  'group relative flex items-center rounded-2xl text-[14px] font-medium transition-colors',
-                  collapsed
-                    ? 'justify-center w-12 h-12 mx-auto'
-                    : 'gap-3 px-4 h-11 w-full',
-                  isActive
-                    ? 'text-orange-600 bg-[#fff5eb]'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50',
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <SYSTEM_SETTINGS.icon
-                    className={cn(
-                      'shrink-0 w-[18px] h-[18px]',
-                      isActive ? 'text-orange-500' : 'text-slate-400 group-hover:text-slate-600',
-                    )}
-                    strokeWidth={2.25}
-                  />
-                  {!collapsed && (
-                    <span className="truncate whitespace-nowrap">
-                      {SYSTEM_SETTINGS.label}
-                    </span>
+            {({ isActive }) => (
+              <>
+                <SYSTEM_SETTINGS.icon
+                  className={cn(
+                    'shrink-0 w-[18px] h-[18px]',
+                    isActive ? 'text-orange-500' : 'text-slate-400 group-hover:text-slate-600',
                   )}
-                </>
-              )}
-            </NavLink>
-          </div>
-        )}
+                  strokeWidth={2.25}
+                />
+                {!collapsed && (
+                  <span className="truncate whitespace-nowrap">
+                    {SYSTEM_SETTINGS.label}
+                  </span>
+                )}
+              </>
+            )}
+          </NavLink>
+        </div>
       </motion.aside>
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
