@@ -36,8 +36,6 @@ const STATUS_CONFIG: Record<AttendanceStatus, { label: string; short: string; co
   HOLIDAY:  { label: 'Holiday',  short: 'HO', color: 'text-accent',                  bg: 'bg-accent/20 border-accent/40 hover:bg-accent/30' },
 };
 
-const EXCLUDED_ROLES_FOR_MANAGER = ['OWNER', 'MANAGER'];
-
 interface AttendanceCalendarProps {
   isOwner?: boolean; // Owners see all staff + require notes for edits; managers see scoped roster
 }
@@ -81,8 +79,11 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
         axiosClient.get(`/attendance?month=${month}&year=${year}`),
       ]);
       let staffData: StaffMember[] = staffRes.data;
+      // Always exclude owners from attendance roster
+      staffData = staffData.filter(s => s.role !== 'OWNER');
+      
       if (!isOwner) {
-        staffData = staffData.filter(s => !EXCLUDED_ROLES_FOR_MANAGER.includes(s.role));
+        staffData = staffData.filter(s => s.role !== 'MANAGER');
       }
       setStaff(staffData);
       setAttendance(attRes.data);
