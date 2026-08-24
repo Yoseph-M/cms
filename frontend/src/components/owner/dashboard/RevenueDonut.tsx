@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '../../../lib/utils';
 
 export interface DonutSegment {
@@ -9,14 +10,21 @@ export interface DonutSegment {
 
 export interface RevenueDonutProps {
   segments: DonutSegment[];
-  /** Percentage in the centre (e.g. 73 for 73%). Auto-computed if omitted. */
+  /**
+   * Static percentage in the centre. When omitted (default) the centre
+   * auto-cycles through every segment, animating between each category's
+   * name + share.
+   */
   centerPercent?: number;
-  /** Label above the percentage */
+  /** Label above the percentage — only used with a static `centerPercent` */
   centerLabel?: string;
   size?: number;
   thickness?: number;
   className?: string;
 }
+
+/** How long each category stays in the centre before switching (ms) */
+const CYCLE_MS = 2600;
 
 /**
  * SVG donut chart with a centre label and a legend.
@@ -37,8 +45,30 @@ export const RevenueDonut: React.FC<RevenueDonutProps> = ({
   const radius = (size - thickness) / 2;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
-  const computedCenter =
-    centerPercent ?? Math.round((segments[0]?.value / total) * 100) ?? 0;
+
+  // Share of revenue per segment, used by both the cycle and static modes
+  const shares = segments.map((s) => Math.round((s.value / total) * 100));
+
+  /* ── Auto-cycling centre ── */
+  const isCycling = centerPercent === undefined && segments.length > 1;
+  const [activeIdx, setActiveIdx] = useState(0);
+
+  useEffect(() => {
+    if (!isCycling) return;
+    setActiveIdx(0);
+    const timer = setInterval(
+      () => setActiveIdx((i) => (i + 1) % segments.length),
+      CYCLE_MS,
+    );
+    return () => clearInterval(timer);
+  }, [isCycling, segments.length]);
+
+  // Keep the index valid if segments shrink while mounted
+  const safeIdx = activeIdx < segments.length ? activeIdx : 0;
+
+  const displayLabel = isCycling ? segments[safeIdx].label : centerLabel;
+  const displayPercent =
+    centerPercent ?? (segments.length > 0 ? shares[safeIdx] : 0);
 
   // Build segments with cumulative offsets
   let offset = 0;
@@ -79,21 +109,40 @@ export const RevenueDonut: React.FC<RevenueDonutProps> = ({
           ))}
         </svg>
 
-        {/* center label */}
+        {/* center label — animated, cycles through categories */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <p className="font-display text-[36px] font-bold text-foreground leading-none tabular-nums">
-            {computedCenter}%
-          </p>
-          <p className="mt-1 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            {centerLabel}
-          </p>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={displayLabel}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
+              className="flex flex-col items-center"
+            >
+              <p className="font-display text-[36px] font-bold text-foreground leading-none tabular-nums">
+                {displayPercent}%
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                {displayLabel}
+              </p>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 
-      {/* Legend */}
+      {/* Legend — active entry is highlighted, others dim; click to jump */}
       <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs">
         {segments.map((s, i) => (
-          <li key={i} className="inline-flex items-center gap-1.5 text-muted-foreground">
+          <li
+            key={i}
+            onClick={() => isCycling && setActiveIdx(i)}
+            className={cn(
+              'inline-flex items-center gap-1.5 text-muted-foreground transition-opacity duration-300',
+              isCycling && 'cursor-pointer',
+              isCycling && i !== safeIdx && 'opacity-40 hover:opacity-70',
+            )}
+          >
             <span
               className="w-2.5 h-2.5 rounded-sm shrink-0"
               style={{ background: s.color }}
