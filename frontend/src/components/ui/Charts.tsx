@@ -64,7 +64,7 @@ export const BarChart: React.FC<{
                   title={`${s.label}: ${yTickFormat(v)}`}
                 >
                   <div
-                    className="absolute inset-x-0 bottom-0 rounded-t-sm transition-all hover:opacity-100"
+                    className="absolute inset-0 rounded-t-sm transition-all hover:opacity-100"
                     style={{
                       background: s.color || (sIdx === 0 ? 'hsl(var(--primary))' : 'hsl(var(--accent))'),
                       opacity: 0.85,
