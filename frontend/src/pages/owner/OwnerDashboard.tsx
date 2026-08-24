@@ -52,19 +52,23 @@ interface RecentOrderRow {
   cashier?: { name: string } | null;
   waiter?: { name: string } | null;
 }
+interface ProfitLossRow {
+  revenue: number;
+  payrollCost: number;
+  otherExpenses: number;
+  netProfit: number;
+}
 
 /* ─── Helpers ─── */
 const CATEGORY_LABEL: Record<string, string> = {
-  FOOD: 'Sea Food',
-  DRINK: 'Beverage',
-  DESSERT: 'Desert',
-  OTHER: 'Pasta',
+  FOOD: 'Food',
+  DRINK: 'Drink',
+  DESSERT: 'Dessert',
 };
 const CATEGORY_COLOR: Record<string, string> = {
   FOOD: 'hsl(20 95% 53%)',     // orange
   DRINK: 'hsl(24 60% 35%)',    // brown
   DESSERT: 'hsl(30 80% 75%)',  // peach
-  OTHER: 'hsl(32 100% 90%)',   // cream
 };
 
 function pickIconForName(name: string): LucideIcon {
@@ -142,6 +146,7 @@ export const OwnerDashboard: React.FC = () => {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrderRow[]>([]);
   const [completedCount, setCompletedCount] = useState(0);
+  const [profitLoss, setProfitLoss] = useState<ProfitLossRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -151,13 +156,14 @@ export const OwnerDashboard: React.FC = () => {
       try {
         const fromIso = new Date(dateRange.from).toISOString();
         const toIso = new Date(`${dateRange.to}T23:59:59.999`).toISOString();
-        const [d, m, ti, cat, ord, comp] = await Promise.all([
+        const [d, m, ti, cat, ord, comp, pl] = await Promise.all([
           axiosClient.get('/analytics/sales/daily'),
           axiosClient.get('/analytics/sales/monthly'),
           axiosClient.get('/analytics/top-items', { params: { from: fromIso, to: toIso, limit: 5 } }),
           axiosClient.get('/analytics/category-split', { params: { from: fromIso, to: toIso } }),
           axiosClient.get('/orders', { params: { limit: 8, sort: 'createdAt:desc' } }),
           axiosClient.get('/orders', { params: { status: 'PAID', from: fromIso, to: toIso, limit: 1 } }),
+          axiosClient.get('/analytics/profit-loss'),
         ]);
         if (!alive) return;
         setDaily(d.data);
@@ -168,6 +174,7 @@ export const OwnerDashboard: React.FC = () => {
         setRecentOrders(Array.isArray(orderList) ? orderList : []);
         const compList = comp.data?.data || comp.data;
         setCompletedCount(Array.isArray(compList) ? compList.length : 0);
+        setProfitLoss(pl.data || null);
       } catch (err) {
         console.error('owner dashboard load error', err);
       } finally {
@@ -191,34 +198,31 @@ export const OwnerDashboard: React.FC = () => {
     };
   }, [daily, completedCount]);
 
-  /* ── Line chart: monthly revenue, paired with a synthetic expense line
-       so we don't need a separate endpoint.  ── */
+  /* ── Line chart: monthly revenue + expenses derived from the real
+        profit/loss aggregate (payroll + other expenses vs revenue) ── */
   const lineData = useMemo(() => {
     const labels = monthly.map((m) => m.month);
     const income = monthly.map((m) => Math.round(m.revenue / 100));
-    // Synthetic "expenses" line — ~62% of income, with a little jitter so
-    // the chart looks alive. Replace with /analytics/profit-loss when ready.
-    const expenses = income.map((v) => Math.round(v * 0.62 + Math.sin(v) * 40));
+    // Expense ratio comes from the database (profit-loss endpoint), so the
+    // Expenses line reflects actual payroll + operating costs.
+    const totalExpenses = profitLoss
+      ? profitLoss.payrollCost + profitLoss.otherExpenses
+      : 0;
+    const expenseRatio =
+      profitLoss && profitLoss.revenue > 0 ? totalExpenses / profitLoss.revenue : 0;
+    const expenses = income.map((v) => Math.round(v * expenseRatio));
     return { labels, income, expenses };
-  }, [monthly]);
+  }, [monthly, profitLoss]);
 
-  /* ── Donut: category split ── */
+  /* ── Donut: category split (real data from /analytics/category-split) ── */
   const donutSegments = useMemo(() => {
-    // Colors matching the image exactly
-    const MOCK_COLORS = ['#fb923c', '#fdba74', '#fed7aa', '#ffedd5'];
-    
-    if (categories.length === 0) {
-      return [
-        { label: 'Sea Food', value: 3500, color: MOCK_COLORS[0] },
-        { label: 'Beverage', value: 2000, color: MOCK_COLORS[1] },
-        { label: 'Desert',   value: 1200, color: MOCK_COLORS[2] },
-        { label: 'Pasta',    value: 800,  color: MOCK_COLORS[3] },
-      ];
-    }
+    // Palette for categories without a dedicated colour
+    const FALLBACK_COLORS = ['#fb923c', '#fdba74', '#fed7aa'];
+
     return categories.map((c, i) => ({
       label: CATEGORY_LABEL[c.category] ?? c.category,
       value: c.revenue,
-      color: MOCK_COLORS[i % MOCK_COLORS.length],
+      color: CATEGORY_COLOR[c.category] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
     }));
   }, [categories]);
 
@@ -281,11 +285,25 @@ export const OwnerDashboard: React.FC = () => {
             totalRevenue={kpis.totalRevenue}
           />
 
-          {/* Chart row — 2-column mode (line chart + donut side by side, equal width) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+          {/* Chart row — 2-column mode (line chart 2/3 + donut 1/3, side by side) */}
+          <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
             <SectionCard
+              className="col-span-2"
               title={t('dashboard.trend.title', { defaultValue: 'Total Revenue' })}
               filter={{ label: 'This Year', options: ['This Year', 'This Month', 'This Week', 'Last Year'] }}
+              filterAlign="left"
+              rightAccessory={
+                <div className="flex items-center gap-5 shrink-0">
+                  <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
+                    <span className="w-2.5 h-2.5 rounded-[4px]" style={{ backgroundColor: '#f97316' }} />
+                    Income
+                  </span>
+                  <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
+                    <span className="w-2.5 h-2.5 rounded-[4px]" style={{ backgroundColor: '#5d1a12' }} />
+                    Expenses
+                  </span>
+                </div>
+              }
             >
               <RevenueLineChart
                 labels={lineData.labels}
@@ -294,43 +312,38 @@ export const OwnerDashboard: React.FC = () => {
                     key: 'income',
                     label: 'Income',
                     values: lineData.income,
-                    color: '#fb923c', // Orange from image
+                    color: '#f97316',
                     fill: true,
                   },
                   {
                     key: 'expenses',
                     label: 'Expenses',
                     values: lineData.expenses,
-                    color: '#e2e8f0', // Pale grey from image
+                    color: '#5d1a12',
                     fill: false,
                   },
                 ]}
-                yFormat={(v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : `${v}`)}
+                yFormat={(v) => v.toLocaleString('en-US')}
+                tooltipFormat={(v) => `$${Math.round(v).toLocaleString('en-US')}`}
               />
             </SectionCard>
 
             <SectionCard
+              className="col-span-1"
               title={t('dashboard.donut.title', { defaultValue: 'Total Revenue' })}
               filter={{ label: 'This Month', options: ['This Month', 'Last Month', 'This Year'] }}
             >
-              <RevenueDonut
-                segments={donutSegments}
-                size={200}
-                thickness={26}
-                centerLabel="Total"
-                centerPercent={
-                  donutSegments.length > 0
-                    ? Math.round(
-                        (donutSegments[0].value /
-                          Math.max(
-                            1,
-                            donutSegments.reduce((s, x) => s + x.value, 0),
-                          )) *
-                          100,
-                      )
-                    : 0
-                }
-              />
+              {donutSegments.length > 0 ? (
+                <RevenueDonut
+                  segments={donutSegments}
+                  size={200}
+                  thickness={26}
+                />
+              ) : (
+                <div className="py-16 text-center text-sm text-muted-foreground">
+                  No sales data for this period.
+                </div>
+              )}
             </SectionCard>
           </div>
 
