@@ -58,8 +58,12 @@ export const LoginPage: React.FC = () => {
       addToast({ type: 'success', title: `Welcome back, ${authUser.name}!` });
       redirectByRole(authUser.role);
     } catch (err: any) {
-      const data = err.response?.data;
-      setErrorMsg(data?.error || t('errors.invalidCredentials'));
+      const errorData = err.response?.data?.error;
+      setErrorMsg(
+        typeof errorData === 'object' && errorData?.message
+          ? errorData.message
+          : errorData || t('errors.invalidCredentials')
+      );
     } finally {
       setIsLoading(false);
     }
