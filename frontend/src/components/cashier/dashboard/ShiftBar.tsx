@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, ListOrdered, Sparkles, Timer, Wallet, LogOut, Receipt } from 'lucide-react';
+import { TrendingUp, ListOrdered, Sparkles, Timer, ShoppingCart, LogOut, Receipt } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { formatCurrency } from '../../../utils/currency';
 import { Button } from '../../ui/Button';
@@ -119,8 +119,8 @@ export const ShiftBar: React.FC<ShiftBarProps> = ({
             onClick={onTablesClick}
             className="h-9 px-3 hidden sm:inline-flex"
           >
-            <Wallet className="w-3.5 h-3.5 mr-1.5" />
-            Tables
+            <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+            New order
           </Button>
         )}
         {isOpen && (
