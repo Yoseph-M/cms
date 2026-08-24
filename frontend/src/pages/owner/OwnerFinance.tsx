@@ -13,16 +13,7 @@ import {
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
-
-function exportCSV(data: Record<string, unknown>[], filename: string) {
-  if (!data.length) return;
-  const keys = Object.keys(data[0]);
-  const csv = [keys.join(','), ...data.map((r) => keys.map((k) => `"${r[k] ?? ''}"`).join(','))].join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `${filename}.csv`;
-  a.click();
-}
+import { exportCSV } from '../../utils/csvExport';
 
 function exportPDF(title: string, rows: string[][]) {
   const body = rows.map((r) => r.join('\t')).join('\n');
@@ -235,13 +226,38 @@ export const OwnerFinance: React.FC = () => {
     return m;
   }, [heatmap]);
 
+  /**
+   * Item names are snapshotted at order time and may be bilingual,
+   * e.g. "የበሬ ጥብስ (Beef Tibs)". Prefer the English name in parentheses
+   * so chart labels stay readable instead of single Amharic fragments.
+   */
+  const displayName = (raw: unknown): string => {
+    const s = String(raw ?? '').trim();
+    if (!s) return 'Unnamed item';
+    const m = s.match(/\(([^)]+)\)\s*$/);
+    return m ? m[1] : s;
+  };
+
   const topChartData = useMemo(() => {
     const items = (topItm.data || []).slice(0, 8);
     return {
-      labels: items.map((d) => d.name.split(' ')[0] || d.name),
-      values: items.map((d) => (topItemsMode === 'revenue' ? d.totalRevenue : d.totalQty)),
+      labels: items.map((d) => displayName(d.name)),
+      values: items.map((d) => (topItemsMode === 'revenue' ? Number(d.totalRevenue) || 0 : Number(d.totalQty) || 0)),
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topItm.data, topItemsMode]);
+
+  const exportRange = useCallback(
+    (title: string, data: unknown, filename: string) => {
+      const records = data as Record<string, unknown>[] | null | undefined;
+      if (!records?.length) return;
+      exportCSV(records, filename, {
+        title,
+        meta: [`Period: ${fmtDate(new Date(from))} to ${fmtDate(new Date(to))}`, `Generated: ${new Date().toLocaleString()}`],
+      });
+    },
+    [from, to]
+  );
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
@@ -297,7 +313,8 @@ export const OwnerFinance: React.FC = () => {
         onRetry={pnl.refetch}
         onExportCSV={() =>
           pnl.data &&
-          exportCSV(
+          exportRange(
+            'Revenue vs Costs',
             [
               {
                 revenue: formatCurrency(pnl.data.revenue),
@@ -352,7 +369,7 @@ export const OwnerFinance: React.FC = () => {
         onRetry={trend.refetch}
         empty={!trend.data?.length}
         emptyMsg="No revenue in this date range."
-        onExportCSV={() => trend.data && exportCSV(trend.data as unknown as Record<string, unknown>[], 'revenue-trend')}
+        onExportCSV={() => exportRange('Revenue Trend', trend.data, 'revenue-trend')}
         onExportPDF={() => trend.data && exportPDF('Revenue Trend', [['Date', 'Revenue', 'Orders'], ...trend.data.map((d) => [d.date, String(d.revenue), String(d.orderCount)])])}
         headerExtra={
           <div className="flex gap-1">
@@ -374,103 +391,36 @@ export const OwnerFinance: React.FC = () => {
         )}
       </Widget>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Widget
-          title="Top Items"
-          loading={topItm.loading}
-          error={topItm.error}
-          onRetry={topItm.refetch}
-          empty={!topItm.data?.length}
-          onExportCSV={() => topItm.data && exportCSV(topItm.data as unknown as Record<string, unknown>[], 'top-items')}
-          headerExtra={
-            <div className="flex gap-1">
-              <button onClick={() => setTopItemsMode('qty')} className={`px-2 py-1 text-xs rounded border ${topItemsMode === 'qty' ? 'border-primary bg-primary/10' : 'border-border'}`}>Qty</button>
-              <button onClick={() => setTopItemsMode('revenue')} className={`px-2 py-1 text-xs rounded border ${topItemsMode === 'revenue' ? 'border-primary bg-primary/10' : 'border-border'}`}>Revenue</button>
-            </div>
-          }
-        >
-          <BarChart
-            labels={topChartData.labels}
-            series={[{ label: topItemsMode, values: topChartData.values }]}
-            height={180}
-            yTickFormat={(v) => (topItemsMode === 'revenue' ? formatCurrency(v) : String(v))}
-          />
-        </Widget>
-
-        <Widget
-          title="Revenue by Category"
-          loading={catSpl.loading}
-          error={catSpl.error}
-          onRetry={catSpl.refetch}
-          empty={!catSpl.data?.length}
-          onExportCSV={() => catSpl.data && exportCSV(catSpl.data as unknown as Record<string, unknown>[], 'category-split')}
-        >
-          <Donut
-            slices={(catSpl.data || []).map((d, i) => ({
-              label: d.category,
-              value: Number(d.revenue) || 0,
-              color: DONUT_PALETTE[i % DONUT_PALETTE.length],
-            }))}
-          />
-        </Widget>
-      </div>
-
       <Widget
-        title="Peak Hours Heatmap"
-        loading={peak.loading}
-        error={peak.error}
-        onRetry={peak.refetch}
-        empty={!peak.data?.length}
-        onExportCSV={() => peak.data && exportCSV(peak.data as unknown as Record<string, unknown>[], 'peak-hours')}
-      >
-        <div className="overflow-x-auto">
-          <div style={{ minWidth: 600 }}>
-            <div className="flex mb-1 pl-10">
-              {HOURS.map((h) => <div key={h} className="flex-1 text-center text-[8px] text-muted-foreground">{h}</div>)}
-            </div>
-            {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
-              <div key={dow} className="flex items-center mb-0.5">
-                <div className="w-10 text-[10px] text-muted-foreground text-right pr-2 shrink-0">{DAYS[dow - 1]}</div>
-                {HOURS.map((h) => {
-                  const v = heatmap[dow]?.[h] || 0;
-                  const intensity = maxHeat > 0 ? v / maxHeat : 0;
-                  return (
-                    <div key={h} className="flex-1 mx-px" title={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`}>
-                      <div className="h-5 rounded-sm" style={{ background: `hsla(24,80%,55%,${0.08 + intensity * 0.87})` }} />
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
+        title="Top Items"
+        loading={topItm.loading}
+        error={topItm.error}
+        onRetry={topItm.refetch}
+        empty={!topItm.data?.length}
+          onExportCSV={() => exportRange('Top Items', topItm.data, 'top-items')}
+        headerExtra={
+          <div className="flex gap-1">
+            <button onClick={() => setTopItemsMode('qty')} className={`px-2 py-1 text-xs rounded border ${topItemsMode === 'qty' ? 'border-primary bg-primary/10' : 'border-border'}`}>Qty</button>
+            <button onClick={() => setTopItemsMode('revenue')} className={`px-2 py-1 text-xs rounded border ${topItemsMode === 'revenue' ? 'border-primary bg-primary/10' : 'border-border'}`}>Revenue</button>
           </div>
-        </div>
+        }
+      >
+        <BarChart
+          labels={topChartData.labels}
+          series={[{ label: topItemsMode, values: topChartData.values }]}
+          height={180}
+          yTickFormat={(v) => (topItemsMode === 'revenue' ? formatCurrency(v) : String(v))}
+        />
       </Widget>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Widget
-          title="Payment Method Split"
-          loading={payMth.loading}
-          error={payMth.error}
-          onRetry={payMth.refetch}
-          empty={!payMth.data?.length}
-          onExportCSV={() => payMth.data && exportCSV(payMth.data as unknown as Record<string, unknown>[], 'payment-methods')}
-        >
-          <Donut
-            slices={(payMth.data || []).map((d, i) => ({
-              label: d.method,
-              value: Number(d.revenue) || 0,
-              color: DONUT_PALETTE[i % DONUT_PALETTE.length],
-            }))}
-          />
-        </Widget>
-
+      <div className="grid grid-cols-2 gap-4">
         <Widget
           title="Staff Leaderboard"
           loading={staffP.loading}
           error={staffP.error}
           onRetry={staffP.refetch}
           empty={!staffP.data?.length}
-          onExportCSV={() => staffP.data && exportCSV(staffP.data as unknown as Record<string, unknown>[], 'staff-performance')}
+          onExportCSV={() => exportRange('Staff Leaderboard', staffP.data, 'staff-performance')}
           headerExtra={
             <Select value={staffRole} onChange={(e) => setStaffRole(e.target.value)} className="h-7 text-xs w-28">
               <option value="">All roles</option>
@@ -501,36 +451,104 @@ export const OwnerFinance: React.FC = () => {
             })}
           </div>
         </Widget>
+
+        <Widget
+          title="Cancellation Analysis"
+          loading={cancels.loading}
+          error={cancels.error}
+          onRetry={cancels.refetch}
+          empty={!cancels.data?.length}
+          emptyMsg="No cancellations in this period."
+          onExportCSV={() => exportRange('Cancellation Analysis', cancels.data, 'cancellations')}
+        >
+          <div className="space-y-2">
+            {(cancels.data || []).slice(0, 10).map((d, i) => {
+              const max = Math.max(...(cancels.data || []).map((x) => x.count || 0), 1);
+              return (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-xs text-muted-foreground truncate">{d.reason || 'No reason given'}</span>
+                      <span className="text-xs font-bold ml-2 shrink-0">{d.count}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                      <div className="h-full rounded-full bg-destructive/60" style={{ width: `${((d.count || 0) / max) * 100}%` }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Widget>
       </div>
 
       <Widget
-        title="Cancellation Analysis"
-        loading={cancels.loading}
-        error={cancels.error}
-        onRetry={cancels.refetch}
-        empty={!cancels.data?.length}
-        emptyMsg="No cancellations in this period."
-        onExportCSV={() => cancels.data && exportCSV(cancels.data as unknown as Record<string, unknown>[], 'cancellations')}
+        title="Peak Hours Heatmap"
+        loading={peak.loading}
+        error={peak.error}
+        onRetry={peak.refetch}
+        empty={!peak.data?.length}
+        onExportCSV={() => exportRange('Peak Hours', peak.data, 'peak-hours')}
       >
-        <div className="space-y-2">
-          {(cancels.data || []).slice(0, 10).map((d, i) => {
-            const max = Math.max(...(cancels.data || []).map((x) => x.count || 0), 1);
-            return (
-              <div key={i} className="flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-xs text-muted-foreground truncate">{d.reason || 'No reason given'}</span>
-                    <span className="text-xs font-bold ml-2 shrink-0">{d.count}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-                    <div className="h-full rounded-full bg-destructive/60" style={{ width: `${((d.count || 0) / max) * 100}%` }} />
-                  </div>
-                </div>
+        <div className="overflow-x-auto">
+          <div style={{ minWidth: 600 }}>
+            <div className="flex mb-1 pl-10">
+              {HOURS.map((h) => <div key={h} className="flex-1 text-center text-[8px] text-muted-foreground">{h}</div>)}
+            </div>
+            {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
+              <div key={dow} className="flex items-center mb-0.5">
+                <div className="w-10 text-[10px] text-muted-foreground text-right pr-2 shrink-0">{DAYS[dow - 1]}</div>
+                {HOURS.map((h) => {
+                  const v = heatmap[dow]?.[h] || 0;
+                  const intensity = maxHeat > 0 ? v / maxHeat : 0;
+                  return (
+                    <div key={h} className="flex-1 mx-px" title={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`}>
+                      <div className="h-5 rounded-sm" style={{ background: `hsla(24,80%,55%,${0.08 + intensity * 0.87})` }} />
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </Widget>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Widget
+          title="Revenue by Category"
+          loading={catSpl.loading}
+          error={catSpl.error}
+          onRetry={catSpl.refetch}
+          empty={!catSpl.data?.length}
+          onExportCSV={() => exportRange('Revenue by Category', catSpl.data, 'category-split')}
+        >
+          <Donut
+            slices={(catSpl.data || []).map((d, i) => ({
+              label: d.category,
+              value: Number(d.revenue) || 0,
+              color: DONUT_PALETTE[i % DONUT_PALETTE.length],
+            }))}
+          />
+        </Widget>
+
+        <Widget
+          title="Payment Method Split"
+          loading={payMth.loading}
+          error={payMth.error}
+          onRetry={payMth.refetch}
+          empty={!payMth.data?.length}
+          onExportCSV={() => exportRange('Payment Method Split', payMth.data, 'payment-methods')}
+        >
+          <Donut
+            slices={(payMth.data || []).map((d, i) => ({
+              label: d.method,
+              value: Number(d.revenue) || 0,
+              color: DONUT_PALETTE[i % DONUT_PALETTE.length],
+            }))}
+          />
+        </Widget>
+      </div>
+
     </div>
   );
 };
