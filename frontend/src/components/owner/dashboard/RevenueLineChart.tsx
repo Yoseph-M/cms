@@ -15,54 +15,60 @@ export interface RevenueLineChartProps {
   series: LineSeries[];
   height?: number;
   yFormat?: (v: number) => string;
+  /** Formats the value inside the hover tooltip (defaults to yFormat) */
+  tooltipFormat?: (v: number) => string;
   className?: string;
 }
 
 /**
- * Smooth-curve multi-series line chart.
- *
- * Renders a cubic-Bezier path for each series (Catmull-Rom → Bezier
- * conversion) with an optional area fill for the first series. The chart
- * owns its own hover state and surfaces a tooltip with the closest data
- * point to the cursor's X position.
+ * Smooth-curve multi-series line chart styled after the reference design:
+ * floating y-axis labels (no gridlines), thick rounded curves, a soft
+ * gradient under filled series, and a hover indicator made of a vertical
+ * accent line dropping from the point to the baseline with a floating
+ * tooltip card above it.
  */
 export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
   labels,
   series,
   height = 280,
   yFormat = (v) => v.toLocaleString(),
+  tooltipFormat,
   className,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
+  const fmtTooltip = tooltipFormat ?? yFormat;
+
   const allValues = series.flatMap((s) => s.values);
   const max = Math.max(1, ...allValues);
-  // Round the y-max up to a clean number for tick labels
   const yMax = niceMax(max);
   const ticks = 5;
 
   const W = 100;
   const H = 100;
-  const padTop = 4;
-  const padBottom = 8;
+  const padTop = 6;
+  const padBottom = 2;
   const innerH = H - padTop - padBottom;
 
-  // Build a smooth cubic-Bezier path between points (x in [0..100])
+  const xAt = (i: number) => (i / Math.max(1, labels.length - 1)) * W;
+  const yAt = (v: number) => padTop + innerH - (v / yMax) * innerH;
+
   const smoothPath = (vals: number[]): string => {
     if (vals.length === 0) return '';
-    const pts = vals.map((v, i) => {
-      const x = (i / Math.max(1, vals.length - 1)) * W;
-      const y = padTop + innerH - (v / yMax) * innerH;
-      return [x, y] as const;
-    });
+    const pts = vals.map((v, i) => [xAt(i), yAt(v)] as const);
     if (pts.length === 1) return `M ${pts[0][0]} ${pts[0][1]}`;
     let d = `M ${pts[0][0]} ${pts[0][1]}`;
     for (let i = 0; i < pts.length - 1; i++) {
-      const [x0, y0] = pts[i];
-      const [x1, y1] = pts[i + 1];
-      const cx = (x0 + x1) / 2;
-      d += ` C ${cx} ${y0}, ${cx} ${y1}, ${x1} ${y1}`;
+      const p0 = pts[i - 1] ?? pts[i];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[i + 2] ?? p2;
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+      const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+      const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2[0]} ${p2[1]}`;
     }
     return d;
   };
@@ -81,142 +87,139 @@ export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
   const onMove = (e: React.MouseEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect || labels.length === 0) return;
-    const x = e.clientX - rect.left;
-    const ratio = x / rect.width;
+    const plotLeft = 48;
+    const plotWidth = rect.width - plotLeft;
+    const x = e.clientX - rect.left - plotLeft;
+    const ratio = x / Math.max(1, plotWidth);
     const idx = Math.round(ratio * (labels.length - 1));
     setHoverIdx(Math.max(0, Math.min(labels.length - 1, idx)));
   };
+
+  const hoverPct = hoverIdx != null ? (hoverIdx / Math.max(1, labels.length - 1)) * 100 : 0;
+  const hoverValuePct =
+    hoverIdx != null ? (yAt(series[0]?.values[hoverIdx] ?? 0) / H) * 100 : 0;
+  const tooltipPct = Math.max(10, Math.min(90, hoverPct));
+  const accentColor = series[0]?.color ?? '#f97316';
 
   return (
     <div className={cn('w-full', className)}>
       <div
         ref={containerRef}
-        className="relative w-full"
+        className="relative w-full select-none"
         style={{ height }}
         onMouseMove={onMove}
         onMouseLeave={() => setHoverIdx(null)}
       >
-        {/* Y-axis tick labels (gridlines) */}
-        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+        {/* Y-axis tick labels — floating, no gridlines */}
+        <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between pointer-events-none">
           {tickValues
             .slice()
             .reverse()
             .map((v, i) => (
-              <div key={i} className="flex items-center w-full">
-                <span className="text-[10px] font-mono text-muted-foreground tabular-nums pr-2 w-12 text-right">
-                  {yFormat(v)}
-                </span>
-                <div className="flex-1 border-t border-dashed border-border/60" />
-              </div>
+              <span
+                key={i}
+                className="text-[11px] font-medium text-muted-foreground tabular-nums text-right leading-none"
+              >
+                {yFormat(v)}
+              </span>
             ))}
         </div>
 
-        {/* Chart svg */}
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="none"
-          className="absolute inset-0 w-full h-full pl-12"
-        >
-          <defs>
-            {series.map((s) =>
-              s.fill !== false ? (
-                <linearGradient
-                  key={s.key}
-                  id={`area-${s.key}`}
-                  x1="0"
-                  y1="0"
-                  x2="0"
-                  y2="1"
-                >
-                  <stop offset="0%" stopColor={s.color} stopOpacity="0.28" />
-                  <stop offset="100%" stopColor={s.color} stopOpacity="0" />
-                </linearGradient>
-              ) : null,
-            )}
-          </defs>
+        {/* Plot area */}
+        <div className="absolute left-12 right-0 top-0 bottom-0">
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            className="absolute inset-0 w-full h-full overflow-visible"
+          >
+            <defs>
+              {series.map((s) =>
+                s.fill !== false ? (
+                  <linearGradient
+                    key={s.key}
+                    id={`area-${s.key}`}
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="0%" stopColor={s.color} stopOpacity="0.22" />
+                    <stop offset="70%" stopColor={s.color} stopOpacity="0.05" />
+                    <stop offset="100%" stopColor={s.color} stopOpacity="0" />
+                  </linearGradient>
+                ) : null,
+              )}
+            </defs>
 
-          {series.map((s) => (
-            <g key={s.key}>
-              {s.fill !== false && (
+            {series.map((s) => (
+              <g key={s.key}>
+                {s.fill !== false && (
+                  <path d={areaPath(s.values)} fill={`url(#area-${s.key})`} />
+                )}
                 <path
-                  d={areaPath(s.values)}
-                  fill={`url(#area-${s.key})`}
+                  d={smoothPath(s.values)}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
-              )}
-              <path
-                d={smoothPath(s.values)}
-                fill="none"
-                stroke={s.color}
-                strokeWidth="0.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-              />
-            </g>
-          ))}
+              </g>
+            ))}
+          </svg>
 
-          {/* Hover indicator: vertical dotted line + point */}
+          {/* Hover indicator: accent line from point to baseline + dot */}
           {hoverIdx != null && (
-            <g>
-              <line
-                x1={(hoverIdx / Math.max(1, labels.length - 1)) * W}
-                x2={(hoverIdx / Math.max(1, labels.length - 1)) * W}
-                y1={padTop}
-                y2={padTop + innerH}
-                stroke="hsl(var(--orange-500))"
-                strokeWidth="0.25"
-                strokeDasharray="0.8 0.8"
-                vectorEffect="non-scaling-stroke"
+            <>
+              <div
+                className="absolute w-[2px] rounded-full pointer-events-none transition-[top] duration-75"
+                style={{
+                  left: `${hoverPct}%`,
+                  top: `${hoverValuePct}%`,
+                  bottom: `${padBottom}%`,
+                  transform: 'translateX(-50%)',
+                  backgroundColor: accentColor,
+                  opacity: 0.85,
+                }}
               />
-              {series.map((s) => {
-                const v = s.values[hoverIdx] ?? 0;
-                const x = (hoverIdx / Math.max(1, labels.length - 1)) * W;
-                const y = padTop + innerH - (v / yMax) * innerH;
-                return (
-                  <circle
-                    key={`pt-${s.key}`}
-                    cx={x}
-                    cy={y}
-                    r="0.9"
-                    fill="#fff"
-                    stroke={s.color}
-                    strokeWidth="0.5"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                );
-              })}
-            </g>
+              <div
+                className="absolute w-3.5 h-3.5 rounded-full pointer-events-none ring-[3px] ring-white shadow-md transition-[left,top] duration-75"
+                style={{
+                  left: `${hoverPct}%`,
+                  top: `${hoverValuePct}%`,
+                  transform: 'translate(-50%, -50%)',
+                  backgroundColor: accentColor,
+                }}
+              />
+            </>
           )}
-        </svg>
 
-        {/* Tooltip */}
-        {hoverIdx != null && (
-          <div
-            className="absolute pointer-events-none"
-            style={{
-              left: `calc(48px + ${(hoverIdx / Math.max(1, labels.length - 1)) * 100}% - 36px)`,
-              top: '8px',
-            }}
-          >
-            <div className="bg-card border border-border rounded-xl shadow-xl px-3 py-2 text-xs min-w-[80px]">
-              <p className="font-bold tabular-nums text-foreground">
-                {yFormat(series[0]?.values[hoverIdx] ?? 0)}
-              </p>
-              <p className="text-[10px] text-muted-foreground">{labels[hoverIdx]}</p>
+          {/* Tooltip floating above the active point */}
+          {hoverIdx != null && (
+            <div
+              className="absolute pointer-events-none z-10"
+              style={{
+                left: `${tooltipPct}%`,
+                top: `${hoverValuePct}%`,
+                transform: 'translate(-50%, calc(-100% - 16px))',
+              }}
+            >
+              <div className="bg-white border border-border/60 rounded-xl shadow-[0_10px_30px_-8px_rgba(15,23,42,0.18)] px-4 py-2 text-center whitespace-nowrap">
+                <p className="text-[15px] font-bold text-foreground tabular-nums leading-tight">
+                  {fmtTooltip(series[0]?.values[hoverIdx] ?? 0)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">{labels[hoverIdx]}</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* X-axis labels */}
-      <div className="flex mt-2 pl-12 text-[10px] font-mono text-muted-foreground">
+      <div className="flex mt-3 pl-12 text-xs font-medium text-muted-foreground">
         {labels.map((l, i) => (
-          <div
-            key={i}
-            className="flex-1 text-center tabular-nums truncate"
-            style={{ minWidth: 0 }}
-          >
+          <div key={i} className="flex-1 text-center truncate" style={{ minWidth: 0 }}>
             {l}
           </div>
         ))}
