@@ -1,4 +1,5 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
+import { exportRowsCSV } from "../../utils/csvExport";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -208,18 +209,12 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
   };
 
   const exportCSV = () => {
-    const rows = [['Staff', 'Role', ...dayNumbers.map(d => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`)]];
-    filteredStaff.forEach(s => {
-      const row = [s.name, s.role, ...dayNumbers.map(d => getRecord(s.id, d)?.status || '-')];
-      rows.push(row);
-    });
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `attendance-${year}-${month}.csv`;
-    a.click();
+    exportRowsCSV(
+      ['Staff', 'Role', ...dayNumbers.map(d => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`)],
+      filteredStaff.map(s => [s.name, s.role, ...dayNumbers.map(d => getRecord(s.id, d)?.status || '-')]),
+      `attendance-${year}-${month}`,
+      { title: `Attendance — ${monthName} ${year}`, meta: [`Generated: ${new Date().toLocaleString()}`] }
+    );
   };
 
   return (

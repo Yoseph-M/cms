@@ -1,11 +1,10 @@
 import type { Order, OrderStatus, PaymentMethod } from '../../../types';
 
-export type OrderDisplayStatus = 'ready' | 'cooking' | 'paid' | 'cancelled' | 'cancelReq';
+export type OrderDisplayStatus = 'ready' | 'cooking' | 'paid' | 'cancelled';
 
 export function getOrderStatus(order: Order): OrderDisplayStatus {
   if (order.status === 'PAID') return 'paid';
   if (order.status === 'CANCELLED') return 'cancelled';
-  if (order.cancellationReason) return 'cancelReq';
   if (order.status === 'SERVED') return 'ready';
   return 'cooking';
 }
@@ -15,7 +14,6 @@ export const STATUS_LABEL: Record<OrderDisplayStatus, string> = {
   cooking: 'In kitchen',
   paid: 'Settled',
   cancelled: 'Cancelled',
-  cancelReq: 'Cancel pending',
 };
 
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
@@ -68,14 +66,6 @@ export function statusAccent(status: OrderDisplayStatus) {
         text: 'text-rose-600',
         bg: 'from-rose-500/8 to-rose-500/0',
         badge: 'bg-rose-500/10 text-rose-600 border-rose-500/30',
-      };
-    case 'cancelReq':
-      return {
-        ring: 'ring-amber-400/40',
-        bar: 'bg-amber-500',
-        text: 'text-amber-700',
-        bg: 'from-amber-500/12 to-amber-500/0',
-        badge: 'bg-amber-500/15 text-amber-700 border-amber-500/30',
       };
   }
 }
