@@ -8,6 +8,8 @@ export interface SectionCardProps {
   filter?: { label: string; options?: string[]; value?: string; onChange?: (v: string) => void };
   /** Render a custom right-hand control (overrides `filter`) */
   rightAccessory?: React.ReactNode;
+  /** Where the filter dropdown sits: next to the title (left) or far right */
+  filterAlign?: 'left' | 'right';
   className?: string;
   /** Removes default padding from the content area */
   flush?: boolean;
@@ -23,10 +25,12 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   title,
   filter,
   rightAccessory,
+  filterAlign = 'right',
   className,
   flush = false,
   children,
 }) => {
+  const filterEl = filter ? <FilterDropdown {...filter} /> : null;
   return (
     <section
       className={cn(
@@ -37,15 +41,18 @@ export const SectionCard: React.FC<SectionCardProps> = ({
         //  - no harsh border; the shadow alone defines the edge
         'rounded-2xl bg-white overflow-hidden',
         'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-12px_rgba(15,23,42,0.12),0_4px_12px_-8px_rgba(249,115,22,0.10)]',
-        'transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_18px_40px_-14px_rgba(15,23,42,0.16),0_6px_16px_-10px_rgba(249,115,22,0.18)]',
+        'transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_18px_40px_-14px_rgba(15,23,42,0.16),0_6px_16px_-10px_rgba(249,115,22,0.18)]',
         className,
       )}
     >
       <header className="px-6 pt-5 pb-4 flex items-center justify-between gap-3">
-        <h2 className="font-display text-[17px] font-bold text-slate-800 leading-tight">
-          {title}
-        </h2>
-        {rightAccessory ?? (filter ? <FilterDropdown {...filter} /> : null)}
+        <div className="flex items-center gap-4 min-w-0">
+          <h2 className="font-display text-[17px] font-bold text-slate-800 leading-tight">
+            {title}
+          </h2>
+          {filterAlign === 'left' ? filterEl : null}
+        </div>
+        {rightAccessory ?? (filterAlign === 'right' ? filterEl : null)}
       </header>
 
       <div className={cn(flush ? '' : 'px-6 pb-6')}>{children}</div>
@@ -53,7 +60,7 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   );
 };
 
-const FilterDropdown: React.FC<{
+export const FilterDropdown: React.FC<{
   label: string;
   options?: string[];
   value?: string;
