@@ -1,7 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { motion } from 'framer-motion';
 import { Header } from '../common/Header';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
 import {
@@ -38,7 +37,7 @@ const OwnerLayoutInner: React.FC = () => {
 
   const OWNER_NAV = [
     { to: '/owner', label: t('nav.overview', { defaultValue: 'Overview' }), icon: LayoutDashboard, end: true, group: 'core' },
-    { to: '/owner/menu', label: t('nav.menu', { defaultValue: 'Menu Config' }), icon: UtensilsCrossed, group: 'ops' },
+    { to: '/owner/menu', label: t('nav.menu', { defaultValue: 'Menu Lists' }), icon: UtensilsCrossed, group: 'ops' },
     { to: '/owner/finance', label: t('nav.finance', { defaultValue: 'Finance' }), icon: DollarSign, group: 'ops' },
     { to: '/owner/expenses', label: t('nav.expenses', { defaultValue: 'Expenses' }), icon: Wallet, group: 'ops' },
     { to: '/owner/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, group: 'ops' },
@@ -46,7 +45,6 @@ const OwnerLayoutInner: React.FC = () => {
     { to: '/owner/payroll', label: t('nav.payroll', { defaultValue: 'Payroll' }), icon: DollarSign, group: 'people' },
     ...(systemAdminEnabled ? [
       { to: '/owner/admin', label: t('nav.systemAdmin', { defaultValue: 'System Admin' }), icon: ShieldCheck, group: 'system' },
-      { to: '/owner/login-history', label: t('nav.loginHistory', { defaultValue: 'Login History' }), icon: ShieldCheck, group: 'system' },
     ] : []),
   ] as const;
 
@@ -113,10 +111,8 @@ const OwnerLayoutInner: React.FC = () => {
 
       <OnboardingWizard />
 
-      <motion.aside
-        initial={false}
-        animate={{ width: collapsed ? 80 : 260 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+      <aside
+        style={{ width: collapsed ? 80 : 260 }}
         className={cn(
           'shrink-0 sticky top-0 h-screen flex flex-col z-20',
           'bg-white border-r border-[#ece6dd]',
@@ -232,7 +228,7 @@ const OwnerLayoutInner: React.FC = () => {
             )}
           </NavLink>
         </div>
-      </motion.aside>
+      </aside>
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <Header />
