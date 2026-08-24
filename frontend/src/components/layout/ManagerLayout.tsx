@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
 import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle, ClipboardCheck, Receipt } from 'lucide-react';
@@ -8,23 +9,14 @@ import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
 import { cn } from '../../lib/utils';
 
-const MANAGER_NAV = [
-  { to: '/manager/people', label: 'People', icon: Users, end: false },
-  { to: '/manager/cancellations', label: 'Cancellations', icon: XCircle, end: false },
-  { to: '/manager/reconciliation', label: 'End of Day', icon: ClipboardCheck, end: false },
-  { to: '/manager/settlements', label: 'Settlements', icon: Receipt, end: false },
-  { to: '/manager/menu', label: 'Menu Catalog', icon: UtensilsCrossed, end: false },
-  { to: '/manager/attendance', label: 'Attendance', icon: CalendarCheck, end: false },
-  { to: '/manager/payroll', label: 'Payroll', icon: DollarSign, end: false },
-  { to: '/manager/expenses', label: 'Expenses', icon: Wallet, end: false },
-  { to: '/manager/settings', label: 'Settings', icon: Settings, end: false },
-];
-
 import { useSettingsStore } from '../../store/settingsStore';
+
+const GROUP_ORDER: string[] = ['core', 'ops', 'people'];
 
 const ManagerLayoutInner: React.FC = () => {
   const { collapsed, toggle } = useSidebar();
   const { settings } = useSettingsStore();
+  const { t } = useTranslation('manager');
   const location = useLocation();
   const isDashboard = location.pathname === '/manager' || location.pathname === '/manager/';
 
@@ -40,23 +32,63 @@ const ManagerLayoutInner: React.FC = () => {
     );
   }
 
+  const MANAGER_NAV = [
+    { to: '/manager/people', label: t('nav.people', { defaultValue: 'People' }), icon: Users, end: false, group: 'core' },
+    { to: '/manager/menu', label: t('nav.menu', { defaultValue: 'Menu Catalog' }), icon: UtensilsCrossed, end: false, group: 'ops' },
+    { to: '/manager/reconciliation', label: t('nav.reconciliation', { defaultValue: 'End of Day' }), icon: ClipboardCheck, end: false, group: 'ops' },
+    { to: '/manager/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, end: false, group: 'ops' },
+    { to: '/manager/expenses', label: t('nav.expenses', { defaultValue: 'Expenses' }), icon: Wallet, end: false, group: 'ops' },
+    { to: '/manager/attendance', label: t('nav.attendance', { defaultValue: 'Attendance' }), icon: CalendarCheck, end: false, group: 'people' },
+    { to: '/manager/payroll', label: t('nav.payroll', { defaultValue: 'Payroll' }), icon: DollarSign, end: false, group: 'people' },
+  ] as const;
+
+  const SYSTEM_SETTINGS = {
+    to: '/manager/settings',
+    label: t('nav.systemSettings', { defaultValue: 'System Settings' }),
+    icon: Settings,
+  };
+
+  const GROUP_LABELS: Record<string, string> = {
+    core: t('nav.groups.core', { defaultValue: 'Insights' }),
+    people: t('nav.groups.people', { defaultValue: 'People & HR' }),
+    ops: t('nav.groups.ops', { defaultValue: 'Operations' }),
+  };
+
+  const grouped = GROUP_ORDER.map((g) => ({
+    group: g,
+    items: MANAGER_NAV.filter((n) => n.group === g),
+  }));
+
   return (
     /*
-     * Dual-pane layout — same as OwnerLayout:
+     * Dual-pane layout — same shell as OwnerLayout:
      *  - Outer h-screen, no page scroll.
      *  - Sticky full-height sidebar.
      *  - Right column with header + independently scrolling main.
+     *  - Sidebar visuals (rounded-2xl items, orange active state, group
+     *    labels, pinned System Settings) mirror the Owner sidebar so the
+     *    role-to-role transition feels consistent.
      */
-    <div className="h-screen w-screen flex bg-[#F1F5F9] overflow-hidden text-foreground relative">
-      {/* Subtle cool radial glow so white cards visibly pop as islands */}
+    <div
+      className={cn(
+        'h-screen w-screen flex overflow-hidden text-slate-800 relative',
+        isDashboard ? 'bg-[#fdfaf6]' : 'bg-[#F1F5F9]',
+      )}
+    >
+      {/* Subtle radial glow — warm on dashboard, cool elsewhere */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_0%_0%,rgba(148,163,184,0.18),transparent_55%),radial-gradient(100%_70%_at_100%_100%,rgba(203,213,225,0.35),transparent_60%)]"
+        className={cn(
+          'pointer-events-none absolute inset-0',
+          isDashboard
+            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,rgba(255,173,102,0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,rgba(255,236,210,0.55),transparent_60%)]'
+            : 'bg-[radial-gradient(120%_80%_at_0%_0%,rgba(148,163,184,0.18),transparent_55%),radial-gradient(100%_70%_at_100%_100%,rgba(203,213,225,0.35),transparent_60%)]',
+        )}
       />
 
       <motion.aside
         initial={false}
-        animate={{ width: collapsed ? 80 : 240 }}
+        animate={{ width: collapsed ? 80 : 260 }}
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
         className={cn(
           'shrink-0 sticky top-0 h-screen flex flex-col z-20',
@@ -65,7 +97,7 @@ const ManagerLayoutInner: React.FC = () => {
       >
         <div
           className={cn(
-            'h-[72px] sm:h-[88px] px-4 flex items-center shrink-0',
+            'h-[72px] sm:h-[88px] px-6 flex items-center shrink-0',
             collapsed ? 'justify-center' : 'justify-end',
           )}
         >
@@ -80,64 +112,99 @@ const ManagerLayoutInner: React.FC = () => {
           </Tooltip>
         </div>
 
-        <nav className="flex-1 px-3 py-5 overflow-y-auto space-y-1 overflow-x-hidden">
-          {MANAGER_NAV.map((link) => {
-            const Icon = link.icon;
-            const navLink = (
-              <NavLink
-                to={link.to}
-                end={link.end}
-                className={({ isActive }) =>
-                  `group relative flex items-center ${collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2'} rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.span
-                        layoutId="manager-nav-active"
-                        className="absolute inset-0 bg-gradient-to-r from-primary/15 via-primary/10 to-transparent border border-primary/25 rounded-lg shadow-brand"
-                        initial={false}
-                        transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                      />
-                    )}
-                    {isActive && (
-                      <motion.span
-                        layoutId="manager-nav-pill"
-                        className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-r-full bg-brand-gradient"
-                        initial={false}
-                        transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                      />
-                    )}
-                    <Icon
-                      className={`relative w-4 h-4 shrink-0 transition-colors ${
-                        isActive
-                          ? 'text-primary'
-                          : 'text-muted-foreground group-hover:text-foreground'
-                      }`}
-                    />
-                    {!collapsed && (
-                      <span className="relative truncate whitespace-nowrap">
-                        {link.label}
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            );
-            return collapsed ? (
-              <Tooltip key={link.to} label={link.label} side="right" className="block w-full">
-                {navLink}
-              </Tooltip>
-            ) : (
-              <React.Fragment key={link.to}>{navLink}</React.Fragment>
-            );
-          })}
+        <nav className="flex-1 px-4 py-6 overflow-y-auto space-y-6 overflow-x-hidden">
+          {grouped.map(({ group, items }) => (
+            <div key={group}>
+              {!collapsed && GROUP_LABELS[group] !== 'Insights' && (
+                <p className="px-4 mb-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  {GROUP_LABELS[group]}
+                </p>
+              )}
+
+              <div className="space-y-1.5">
+                {items.map((link) => {
+                  const Icon = link.icon;
+                  const navLink = (
+                    <NavLink
+                      to={link.to}
+                      end={'end' in link ? link.end : false}
+                      className={({ isActive }) =>
+                        `group relative flex items-center ${collapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
+                          ? 'text-orange-600 bg-[#fff5eb]'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                        }`
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon
+                            className={`relative w-5 h-5 shrink-0 transition-colors ${isActive
+                              ? 'text-orange-500'
+                              : 'text-slate-400 group-hover:text-slate-600'
+                              }`}
+                            strokeWidth={2.5}
+                          />
+                          {!collapsed && (
+                            <span className="relative truncate whitespace-nowrap">
+                              {link.label}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  );
+                  return collapsed ? (
+                    <Tooltip key={link.to} label={link.label} side="right" className="block w-full">
+                      {navLink}
+                    </Tooltip>
+                  ) : (
+                    <React.Fragment key={link.to}>{navLink}</React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
+
+        {/* System Settings — pinned to the bottom of the sidebar */}
+        <div
+          className={cn(
+            'shrink-0 border-t border-[#ece6dd] p-3',
+            collapsed ? 'flex justify-center' : '',
+          )}
+        >
+          <NavLink
+            to={SYSTEM_SETTINGS.to}
+            className={({ isActive }) =>
+              cn(
+                'group relative flex items-center rounded-2xl text-[14px] font-medium transition-colors',
+                collapsed
+                  ? 'justify-center w-12 h-12 mx-auto'
+                  : 'gap-3 px-4 h-11 w-full',
+                isActive
+                  ? 'text-orange-600 bg-[#fff5eb]'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50',
+              )
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <SYSTEM_SETTINGS.icon
+                  className={cn(
+                    'shrink-0 w-[18px] h-[18px]',
+                    isActive ? 'text-orange-500' : 'text-slate-400 group-hover:text-slate-600',
+                  )}
+                  strokeWidth={2.25}
+                />
+                {!collapsed && (
+                  <span className="truncate whitespace-nowrap">
+                    {SYSTEM_SETTINGS.label}
+                  </span>
+                )}
+              </>
+            )}
+          </NavLink>
+        </div>
       </motion.aside>
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
