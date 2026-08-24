@@ -7,6 +7,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
+import { exportRowsCSV } from '../../utils/csvExport';
+import { extractErrorMessage } from '../../utils/errorHandler';
 import { Filter, Download, AlertCircle, ChevronDown, ScrollText } from 'lucide-react';
 
 interface AuditLog {
@@ -111,8 +113,7 @@ export const OwnerAudit: React.FC = () => {
         setHasMore(!!data.nextCursor);
       }
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      setError(e.response?.data?.error || 'Failed to load audit logs.');
+      setError(extractErrorMessage(err, 'Failed to load audit logs.'));
     } finally {
       setIsLoading(false);
     }
@@ -146,9 +147,9 @@ export const OwnerAudit: React.FC = () => {
   }, []);
 
   const exportCSV = useCallback(() => {
-    const rows = [['Timestamp', 'Actor', 'Role', 'Action', 'Target Type', 'Target ID', 'Details']];
-    logs.forEach((l) => {
-      rows.push([
+    exportRowsCSV(
+      ['Timestamp', 'Actor', 'Role', 'Action', 'Target Type', 'Target ID', 'Details'],
+      logs.map((l) => [
         new Date(l.timestamp).toISOString(),
         l.actor?.name || l.actorId,
         l.actor?.role || '',
@@ -156,15 +157,10 @@ export const OwnerAudit: React.FC = () => {
         l.targetType,
         l.targetId || '',
         JSON.stringify(l.details || {}),
-      ]);
-    });
-    const csv = rows.map((r) => r.map((v) => `"${v}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'audit-log.csv';
-    a.click();
+      ]),
+      'audit-log',
+      { title: 'Audit Log', meta: [`Generated: ${new Date().toLocaleString()}`] }
+    );
   }, [logs]);
 
   const Row = useCallback(
