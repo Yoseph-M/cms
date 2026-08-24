@@ -45,11 +45,20 @@ export const updateSystemSettingSchema = z.object({
 });
 
 // ---------- Menu Schemas ----------
+const imageUrlSchema = z
+  .string()
+  .max(3_500_000, 'Image is too large (max ~2.5MB)')
+  .refine(
+    (v) => /^data:image\//i.test(v) || /^https?:\/\//i.test(v),
+    'Image must be a data URL or http(s) URL'
+  );
+
 export const createMenuItemSchema = z.object({
   name: z.string().min(1, 'Item name is required'),
   category: z.nativeEnum(MenuCategory),
   price: z.number().int('Price must be an integer (cents)').positive('Price must be greater than 0'),
   isAvailable: z.boolean().default(true),
+  imageUrl: imageUrlSchema.nullable().optional(),
 });
 
 export const updateMenuItemSchema = z.object({
@@ -57,6 +66,7 @@ export const updateMenuItemSchema = z.object({
   category: z.nativeEnum(MenuCategory).optional(),
   price: z.number().int('Price must be an integer (cents)').positive('Price must be greater than 0').optional(),
   isAvailable: z.boolean().optional(),
+  imageUrl: imageUrlSchema.nullable().optional(),
 });
 
 export const availabilitySchema = z.object({
