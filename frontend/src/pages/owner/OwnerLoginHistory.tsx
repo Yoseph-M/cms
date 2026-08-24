@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { axiosClient } from '../../api/axiosClient';
+import { extractErrorMessage } from '../../utils/errorHandler';
 import { useToastStore } from '../../store/toastStore';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
-import { Filter, Download, AlertCircle, ChevronDown, LogIn } from 'lucide-react';
+import { exportRowsCSV } from '../../utils/csvExport';
+import { Filter, Download, AlertCircle, ChevronDown, LogIn, CheckCircle, XCircle, Lock, User, Clock, Monitor } from 'lucide-react';
 
 interface LoginHistoryRecord {
   id: string;
@@ -19,6 +21,13 @@ interface LoginHistoryRecord {
   outcome: 'SUCCESS' | 'FAILURE' | 'LOCKED';
 }
 
+interface LoginStats {
+  todayLogins: number;
+  totalLogins: number;
+  failedToday: number;
+  lockedToday: number;
+}
+
 const OUTCOME_COLORS: Record<string, 'success' | 'error' | 'warning' | 'neutral' | 'default' | 'outline'> = {
   SUCCESS: 'success',
   FAILURE: 'error',
@@ -27,6 +36,16 @@ const OUTCOME_COLORS: Record<string, 'success' | 'error' | 'warning' | 'neutral'
 
 const ROW_HEIGHT = 52;
 const LIST_HEIGHT = 480;
+
+const getBrowserFromUserAgent = (userAgent: string | null) => {
+  if (!userAgent) return 'Unknown';
+  if (userAgent.includes('Chrome')) return 'Chrome';
+  if (userAgent.includes('Firefox')) return 'Firefox';
+  if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'Safari';
+  if (userAgent.includes('Edge')) return 'Edge';
+  if (userAgent.includes('Opera')) return 'Opera';
+  return 'Other';
+};
 
 const LoginRow = React.memo<{
   record: LoginHistoryRecord;
@@ -41,20 +60,34 @@ const LoginRow = React.memo<{
     style={{ height: ROW_HEIGHT }}
     onClick={() => onSelect(record)}
   >
-    <div className="w-[22%] text-xs font-mono text-muted-foreground truncate pr-2">
-      {new Date(record.createdAt).toLocaleString()}
+    <div className="w-[18%] text-xs font-mono text-muted-foreground truncate pr-2">
+      <div className="flex items-center gap-1.5">
+        <Clock className="w-3 h-3" />
+        {new Date(record.createdAt).toLocaleString()}
+      </div>
     </div>
-    <div className="w-[25%] pr-2">
+    <div className="w-[20%] pr-2">
       <div className="text-xs font-medium truncate">{record.user?.name || record.userId.slice(0, 8)}</div>
-      <div className="text-[10px] text-muted-foreground">{record.user?.role} · {record.user?.email || 'No email'}</div>
+      <div className="text-[10px] text-muted-foreground">{record.user?.email || 'No email'}</div>
     </div>
-    <div className="w-[15%]">
+    <div className="w-[12%]">
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+        {record.user?.role || 'N/A'}
+      </span>
+    </div>
+    <div className="w-[12%]">
       <Badge variant={OUTCOME_COLORS[record.outcome] || 'outline'} className="text-[10px]">
         {record.outcome}
       </Badge>
     </div>
-    <div className="flex-1 hidden md:block text-xs text-muted-foreground truncate font-mono">
-      {record.ip || 'Unknown IP'}
+    <div className="w-[15%] hidden md:block text-xs text-muted-foreground truncate font-mono">
+      {record.ip || '—'}
+    </div>
+    <div className="w-[13%] hidden md:block text-xs text-muted-foreground">
+      <div className="flex items-center gap-1.5">
+        <Monitor className="w-3 h-3" />
+        {getBrowserFromUserAgent(record.userAgent)}
+      </div>
     </div>
     <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
   </div>
@@ -76,6 +109,7 @@ export const OwnerLoginHistory: React.FC = () => {
   const [dateTo, setDateTo] = useState('');
 
   const [expandedLog, setExpandedLog] = useState<LoginHistoryRecord | null>(null);
+  const [stats, setStats] = useState<LoginStats | null>(null);
   const listRef = useRef<FixedSizeList>(null);
 
   const buildQuery = useCallback((cursor?: string) => {
@@ -100,13 +134,24 @@ export const OwnerLoginHistory: React.FC = () => {
       setNextCursor(data.nextCursor || null);
       setHasMore(!!data.nextCursor);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to load login history.');
+      setError(extractErrorMessage(err, 'Failed to load login history.'));
     } finally {
       setIsLoading(false);
     }
   }, [buildQuery]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await axiosClient.get('/login-history/stats');
+      setStats(res.data);
+    } catch (error) {
+      console.error('Failed to fetch login stats:', error);
+    }
+  }, []);
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || isFetchingMore) return;
@@ -129,9 +174,9 @@ export const OwnerLoginHistory: React.FC = () => {
   }, []);
 
   const exportCSV = useCallback(() => {
-    const rows = [['Timestamp', 'User', 'Role', 'Email', 'Outcome', 'IP', 'User Agent']];
-    logs.forEach((l) => {
-      rows.push([
+    exportRowsCSV(
+      ['Timestamp', 'User', 'Role', 'Email', 'Outcome', 'IP', 'User Agent'],
+      logs.map((l) => [
         new Date(l.createdAt).toISOString(),
         l.user?.name || l.userId,
         l.user?.role || '',
@@ -139,15 +184,10 @@ export const OwnerLoginHistory: React.FC = () => {
         l.outcome,
         l.ip || '',
         l.userAgent || '',
-      ]);
-    });
-    const csv = rows.map((r) => r.map((v) => `"${v}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'login-history.csv';
-    a.click();
+      ]),
+      'login-history',
+      { title: 'Login History', meta: [`Generated: ${new Date().toLocaleString()}`] }
+    );
   }, [logs]);
 
   const Row = useCallback(
@@ -168,6 +208,55 @@ export const OwnerLoginHistory: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
+      {stats && (
+        <div className="grid grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Today's Logins</p>
+                  <p className="text-2xl font-bold">{stats.todayLogins}</p>
+                </div>
+                <CheckCircle className="w-8 h-8 text-green-600 opacity-80" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Total Logins</p>
+                  <p className="text-2xl font-bold">{stats.totalLogins}</p>
+                </div>
+                <User className="w-8 h-8 text-blue-600 opacity-80" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Failed Today</p>
+                  <p className="text-2xl font-bold">{stats.failedToday}</p>
+                </div>
+                <XCircle className="w-8 h-8 text-red-600 opacity-80" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Locked Today</p>
+                  <p className="text-2xl font-bold">{stats.lockedToday}</p>
+                </div>
+                <Lock className="w-8 h-8 text-orange-600 opacity-80" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-3 items-end">
@@ -192,7 +281,7 @@ export const OwnerLoginHistory: React.FC = () => {
               <label className="text-xs font-medium text-muted-foreground mb-1 block">To Date</label>
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
             </div>
-            <Button variant="outline" size="sm" onClick={fetchLogs}>
+            <Button variant="outline" size="sm" onClick={() => { fetchLogs(); fetchStats(); }}>
               <Filter className="w-3.5 h-3.5 mr-1.5" />Apply
             </Button>
             <Button variant="outline" size="sm" onClick={exportCSV}>
@@ -225,10 +314,12 @@ export const OwnerLoginHistory: React.FC = () => {
           ) : (
             <>
               <div className="flex items-center border-b border-border bg-secondary/30 px-4 py-2.5 text-xs font-semibold text-muted-foreground">
-                <div className="w-[22%]">Timestamp</div>
-                <div className="w-[25%]">User</div>
-                <div className="w-[15%]">Outcome</div>
-                <div className="flex-1 hidden md:block">IP Address</div>
+                <div className="w-[18%]">Timestamp</div>
+                <div className="w-[20%]">User</div>
+                <div className="w-[12%]">Role</div>
+                <div className="w-[12%]">Outcome</div>
+                <div className="w-[15%] hidden md:block">IP Address</div>
+                <div className="w-[13%] hidden md:block">Browser</div>
                 <div className="w-4" />
               </div>
               <FixedSizeList
