@@ -1,4 +1,15 @@
 {
+  "nav": {
+    "dashboard": "Dashboard",
+    "tickets": "Tickets",
+    "menu": "Menu Catalog",
+    "settlements": "Settlements",
+    "systemSettings": "System Settings",
+    "groups": {
+      "core": "Insights",
+      "ops": "Operations"
+    }
+  },
   "console": "Cashier Console",
   "header": {
     "orders": "orders",
@@ -15,11 +26,10 @@
     "items": "items",
     "by": "by",
     "searchPlaceholder": "Search table, order, waiter…",
+    "sortBy": "Sort by",
     "filter": {
-      "all": "All",
-      "ready": "Ready to pay",
-      "cooking": "In kitchen",
-      "newest": "Newest"
+      "newest": "Newest",
+      "longer": "Longer"
     },
     "status": {
       "ready": "Ready to pay",
