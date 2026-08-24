@@ -65,9 +65,13 @@ export const ToastContainer: React.FC = () => {
                 <p className="font-semibold text-foreground leading-tight">
                   {toast.title}
                 </p>
-                {toast.message && (
+                {toast.message != null && (
                   <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                    {toast.message}
+                    {typeof toast.message === 'string'
+                      ? toast.message
+                      : typeof (toast.message as any)?.message === 'string'
+                        ? (toast.message as any).message
+                        : JSON.stringify(toast.message)}
                   </p>
                 )}
                 {toast.undo && (
