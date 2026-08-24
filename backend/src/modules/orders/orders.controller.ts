@@ -88,20 +88,6 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
         include: includeWaiter,
       });
 
-      const printJob = await enqueueKitchenPrintJob(tx, {
-        id: newOrder.id,
-        clientOrderId: newOrder.clientOrderId,
-        tableNumber: newOrder.tableNumber,
-        waiterName: newOrder.waiter?.name || waiterName,
-        createdAt: newOrder.createdAt,
-        items: newOrder.items as any,
-      });
-
-      if (printJob) {
-        createdPrintJobId = printJob.id;
-        printTransport = printJob.transport;
-      }
-
       return newOrder;
     });
   } catch (err: any) {
@@ -116,6 +102,26 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
       }
     }
     throw err;
+  }
+
+  // Enqueue kitchen print job OUTSIDE the transaction to avoid timeout
+  try {
+    const printJob = await enqueueKitchenPrintJob(prisma, {
+      id: order.id,
+      clientOrderId: order.clientOrderId,
+      tableNumber: order.tableNumber,
+      waiterName: order.waiter?.name || waiterName,
+      createdAt: order.createdAt,
+      items: order.items as any,
+    });
+
+    if (printJob) {
+      createdPrintJobId = printJob.id;
+      printTransport = printJob.transport;
+    }
+  } catch (printErr) {
+    // Print failure should never block order creation
+    console.error('Failed to enqueue kitchen print job:', printErr);
   }
 
   // Trigger server-side kitchen thermal print over TCP if legacy
@@ -315,69 +321,13 @@ export async function payOrder(req: AuthenticatedRequest, res: Response) {
 }
 
 /**
- * @deprecated Use POST /api/orders/:orderId/cancellation-request instead
- * This endpoint is kept for backward compatibility but will be removed in a future version.
- * The new workflow requires formal request/approval flow for better control and audit trail.
- * 
- * POST /api/orders/:id/cancel-request
- * Legacy cancellation request endpoint
+ * POST /api/orders/:id/cancel
+ * Cancels an order immediately. Cancellation requests are not used.
  */
-export async function requestCancelOrder(req: AuthenticatedRequest, res: Response) {
-  const { id } = req.params;
-  const { reason } = req.body;
-
-  // Add deprecation warning header
-  res.setHeader('X-Deprecated', 'true');
-  res.setHeader('X-Deprecated-Replacement', 'POST /api/orders/:orderId/cancellation-request');
-
-  const order = await prisma.order.findUnique({ where: { id } });
-  if (!order) {
-    return res.status(404).json({ error: 'Order not found.' });
-  }
-
-  const callerRole = req.user!.role;
-
-  if (order.isPaid && callerRole !== Role.MANAGER && callerRole !== Role.OWNER) {
-    return res.status(403).json({ error: 'Only Managers or Owners can request cancellation for paid orders.' });
-  }
-
-  // Record cancellation reason and set pending cancel note or status
-  const updated = await prisma.order.update({
-    where: { id },
-    data: {
-      cancellationReason: reason,
-    },
-  });
-
-  await recordAudit({
-    actorId: req.user!.userId,
-    actionType: 'ORDER_CANCEL_REQUESTED_LEGACY',
-    targetType: 'Order',
-    targetId: id,
-    details: { reason, note: 'Legacy cancel request endpoint used' },
-  });
-
-  emitToLiveOrders('order:updated', updated as any);
-
-  return res.json({ message: 'Cancellation request logged.', order: updated });
-}
-
-/**
- * @deprecated Use PATCH /api/cancellation-requests/:requestId/approve instead
- * This endpoint is kept for backward compatibility but will be removed in a future version.
- * The new workflow provides proper request/approval tracking with audit trail.
- * 
- * PATCH /api/orders/:id/cancel-confirm
- * Legacy cancellation confirmation endpoint
- */
-export async function confirmCancelOrder(req: AuthenticatedRequest, res: Response) {
+export async function cancelOrder(req: AuthenticatedRequest, res: Response) {
   const { id } = req.params;
   const { reason } = req.body;
   const cancelledById = req.user!.userId;
-
-  // Add deprecation warning header
-  res.setHeader('X-Deprecated', 'true');
-  res.setHeader('X-Deprecated-Replacement', 'PATCH /api/cancellation-requests/:requestId/approve');
 
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) {
@@ -387,7 +337,7 @@ export async function confirmCancelOrder(req: AuthenticatedRequest, res: Respons
   // Prevent cancellation of settled orders (Phase 3 integration)
   if (order.settlementStatus !== 'UNSETTLED') {
     return res.status(400).json({ 
-      error: 'Cannot cancel orders that have been settled or partially settled. Please use the new cancellation request workflow.' 
+      error: 'Cannot cancel orders that have been settled or partially settled.'
     });
   }
 
@@ -398,7 +348,7 @@ export async function confirmCancelOrder(req: AuthenticatedRequest, res: Respons
 
   const callerRole = req.user!.role;
   if (order.isPaid && callerRole !== Role.MANAGER && callerRole !== Role.OWNER) {
-    return res.status(403).json({ error: 'Only Managers or Owners can confirm cancellation for paid orders.' });
+    return res.status(403).json({ error: 'Only Managers or Owners can cancel paid orders.' });
   }
 
   const result = await prisma.order.updateMany({
@@ -429,7 +379,7 @@ export async function confirmCancelOrder(req: AuthenticatedRequest, res: Respons
     actionType: 'ORDER_CANCELLED',
     targetType: 'Order',
     targetId: id,
-    details: { reason: reason || order.cancellationReason || 'Cancelled by staff', wasPaid: order.isPaid, note: 'Legacy cancel confirm endpoint used' },
+    details: { reason: reason || 'Cancelled by staff', wasPaid: order.isPaid },
   });
 
   emitToLiveOrders('order:cancelled', updated as any);
