@@ -105,7 +105,10 @@ export async function executeInTransaction<T>(
 
   if (transactionCapability === 'SUPPORTED') {
     // Use full Prisma transaction with ACID guarantees
-    return await prisma.$transaction(callback as any) as T;
+    return await prisma.$transaction(callback as any, {
+      timeout: 15000,  // 15s — default 5s is too tight for transactions that include I/O
+      maxWait: 5000,
+    }) as T;
   } else {
     // Fall back to sequential execution using the main prisma client
     // The caller must implement optimistic locking via updateMany with WHERE clauses
