@@ -18,7 +18,6 @@ import notificationsRoutes from './modules/notifications/notifications.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import searchRoutes from './modules/search/search.routes';
 import settlementsRoutes from './modules/settlements/settlements.routes';
-import cancellationRoutes from './modules/cancellation/cancellation.routes';
 import loginHistoryRoutes from './modules/login-history/loginHistory.routes';
 
 // Phase 9 Domains
@@ -80,7 +79,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Request ID & Context Threading
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -117,7 +116,6 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api', settlementsRoutes); // Settlements routes include /orders/:orderId/settlements
-app.use('/api', requireManagerDashboard, cancellationRoutes); // Cancellation routes include /orders/:orderId/cancellation-request
 app.use('/api', loginHistoryRoutes); // Login history - OWNER only for security monitoring
 
 // Phase 9 API Routes
