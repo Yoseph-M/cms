@@ -44,8 +44,7 @@ export const OwnerPrinters: React.FC = () => {
   const printers: PrinterStation[] = printersQuery.data ?? EMPTY_PRINTERS;
   const isLoading = printersQuery.isLoading;
   const error = printersQuery.error
-    ? ((printersQuery.error as { response?: { data?: { error?: string } } }).response?.data?.error ||
-        'Failed to load printers.')
+    ? extractErrorMessage(printersQuery.error, 'Failed to load printers.')
     : null;
 
   const [statuses, setStatuses] = useState<PrinterStatus>({});
