@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { Button } from '../../ui/Button';
 
@@ -8,6 +8,7 @@ export interface CancelModalProps {
   open: boolean;
   orderLabel: string;
   busy?: boolean;
+  completed?: boolean;
   onCancel: () => void;
   onConfirm: (reason: string) => void;
   /** Quick-pick reasons so the cashier doesn't type every time */
@@ -31,6 +32,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
   open,
   orderLabel,
   busy,
+  completed = false,
   onCancel,
   onConfirm,
   quickReasons = DEFAULT_QUICK_REASONS,
@@ -54,7 +56,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={onCancel}
+          onClick={busy ? undefined : onCancel}
         >
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 12 }}
@@ -72,6 +74,23 @@ export const CancelModal: React.FC<CancelModalProps> = ({
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-rose-500" />
 
               <div className="p-6">
+                {completed ? (
+                  <div className="text-center py-4">
+                    <div className="mx-auto w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600">
+                      <CheckCircle2 className="w-6 h-6" />
+                    </div>
+                    <h3 id="cancel-modal-title" className="mt-4 font-display text-lg font-bold text-foreground">
+                      Order cancelled
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {orderLabel} has been cancelled and removed from the active queue.
+                    </p>
+                    <Button className="mt-6 w-full" onClick={onCancel}>
+                      Done
+                    </Button>
+                  </div>
+                ) : (
+                  <>
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-600 shrink-0">
                     <AlertTriangle className="w-5 h-5" />
@@ -81,13 +100,14 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                       Cancel {orderLabel}?
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      This sends a cancellation request to the manager for approval. They will
-                      see the reason you provide.
+                      This cancels the order immediately. The reason will be recorded for the
+                      team.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={onCancel}
+                    disabled={busy}
                     aria-label="Close"
                     className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                   >
@@ -158,9 +178,11 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                     disabled={!reason.trim() || busy}
                     className="shadow-sm"
                   >
-                    {busy ? 'Sending…' : 'Request cancellation'}
+                    {busy ? 'Cancelling…' : 'Cancel order'}
                   </Button>
                 </div>
+                  </>
+                )}
               </div>
             </div>
           </motion.div>
