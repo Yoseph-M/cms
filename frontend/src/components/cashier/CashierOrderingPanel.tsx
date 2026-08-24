@@ -169,9 +169,9 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
   };
 
   return (
-    <div className="h-full flex bg-background text-foreground overflow-hidden">
+    <div className="h-full min-h-0 flex-1 flex bg-background text-foreground overflow-hidden">
       {/* Menu column */}
-      <div className="flex-1 flex flex-col overflow-hidden border-r border-border">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-r border-border">
         <div className="px-6 py-4 border-b border-border bg-card/40 space-y-3 shrink-0">
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
@@ -202,7 +202,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {menuQuery.isLoading ? (
             <LoadingState message={t('ordering.loadingMenu')} />
           ) : filtered.length === 0 ? (
@@ -256,9 +256,15 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
         </div>
       </div>
 
-      {/* Cart column */}
-      <div className="w-96 shrink-0 bg-card flex flex-col">
-        <div className="px-5 py-4 border-b border-border">
+      {/* Cart column — pinned footer pattern:
+       *  - h-full + min-h-0 lock the column to the panel's height
+       *  - header (title + table input) stays at the top
+       *  - the items area is the only thing that scrolls (min-h-0 lets the
+       *    shrink kick in so the footer never gets pushed down)
+       *  - the "Place Order" footer is fixed at the bottom regardless of
+       *    how many items the cashier adds */}
+      <div className="w-96 shrink-0 h-full min-h-0 bg-card flex flex-col">
+        <div className="px-5 py-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display text-lg font-semibold flex items-center gap-2">
               <ShoppingCart className="w-4 h-4 text-primary" />
@@ -280,7 +286,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground py-12">
               <ShoppingCart className="w-10 h-10 mb-3 opacity-30" />
@@ -348,7 +354,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           )}
         </div>
 
-        <div className="border-t border-border p-5 space-y-3 bg-card">
+        <div className="shrink-0 border-t border-border p-5 space-y-3 bg-card">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">{t('ordering.cart.items')}</span>
             <span className="font-mono tabular-nums">{totalQty}</span>
