@@ -1,18 +1,47 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { z } from 'zod';
 import { axiosClient } from '../../api/axiosClient';
+import { extractErrorMessage } from '../../utils/errorHandler';
+import { fileToCompressedDataUrl } from '../../utils/imageResize';
 import { useToastStore } from '../../store/toastStore';
 import { useSocketStore } from '../../store/socketStore';
 import { Card, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Switch } from '../ui/Switch';
-import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
 import { Sheet } from '../ui/Sheet';
-import { AlertDialog } from '../ui/AlertDialog';
+import { Tooltip } from '../ui/Tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../ui/Dropdown';
+import { AnimatedNumber } from '../ui/AnimatedNumber';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, ImageIcon, CheckSquare, XSquare } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  UtensilsCrossed,
+  Search,
+  Upload,
+  ArrowDownWideNarrow,
+  CheckSquare,
+  XSquare,
+  Check,
+  Coffee,
+  CakeSlice,
+  Sparkles,
+  LayoutGrid,
+  List,
+  Banknote,
+  Layers,
+  CircleCheck,
+  EyeOff,
+} from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '../../utils/currency';
 import { useMenuQuery } from '../../hooks/useCachedQueries';
@@ -29,17 +58,27 @@ interface MenuItem {
 
 const CATEGORIES = ['All', 'FOOD', 'DRINK', 'DESSERT', 'OTHER'] as const;
 
-const CATEGORY_COLORS: Record<string, 'success' | 'default' | 'warning' | 'neutral'> = {
-  FOOD: 'success',
-  DRINK: 'default',
-  DESSERT: 'warning',
-  OTHER: 'neutral',
+type MenuCategory = Exclude<(typeof CATEGORIES)[number], 'All'>;
+
+const CATEGORY_META: Record<MenuCategory, { label: string; icon: LucideIcon; badge: 'success' | 'default' | 'warning' | 'neutral'; tint: string }> = {
+  FOOD: { label: 'Food', icon: UtensilsCrossed, badge: 'success', tint: 'bg-[hsl(var(--success))]/10 text-success' },
+  DRINK: { label: 'Drink', icon: Coffee, badge: 'default', tint: 'bg-primary/10 text-primary' },
+  DESSERT: { label: 'Dessert', icon: CakeSlice, badge: 'warning', tint: 'bg-[hsl(var(--warning))]/10 text-warning' },
+  OTHER: { label: 'Other', icon: Sparkles, badge: 'neutral', tint: 'bg-secondary text-muted-foreground' },
 };
+
+const SORT_OPTIONS = [
+  { value: 'name-asc', label: 'Name (A–Z)' },
+  { value: 'price-asc', label: 'Price (Low → High)' },
+  { value: 'price-desc', label: 'Price (High → Low)' },
+] as const;
+
+type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 
 const menuFormSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
   category: z.enum(['FOOD', 'DRINK', 'DESSERT', 'OTHER'], { message: 'Category is required.' }),
-  price: z.coerce.number().positive('Price must be a positive number.'), // User enters dollars (e.g., 15.99)
+  price: z.coerce.number().positive('Price must be a positive number.'),
 });
 
 const EMPTY_FORM = {
@@ -52,9 +91,10 @@ const EMPTY_FORM = {
 
 interface MenuCatalogProps {
   canEdit?: boolean;
+  showAvailability?: boolean;
 }
 
-export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
+export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAvailability = true }) => {
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
 
@@ -62,12 +102,13 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
   const items: MenuItem[] = menuQuery.data ?? [];
   const isLoading = menuQuery.isLoading;
   const error = menuQuery.error
-    ? ((menuQuery.error as { response?: { data?: { error?: string } } }).response?.data?.error ||
-        'Failed to load menu.')
+    ? extractErrorMessage(menuQuery.error, 'Failed to load menu.')
     : null;
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
+  const [sortBy, setSortBy] = useState<SortValue>('name-asc');
+  const [view, setView] = useState<'grid' | 'list'>('grid');
   const searchDebounce = useRef<ReturnType<typeof setTimeout>>();
 
   const [slideOverOpen, setSlideOverOpen] = useState(false);
@@ -107,14 +148,43 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     };
   }, [socket, invalidateMenu]);
 
-  const filteredItems = displayItems.filter((item) => {
-    const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
-    const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const stats = useMemo(() => {
+    const availableCount = displayItems.filter((i) => i.isAvailable).length;
+    return {
+      total: displayItems.length,
+      available: availableCount,
+      hidden: displayItems.length - availableCount,
+      categories: new Set(displayItems.map((i) => i.category)).size,
+    };
+  }, [displayItems]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { All: displayItems.length };
+    for (const item of displayItems) {
+      counts[item.category] = (counts[item.category] ?? 0) + 1;
+    }
+    return counts;
+  }, [displayItems]);
+
+  const filteredItems = useMemo(
+    () =>
+      displayItems.filter((item) => {
+        const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
+        const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
+        return matchesCategory && matchesSearch;
+      }),
+    [displayItems, categoryFilter, search]
+  );
+
+  const visibleItems = useMemo(() => {
+    const list = [...filteredItems];
+    if (sortBy === 'price-asc') return list.sort((a, b) => a.price - b.price);
+    if (sortBy === 'price-desc') return list.sort((a, b) => b.price - a.price);
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [filteredItems, sortBy]);
 
   const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -123,7 +193,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
   };
 
   const selectAllVisible = () => {
-    setSelectedIds(new Set(filteredItems.map(i => i.id)));
+    setSelectedIds(new Set(visibleItems.map((i) => i.id)));
   };
 
   const clearSelection = () => setSelectedIds(new Set());
@@ -163,7 +233,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     setForm({
       name: item.name,
       category: item.category,
-      price: String(item.price / 100), // Convert cents to dollars for display
+      price: String(item.price / 100),
       imageUrl: item.imageUrl || '',
       isAvailable: item.isAvailable,
     });
@@ -180,8 +250,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       const payload = {
         name: parsed.name,
         category: parsed.category,
-        price: Math.round(parsed.price * 100), // Convert dollars to cents
-        imageUrl: form.imageUrl || undefined,
+        price: Math.round(parsed.price * 100),
+        imageUrl: form.imageUrl || null,
         isAvailable: form.isAvailable,
       };
       if (editingItem) {
@@ -194,8 +264,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       invalidateMenu();
       setSlideOverOpen(false);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      addToast({ type: 'error', title: 'Save failed', message: e.response?.data?.error });
+      addToast({ type: 'error', title: 'Save failed', message: extractErrorMessage(err, 'Failed to save item.') });
     } finally {
       setIsSaving(false);
     }
@@ -207,8 +276,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       await axiosClient.patch(`/menu/${item.id}/availability`, { isAvailable: !prev });
       invalidateMenu();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      addToast({ type: 'error', title: 'Availability update failed', message: e.response?.data?.error });
+      addToast({ type: 'error', title: 'Availability update failed', message: extractErrorMessage(err, 'Failed to update availability.') });
     }
   };
 
@@ -216,9 +284,9 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     const existing = pendingDeletes.current.get(item.id);
     if (existing) clearTimeout(existing);
 
-    setLocalItems(prev => {
+    setLocalItems((prev) => {
       const list = prev ?? items;
-      return list.filter(i => i.id !== item.id);
+      return list.filter((i) => i.id !== item.id);
     });
 
     const executeDelete = async () => {
@@ -227,13 +295,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
         pendingDeletes.current.delete(item.id);
         invalidateMenu();
       } catch (err: unknown) {
-        const e = err as { response?: { data?: { error?: string } } };
-        setLocalItems(prev => {
+        setLocalItems((prev) => {
           const list = prev ?? items;
-          if (list.some(i => i.id === item.id)) return list;
+          if (list.some((i) => i.id === item.id)) return list;
           return [...list, item];
         });
-        addToast({ type: 'error', title: 'Delete failed', message: e.response?.data?.error });
+        addToast({ type: 'error', title: 'Delete failed', message: extractErrorMessage(err, 'Failed to delete item.') });
         pendingDeletes.current.delete(item.id);
       }
     };
@@ -245,9 +312,9 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       const t = pendingDeletes.current.get(item.id);
       if (t) clearTimeout(t);
       pendingDeletes.current.delete(item.id);
-      setLocalItems(prev => {
+      setLocalItems((prev) => {
         const list = prev ?? items;
-        if (list.some(i => i.id === item.id)) return list;
+        if (list.some((i) => i.id === item.id)) return list;
         return [...list, item];
       });
       addToast({
@@ -270,7 +337,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     const ids = Array.from(selectedIds);
     try {
       await Promise.all(
-        ids.map(id => axiosClient.patch(`/menu/${id}/availability`, { isAvailable: nextAvailable }))
+        ids.map((id) => axiosClient.patch(`/menu/${id}/availability`, { isAvailable: nextAvailable }))
       );
       addToast({
         type: 'success',
@@ -282,8 +349,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       setSelectMode(false);
       invalidateMenu();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      addToast({ type: 'error', title: 'Bulk update failed', message: e.response?.data?.error });
+      addToast({ type: 'error', title: 'Bulk update failed', message: extractErrorMessage(err, 'Failed to update items.') });
     } finally {
       setBulkActioning(false);
     }
@@ -294,9 +360,9 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     if (!file) return;
     try {
       const text = await file.text();
-      const lines = text.split('\n').filter(l => l.trim());
+      const lines = text.split('\n').filter((l) => l.trim());
       if (lines.length < 2) throw new Error('CSV must have a header and at least one row.');
-      const header = lines[0].split(',').map(s => s.trim().toLowerCase());
+      const header = lines[0].split(',').map((s) => s.trim().toLowerCase());
       const nameIdx = header.indexOf('name');
       const catIdx = header.indexOf('category');
       const priceIdx = header.indexOf('price');
@@ -305,7 +371,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       }
       const toCreate = [];
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map(s => s.trim());
+        const cols = lines[i].split(',').map((s) => s.trim());
         const name = cols[nameIdx];
         const categoryRaw = (cols[catIdx] || '').toUpperCase();
         const priceDollars = parseFloat(cols[priceIdx]);
@@ -313,14 +379,14 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
         const category = (['FOOD', 'DRINK', 'DESSERT', 'OTHER'].includes(categoryRaw)
           ? categoryRaw
           : 'OTHER') as MenuItem['category'];
-        toCreate.push({ 
-          name, 
-          category, 
-          price: Math.round(priceDollars * 100) // Convert dollars to cents
+        toCreate.push({
+          name,
+          category,
+          price: Math.round(priceDollars * 100),
         });
       }
       if (toCreate.length === 0) throw new Error('No valid rows found.');
-      await Promise.all(toCreate.map(payload => axiosClient.post('/menu', payload)));
+      await Promise.all(toCreate.map((payload) => axiosClient.post('/menu', payload)));
       addToast({ type: 'success', title: `Imported ${toCreate.length} menu items` });
       invalidateMenu();
     } catch (err: unknown) {
@@ -331,135 +397,427 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      setImagePreview(dataUrl);
-      setForm((f) => ({ ...f, imageUrl: dataUrl }));
-    };
-    reader.readAsDataURL(file);
+  const handleImageFile = (file: File) => {
+    fileToCompressedDataUrl(file)
+      .then((dataUrl) => {
+        setImagePreview(dataUrl);
+        setForm((f) => ({ ...f, imageUrl: dataUrl }));
+      })
+      .catch(() => {
+        addToast({ type: 'error', title: 'Could not process image', message: 'Try a different file.' });
+      });
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageFile(file);
+  };
+
+  const clearImage = () => {
+    setImagePreview(null);
+    setForm((f) => ({ ...f, imageUrl: '' }));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Paste image (screenshot / copied file) or an image URL while the form is open
+  useEffect(() => {
+    if (!slideOverOpen) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const clipboardItems = e.clipboardData?.items;
+      if (clipboardItems) {
+        for (const item of Array.from(clipboardItems)) {
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) {
+              e.preventDefault();
+              handleImageFile(file);
+              return;
+            }
+          }
+        }
+      }
+      const text = e.clipboardData?.getData('text/plain')?.trim();
+      if (text && (/^data:image\//i.test(text) || /^https?:\/\/\S+$/i.test(text))) {
+        setImagePreview(text);
+        setForm((f) => ({ ...f, imageUrl: text }));
+        addToast({ type: 'success', title: 'Image added from clipboard' });
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slideOverOpen]);
+
   const csvFileRef = useRef<HTMLInputElement>(null);
+  const canSelect = canEdit && showAvailability;
+
+  const availabilityCluster = (item: MenuItem, labelWidth?: string) => (
+    <span className={cn('flex items-center gap-1.5', labelWidth)}>
+      <Switch
+        id={`avail-${item.id}`}
+        checked={item.isAvailable}
+        onCheckedChange={() => handleAvailabilityToggle(item)}
+        disabled={!canEdit || selectMode}
+      />
+      <span className={cn('text-[11px] font-medium', item.isAvailable ? 'text-success' : 'text-destructive')}>
+        {item.isAvailable ? 'Available' : 'Unavailable'}
+      </span>
+    </span>
+  );
+
+  const actionButtons = (item: MenuItem, iconClass = 'w-3.5 h-3.5') => (
+    <div className="flex items-center gap-0.5 shrink-0">
+      <Tooltip label="Edit" side="top">
+        <button
+          onClick={() => openEdit(item)}
+          className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          aria-label={`Edit ${item.name}`}
+        >
+          <Pencil className={iconClass} />
+        </button>
+      </Tooltip>
+      <Tooltip label="Remove" side="top">
+        <button
+          onClick={() => handleDelete(item)}
+          className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          aria-label={`Delete ${item.name}`}
+        >
+          <Trash2 className={iconClass} />
+        </button>
+      </Tooltip>
+    </div>
+  );
+
+  const selectCheckbox = (selected: boolean, inline = false) => (
+    <span
+      className={cn(
+        'w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors',
+        !inline && 'absolute top-2.5 left-2.5 z-20 pointer-events-none shadow-md',
+        selected ? 'bg-primary border-primary' : 'bg-background/90 border-border'
+      )}
+    >
+      {selected && <Check className="w-4 h-4 text-primary-foreground" strokeWidth={3} />}
+    </span>
+  );
+
+  const renderGridCard = (item: MenuItem, selected: boolean) => {
+    const meta = CATEGORY_META[item.category];
+    return (
+      <Card
+        className={cn(
+          'overflow-hidden flex flex-col group h-full',
+          selectMode && 'pointer-events-none',
+          !item.isAvailable && 'opacity-90'
+        )}
+      >
+        {selectMode && selectCheckbox(selected)}
+        <div className="relative w-full h-36 bg-secondary/40 overflow-hidden">
+          {item.imageUrl ? (
+            <img
+              src={item.imageUrl}
+              alt={item.name}
+              className={cn(
+                'w-full h-full object-cover transition-transform duration-500 group-hover:scale-105',
+                !item.isAvailable && 'grayscale'
+              )}
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-secondary/70 via-secondary/40 to-transparent flex items-center justify-center">
+              {React.createElement(meta.icon, { className: 'w-10 h-10 text-muted-foreground/30' })}
+            </div>
+          )}
+          <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
+          <Badge variant={meta.badge} className="absolute top-2 left-2 text-[10px] px-2 py-0.5 shadow-sm backdrop-blur-sm">
+            {meta.label}
+          </Badge>
+          {!item.isAvailable && (
+            <Badge variant="destructive" className="absolute top-2 right-2 text-[10px] px-2 py-0.5 shadow-sm gap-1">
+              <EyeOff className="w-3 h-3" />
+              Unavailable
+            </Badge>
+          )}
+        </div>
+        <CardContent className="p-3 pt-3 flex flex-col gap-2 flex-1">
+          <p className="font-semibold text-sm text-foreground truncate" title={item.name}>
+            {item.name}
+          </p>
+          <p className="text-base font-mono font-bold text-primary tracking-tight">
+            {formatCurrency(item.price)}
+          </p>
+          {(canEdit || showAvailability) && (
+            <div className="flex items-center justify-between mt-auto pt-2.5 border-t border-border/40">
+              {showAvailability ? (
+                canEdit && !selectMode ? (
+                  <Tooltip label="Toggle availability" side="top">
+                    {availabilityCluster(item)}
+                  </Tooltip>
+                ) : (
+                  availabilityCluster(item)
+                )
+              ) : (
+                <span />
+              )}
+              {canEdit && !selectMode && actionButtons(item)}
+              {selectMode && (
+                <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">
+                  {selected ? 'Selected' : 'Click card'}
+                </span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderListRow = (item: MenuItem, selected: boolean) => {
+    const meta = CATEGORY_META[item.category];
+    return (
+      <Card className={cn('overflow-hidden group', selectMode && 'pointer-events-none')}>
+        <div className="flex items-center gap-3 p-3">
+          {selectMode && selectCheckbox(selected, true)}
+          {renderThumb(item, 'w-16 h-16 rounded-xl')}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-sm text-foreground truncate">{item.name}</p>
+              {!item.isAvailable && (
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 shrink-0 gap-1">
+                  <EyeOff className="w-2.5 h-2.5" />
+                  Unavailable
+                </Badge>
+              )}
+            </div>
+            <Badge variant={meta.badge} className="text-[10px] px-1.5 py-0 mt-1.5">
+              {meta.label}
+            </Badge>
+          </div>
+          <p className="text-sm font-mono font-bold text-primary shrink-0">
+            {formatCurrency(item.price)}
+          </p>
+          {showAvailability && (
+            <div className="hidden sm:flex items-center pl-2 border-l border-border/40">
+              {canEdit && !selectMode ? (
+                <Tooltip label="Toggle availability" side="top">
+                  {availabilityCluster(item, 'w-[68px]')}
+                </Tooltip>
+              ) : (
+                availabilityCluster(item, 'w-[68px]')
+              )}
+            </div>
+          )}
+          {canEdit && !selectMode && actionButtons(item, 'w-4 h-4')}
+        </div>
+      </Card>
+    );
+  };
+
+  const renderThumb = (item: MenuItem, className?: string) => (
+    <div className={cn('relative overflow-hidden bg-secondary/40 flex items-center justify-center shrink-0', className)}>
+      {item.imageUrl ? (
+        <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
+      ) : (
+        React.createElement(CATEGORY_META[item.category].icon, {
+          className: 'w-6 h-6 text-muted-foreground/40',
+        })
+      )}
+      {!item.isAvailable && (
+        <div className={cn('absolute inset-0 bg-background/60 backdrop-grayscale flex items-center justify-center gap-1.5', showAvailability && 'opacity-80')}>
+          <EyeOff className="w-4 h-4 text-destructive" />
+          {!showAvailability && <span className="text-[10px] font-bold uppercase tracking-wide text-destructive">Unavailable</span>}
+        </div>
+      )}
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+    <div className="space-y-5">
+      <div className={cn('grid gap-3', showAvailability ? 'grid-cols-4' : 'grid-cols-2')}>
+        <Card className="p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Layers className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-foreground leading-none">
+              <AnimatedNumber value={stats.total} />
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">Total Items</p>
+          </div>
+        </Card>
+        {showAvailability ? (
+          <>
+            <Card className="p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[hsl(var(--success))]/10 text-success flex items-center justify-center shrink-0">
+                <CircleCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-foreground leading-none">
+                  <AnimatedNumber value={stats.available} />
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 font-medium">Available Now</p>
+              </div>
+            </Card>
+            <Card className="p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center shrink-0">
+                <EyeOff className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-foreground leading-none">
+                  <AnimatedNumber value={stats.hidden} />
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 font-medium">Unavailable Items</p>
+              </div>
+            </Card>
+          </>
+        ) : null}
+        <Card className="p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-secondary text-muted-foreground flex items-center justify-center shrink-0">
+            <UtensilsCrossed className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-xl font-bold text-foreground leading-none">
+              <AnimatedNumber value={stats.categories} />
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 font-medium">Categories</p>
+          </div>
+        </Card>
+      </div>
+
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap order-last w-full lg:order-first lg:w-auto min-w-0">
+          <Input
+            type="text"
+            defaultValue={search}
+            onChange={handleSearchChange}
+            placeholder="Search menu items…"
+            leftIcon={<Search className="w-4 h-4" />}
+            className="flex-1 sm:flex-none sm:w-44 xl:w-52 [&>input]:h-9"
+            aria-label="Search menu items"
+          />
+
+          <DropdownMenu>
+            <DropdownMenuTrigger aria-label="Sort menu items" className="shrink-0 w-[150px]">
+              <ArrowDownWideNarrow className="w-4 h-4 text-muted-foreground" />
+              <span className="hidden xl:inline text-muted-foreground font-normal">Sort:</span>
+              <span className="truncate">{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {SORT_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  selected={sortBy === opt.value}
+                  onSelect={() => setSortBy(opt.value)}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0">
+              {categoryFilter === 'All'
+                ? <LayoutGrid className="w-4 h-4 text-muted-foreground" />
+                : React.createElement(CATEGORY_META[categoryFilter as MenuCategory].icon, { className: 'w-4 h-4 text-muted-foreground' })}
+              <span className="hidden xl:inline text-muted-foreground font-normal">Type:</span>
+              <span>{categoryFilter === 'All' ? 'All' : CATEGORY_META[categoryFilter as MenuCategory].label}</span>
+              <span className="text-[10px] font-bold rounded-md bg-background px-1.5 py-0.5 border border-border/60">
+                {categoryCounts[categoryFilter] ?? 0}
+              </span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {CATEGORIES.map((cat) => {
+                const Icon = cat === 'All' ? LayoutGrid : CATEGORY_META[cat].icon;
+                return (
+                  <DropdownMenuItem
+                    key={cat}
+                    selected={categoryFilter === cat}
+                    onSelect={() => setCategoryFilter(cat)}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span>{cat === 'All' ? 'All' : CATEGORY_META[cat].label}</span>
+                    <span className="ml-auto text-xs text-muted-foreground font-mono">{categoryCounts[cat] ?? 0}</span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger aria-label="View mode" className="shrink-0 w-[92px]">
+              {view === 'grid' ? <LayoutGrid className="w-4 h-4 text-muted-foreground" /> : <List className="w-4 h-4 text-muted-foreground" />}
+              <span>{view === 'grid' ? 'Grid' : 'List'}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem selected={view === 'grid'} onSelect={() => setView('grid')}>
+                <LayoutGrid className="w-4 h-4 shrink-0" />
+                Grid view
+              </DropdownMenuItem>
+              <DropdownMenuItem selected={view === 'list'} onSelect={() => setView('list')}>
+                <List className="w-4 h-4 shrink-0" />
+                List view
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
         {canEdit && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap ml-auto shrink-0 justify-end">
             {selectMode ? (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={selectAllVisible}
-                  disabled={filteredItems.length === 0}
-                >
-                  <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
-                  Select All ({filteredItems.length})
+                <Button variant="outline" size="sm" onClick={selectAllVisible} disabled={visibleItems.length === 0}>
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  Select All ({visibleItems.length})
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearSelection}
-                  disabled={selectedIds.size === 0}
-                >
-                  <XSquare className="w-3.5 h-3.5 mr-1.5" />
+                <Button variant="outline" size="sm" onClick={clearSelection} disabled={selectedIds.size === 0}>
+                  <XSquare className="w-3.5 h-3.5" />
                   Clear
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleBulkAvailability(true)}
-                  disabled={selectedIds.size === 0 || bulkActioning}
-                >
-                  Mark Available
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => handleBulkAvailability(false)}
-                  disabled={selectedIds.size === 0 || bulkActioning}
-                >
-                  86 / Mark Unavailable
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => { setSelectMode(false); clearSelection(); }}
-                >
+                {showAvailability && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => handleBulkAvailability(true)} disabled={selectedIds.size === 0 || bulkActioning}>
+                      Mark Available
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleBulkAvailability(false)} disabled={selectedIds.size === 0 || bulkActioning}>
+                      Mark Unavailable
+                    </Button>
+                  </>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => { setSelectMode(false); clearSelection(); }}>
                   Exit Select
                 </Button>
                 {selectedIds.size > 0 && (
-                  <span className="text-xs font-bold text-primary px-2 py-1 rounded-md bg-primary/10 border border-primary/30">
+                  <Badge variant="default" className="text-xs">
                     {selectedIds.size} selected
-                  </span>
+                  </Badge>
                 )}
               </>
             ) : (
               <>
-                <Button
-                  id="add-menu-item-btn"
-                  onClick={openAdd}
-                  className="shrink-0"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
+                <Button id="add-menu-item-btn" onClick={openAdd}>
+                  <Plus className="w-4 h-4" />
                   Add Item
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => csvFileRef.current?.click()}
-                >
-                  <Upload className="w-3.5 h-3.5 mr-1.5" />
+                <Button variant="outline" size="sm" onClick={() => csvFileRef.current?.click()}>
+                  <Upload className="w-3.5 h-3.5" />
                   Import CSV
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectMode(true)}
-                >
-                  <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
-                  Select
-                </Button>
+                {canSelect && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectMode(true)}>
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    Select
+                  </Button>
+                )}
               </>
             )}
           </div>
         )}
-
-        {/* Filter cluster — moved to the right side of the action row */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap sm:justify-end w-full sm:w-auto sm:ml-auto">
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <Input
-              type="text"
-              defaultValue={search}
-              onChange={handleSearchChange}
-              placeholder="Search menu items…"
-              className="pl-9 h-9"
-              aria-label="Search menu items"
-            />
-          </div>
-          <div className="flex gap-1 p-1 bg-secondary/40 rounded-lg border border-border/50 shrink-0">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCategoryFilter(cat)}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                  categoryFilter === cat
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {cat === 'All' ? 'All' : cat.charAt(0) + cat.slice(1).toLowerCase()}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
+
+      <p className="text-xs text-muted-foreground font-medium -mt-2 hidden sm:block">
+        Showing <span className="font-bold text-foreground">{visibleItems.length}</span> of{' '}
+        <span className="font-bold text-foreground">{displayItems.length}</span> items
+      </p>
+
       <input
         ref={csvFileRef}
         type="file"
@@ -471,7 +829,14 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-52 rounded-xl bg-secondary/40 animate-pulse" />
+            <Card key={i} className="overflow-hidden animate-pulse">
+              <div className="h-36 bg-secondary/50" />
+              <CardContent className="p-3 space-y-2">
+                <div className="h-4 w-3/4 rounded bg-secondary/70" />
+                <div className="h-5 w-1/2 rounded bg-secondary/50" />
+                <div className="h-6 w-full rounded bg-secondary/30 mt-3" />
+              </CardContent>
+            </Card>
           ))}
         </div>
       ) : error ? (
@@ -479,136 +844,82 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
           <p className="text-destructive font-medium">{error}</p>
           <Button variant="outline" size="sm" onClick={() => void menuQuery.refetch()}>Retry</Button>
         </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 py-20 text-center">
-          <div className="w-14 h-14 rounded-full bg-secondary/60 flex items-center justify-center">
-            <UtensilsCrossed className="w-7 h-7 text-muted-foreground" />
+      ) : visibleItems.length === 0 ? (
+        <Card className="border-2 border-dashed border-border/60 shadow-none hover:shadow-none hover:translate-y-0">
+          <div className="flex flex-col items-center gap-4 py-16 text-center px-6">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+              className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center"
+            >
+              <UtensilsCrossed className="w-8 h-8 text-primary" />
+            </motion.div>
+            <div>
+              <p className="font-semibold text-foreground text-base">
+                {items.length === 0 ? 'No menu items yet' : 'No matching items found'}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                {search
+                  ? `Nothing matches "${search}" in this category. Try a different term.`
+                  : 'Build your catalog with photos, prices, and categories.'}
+              </p>
+            </div>
+            {canEdit && (
+              <Button onClick={openAdd}>
+                <Plus className="w-4 h-4" />
+                Add Item
+              </Button>
+            )}
           </div>
-          <div>
-            <p className="font-semibold text-foreground">
-              {items.length === 0 ? 'No menu items yet — add your first item' : 'No menu items found'}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {search ? 'Try a different search term.' : 'Build your catalog with photos, prices, and categories.'}
-            </p>
-          </div>
-          {canEdit && !search && (
-            <Button onClick={openAdd}><Plus className="w-4 h-4 mr-2" />Add Item</Button>
-          )}
-        </div>
+        </Card>
       ) : (
-        <motion.div
-          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4"
-          initial="hidden"
-          animate="show"
-          variants={{ show: { transition: { staggerChildren: 0.04 } } }}
-        >
-          <AnimatePresence>
-            {filteredItems.map((item) => (
-              <motion.div
-                key={item.id}
-                layout
-                variants={{
-                  hidden: { opacity: 0, y: 12, scale: 0.97 },
-                  show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 380, damping: 28 } },
-                }}
-                exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
-                className={cn(
-                  'relative',
-                  selectMode && 'cursor-pointer',
-                  selectMode && selectedIds.has(item.id) && 'ring-2 ring-primary ring-offset-2 rounded-xl'
-                )}
-                onClick={() => selectMode && toggleSelect(item.id)}
-              >
-                {selectMode && (
-                  <label
-                    className="absolute top-2 left-2 z-10 bg-card/90 backdrop-blur-sm p-1 rounded-md cursor-pointer"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(item.id)}
-                      onChange={() => toggleSelect(item.id)}
-                      className="w-4 h-4 accent-primary"
-                    />
-                  </label>
-                )}
-                <Card
-                  className={cn(
-                    'overflow-hidden flex flex-col hover:shadow-md transition-shadow',
-                    selectMode && 'pointer-events-none'
-                  )}
-                >
-                  <div className="w-full h-28 bg-secondary/40 flex items-center justify-center overflow-hidden">
-                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon className="w-8 h-8 text-muted-foreground/40" />
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={view}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            className={cn(
+              view === 'grid'
+                ? 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4'
+                : 'flex flex-col gap-2.5'
+            )}
+          >
+            <AnimatePresence initial={false}>
+              {visibleItems.map((item) => {
+                const selected = selectedIds.has(item.id);
+                return (
+                  <motion.div
+                    key={item.id}
+                    exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
+                    className={cn(
+                      'relative rounded-2xl',
+                      selectMode && 'cursor-pointer',
+                      selectMode && selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background rounded-2xl'
                     )}
-                  </div>
-                  <CardContent className="p-3 flex flex-col gap-2 flex-1">
-                    <div>
-                      <p className="font-semibold text-sm text-foreground truncate">{item.name}</p>
-                      <p className="text-base font-mono font-bold text-primary mt-0.5">
-                        {formatCurrency(item.price)}
-                      </p>
-                    </div>
-                    <Badge variant={CATEGORY_COLORS[item.category]} className="w-fit text-[10px]">
-                      {item.category}
-                    </Badge>
-                    <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/40">
-                      <div className="flex items-center gap-1.5">
-                        <Switch
-                          id={`avail-${item.id}`}
-                          checked={item.isAvailable}
-                          onCheckedChange={() => handleAvailabilityToggle(item)}
-                          disabled={!canEdit || selectMode}
-                        />
-                        <span className="text-[11px] text-muted-foreground">
-                          {item.isAvailable ? 'Available' : 'Hidden'}
-                        </span>
-                      </div>
-                      {canEdit && !selectMode && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => openEdit(item)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                            aria-label={`Edit ${item.name}`}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(item)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                            aria-label={`Delete ${item.name}`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      )}
-                      {canEdit && selectMode && (
-                        <span className="text-[10px] text-muted-foreground font-bold">
-                          {selectedIds.has(item.id) ? '✓ SELECTED' : 'Click card'}
-                        </span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </motion.div>
+                    onClick={() => selectMode && toggleSelect(item.id)}
+                  >
+                    {view === 'grid' ? renderGridCard(item, selected) : renderListRow(item, selected)}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </motion.div>
+        </AnimatePresence>
       )}
 
       <Sheet
         open={slideOverOpen}
         onClose={() => setSlideOverOpen(false)}
         title={editingItem ? 'Edit Item' : 'Add Menu Item'}
+        description={editingItem ? 'Update the details of this catalog item.' : 'Fill in the details to add a new item to your catalog.'}
         footer={
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
             <Button onClick={handleSave} disabled={isSaving || !isFormValid} className="flex-1">
-              {isSaving ? 'Saving...' : (editingItem ? 'Save Changes' : 'Add to Menu')}
+              {isSaving ? 'Saving...' : editingItem ? 'Save Changes' : 'Add to Menu'}
             </Button>
           </div>
         }
@@ -617,30 +928,54 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
           <div>
             <label className="text-sm font-medium text-foreground block mb-2">Photo</label>
             <div
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => !imagePreview && fileInputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
                 const file = e.dataTransfer.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    const dataUrl = reader.result as string;
-                    setImagePreview(dataUrl);
-                    setForm((f) => ({ ...f, imageUrl: dataUrl }));
-                  };
-                  reader.readAsDataURL(file);
-                }
+                if (file) handleImageFile(file);
               }}
-              className="w-full h-32 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors overflow-hidden"
+              className={cn(
+                'relative w-full h-36 rounded-xl overflow-hidden transition-colors',
+                imagePreview
+                  ? 'cursor-default ring-1 ring-border'
+                  : 'border-2 border-dashed border-border cursor-pointer hover:border-primary/50 hover:bg-primary/5'
+              )}
             >
               {imagePreview ? (
-                <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
-              ) : (
                 <>
-                  <Upload className="w-6 h-6 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Drag & drop or click to upload</span>
+                  <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
+                  <div className="absolute inset-x-0 bottom-0 p-2 flex justify-end gap-2 bg-gradient-to-t from-black/60 to-transparent">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Change
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={(e) => { e.stopPropagation(); clearImage(); }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Remove
+                    </Button>
+                  </div>
                 </>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                  <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Upload className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="text-xs text-muted-foreground font-medium">Click, drag & drop, or paste an image</span>
+                  <span className="text-[10px] text-muted-foreground/70">PNG, JPG, or paste with Ctrl+V</span>
+                </div>
               )}
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
@@ -655,26 +990,41 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               placeholder="e.g. Wagyu Gourmet Burger"
-              className={formErrors.name ? 'border-destructive' : ''}
+              leftIcon={<UtensilsCrossed className="w-4 h-4" />}
+              invalid={!!formErrors.name}
             />
             {formErrors.name && <p className="text-destructive text-xs mt-1">{formErrors.name}</p>}
           </div>
 
           <div>
-            <label htmlFor="form-category" className="text-sm font-medium text-foreground block mb-1.5">
+            <label className="text-sm font-medium text-foreground block mb-1.5">
               Category <span className="text-destructive">*</span>
             </label>
-            <Select
-              id="form-category"
-              value={form.category}
-              onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as MenuItem['category'] }))}
-              className={formErrors.category ? 'border-destructive' : ''}
-            >
-              <option value="FOOD">Food</option>
-              <option value="DRINK">Drink</option>
-              <option value="DESSERT">Dessert</option>
-              <option value="OTHER">Other</option>
-            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              {(Object.keys(CATEGORY_META) as MenuCategory[]).map((cat) => {
+                const meta = CATEGORY_META[cat];
+                const active = form.category === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setForm((f) => ({ ...f, category: cat }))}
+                    className={cn(
+                      'flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all text-left',
+                      active
+                        ? 'border-primary bg-primary/10 text-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]'
+                        : 'border-input bg-secondary/40 text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                    )}
+                  >
+                    <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', active ? meta.tint : 'bg-background')}>
+                      <meta.icon className="w-4 h-4" />
+                    </span>
+                    {meta.label}
+                  </button>
+                );
+              })}
+            </div>
             {formErrors.category && <p className="text-destructive text-xs mt-1">{formErrors.category}</p>}
           </div>
 
@@ -682,30 +1032,42 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true }) => {
             <label htmlFor="form-price" className="text-sm font-medium text-foreground block mb-1.5">
               Price (ETB) <span className="text-destructive">*</span>
             </label>
-            <div className="relative">
-              <Input
-                id="form-price"
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.price}
-                onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                placeholder="0.00"
-                className={`font-mono ${formErrors.price ? 'border-destructive' : ''}`}
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-sm">ETB</span>
-            </div>
+            <Input
+              id="form-price"
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.price}
+              onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+              placeholder="0.00"
+              leftIcon={<Banknote className="w-4 h-4" />}
+              rightAdornment={<span className="text-xs font-semibold text-muted-foreground">ETB</span>}
+              invalid={!!formErrors.price}
+              className="[&>input]:font-mono"
+            />
             {formErrors.price && <p className="text-destructive text-xs mt-1">{formErrors.price}</p>}
           </div>
 
-          <div className="flex items-center justify-between py-2">
-            <label htmlFor="form-available" className="text-sm font-medium text-foreground">Available</label>
-            <Switch
-              id="form-available"
-              checked={form.isAvailable}
-              onCheckedChange={(checked) => setForm((f) => ({ ...f, isAvailable: checked }))}
-            />
-          </div>
+          {showAvailability && (
+            <div className="flex items-center justify-between rounded-xl border border-input bg-secondary/40 px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <span className="w-7 h-7 rounded-lg bg-background flex items-center justify-center">
+                  <EyeOff className="w-4 h-4 text-muted-foreground" />
+                </span>
+                <div>
+                  <label htmlFor="form-available" className="text-sm font-medium text-foreground block leading-tight">
+                    Available for sale
+                  </label>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Turn off to hide this item (unavailable)</p>
+                </div>
+              </div>
+              <Switch
+                id="form-available"
+                checked={form.isAvailable}
+                onCheckedChange={(checked) => setForm((f) => ({ ...f, isAvailable: checked }))}
+              />
+            </div>
+          )}
         </div>
       </Sheet>
     </div>
