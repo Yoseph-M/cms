@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { axiosClient } from '../../api/axiosClient';
+import { extractErrorMessage } from '../../utils/errorHandler';
+import { fileToCompressedDataUrl } from '../../utils/imageResize';
 import { useToastStore } from '../../store/toastStore';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '../ui/Button';
@@ -113,9 +115,9 @@ const Step1Profile: React.FC<{ onNext: () => void }> = ({ onNext }) => {
 
   const upload = (file?: File) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setLogo(String(reader.result));
-    reader.readAsDataURL(file);
+    fileToCompressedDataUrl(file)
+      .then(setLogo)
+      .catch(() => addToast({ type: 'error', title: 'Could not process image' }));
   };
 
   const handleSave = async () => {
@@ -257,7 +259,7 @@ const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ on
       setCreatedId(res.data.id);
       addToast({ type: 'success', title: 'Printer added' });
     } catch (e: any) {
-      addToast({ type: 'error', title: 'Failed to add printer', message: e.response?.data?.error });
+      addToast({ type: 'error', title: 'Failed to add printer', message: extractErrorMessage(e, 'Failed to add printer.') });
     } finally {
       setSaving(false);
     }
@@ -421,7 +423,7 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
       await axiosClient.post('/users', form);
       setCreated({ email: form.email, password: form.password });
     } catch (e: any) {
-      addToast({ type: 'error', title: 'Failed to add user', message: e.response?.data?.error });
+      addToast({ type: 'error', title: 'Failed to add user', message: extractErrorMessage(e, 'Failed to add user.') });
     } finally {
       setSaving(false);
     }
