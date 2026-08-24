@@ -124,8 +124,13 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
         </p>
       </div>
 
-      {/* Method tiles */}
-      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Payment method">
+      {/* Payment-method region: caps its height and scrolls independently as
+          more methods or sub-options are added, leaving the total and CTA fixed. */}
+      <div
+        className="grid grid-cols-3 gap-2 max-h-40 min-h-0 overflow-y-auto pr-1"
+        role="radiogroup"
+        aria-label="Payment method"
+      >
         {METHOD_ORDER.map((pm) => {
           const Icon = METHOD_ICON[pm];
           const active = method === pm;
