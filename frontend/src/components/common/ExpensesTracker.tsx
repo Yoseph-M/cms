@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -9,7 +9,7 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Sheet } from '../ui/Sheet';
 import { AlertDialog } from '../ui/AlertDialog';
-import { Plus, Pencil, Trash2, Wallet } from 'lucide-react';
+import { CalendarDays, FilterX, Pencil, Plus, ReceiptText, RefreshCw, Tag, Trash2, Wallet } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 
@@ -67,6 +67,21 @@ function toDateInputValue(iso: string): string {
   }
 }
 
+const SummaryCard: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  accent: string;
+}> = ({ icon, label, value, accent }) => (
+  <div className="rounded-2xl border border-border/50 bg-card px-4 py-4 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.25)] sm:px-5">
+    <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+      <span className={`flex h-7 w-7 items-center justify-center rounded-lg bg-secondary ${accent}`}>{icon}</span>
+      {label}
+    </div>
+    <p className="mt-3 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{value}</p>
+  </div>
+);
+
 export const ExpensesTracker: React.FC = () => {
   const { t } = useTranslation('manager');
   const { addToast } = useToastStore();
@@ -95,6 +110,16 @@ export const ExpensesTracker: React.FC = () => {
 
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const totalSpent = useMemo(
+    () => expenses.reduce((total, expense) => total + expense.amount, 0),
+    [expenses],
+  );
+  const categoryCount = useMemo(
+    () => new Set(expenses.map((expense) => expense.category)).size,
+    [expenses],
+  );
+  const hasFilters = Boolean(categoryFilter || from || to);
 
   const fetchExpenses = useCallback(async () => {
     setIsLoading(true);
@@ -195,23 +220,47 @@ export const ExpensesTracker: React.FC = () => {
     }
   };
 
+  const clearFilters = () => {
+    setCategoryFilter('');
+    setFrom('');
+    setTo('');
+  };
+
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-primary" />
-              {t('expenses.title', { defaultValue: 'Expenses' })}
-            </CardTitle>
-            <Button id="add-expense-btn" onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-2" />{t('expenses.addExpense', { defaultValue: 'Add Expense' })}
-            </Button>
+    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
+      <section className="relative overflow-hidden rounded-2xl bg-slate-950 px-5 py-6 text-white shadow-[0_16px_40px_-22px_rgba(15,23,42,0.75)] sm:px-7 sm:py-7">
+        <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-primary/30 blur-3xl" />
+        <div className="absolute -bottom-28 right-36 h-44 w-44 rounded-full bg-amber-300/10 blur-3xl" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
+              <Wallet className="h-5 w-5 text-amber-300" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t('expenses.title', { defaultValue: 'Expenses' })}</h1>
+            <p className="mt-1.5 max-w-xl text-sm text-slate-300">Keep business spending organized, review records quickly, and stay on top of outgoing cash.</p>
+          </div>
+          <Button id="add-expense-btn" onClick={openCreate} className="bg-white text-slate-950 hover:bg-slate-100 shadow-none">
+            <Plus className="w-4 h-4" />{t('expenses.addExpense', { defaultValue: 'Add Expense' })}
+          </Button>
+        </div>
+      </section>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Total in view" value={formatCurrency(totalSpent)} accent="text-primary" />
+        <SummaryCard icon={<ReceiptText className="h-4 w-4" />} label="Expense records" value={String(expenses.length)} accent="text-sky-600" />
+        <SummaryCard icon={<Tag className="h-4 w-4" />} label="Categories used" value={String(categoryCount)} accent="text-violet-600" />
+      </div>
+
+      <Card className="overflow-hidden hover:translate-y-0">
+        <CardHeader className="border-b border-border/50 pb-4">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-base font-bold">Find expense records</CardTitle>
+            <p className="text-sm text-muted-foreground">Filter by category or date range. Results update automatically.</p>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="sm:w-44">
+        <CardContent className="pt-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_auto] lg:items-end">
+            <div>
               <label htmlFor="expense-category-filter" className="text-xs font-medium text-muted-foreground block mb-1.5">
                 {t('expenses.filters.category', { defaultValue: 'Category' })}
               </label>
@@ -226,7 +275,7 @@ export const ExpensesTracker: React.FC = () => {
                 ))}
               </Select>
             </div>
-            <div className="flex-1">
+            <div>
               <label htmlFor="expense-from" className="text-xs font-medium text-muted-foreground block mb-1.5">
                 {t('expenses.filters.from', { defaultValue: 'From' })}
               </label>
@@ -237,7 +286,7 @@ export const ExpensesTracker: React.FC = () => {
                 onChange={(e) => setFrom(e.target.value)}
               />
             </div>
-            <div className="flex-1">
+            <div>
               <label htmlFor="expense-to" className="text-xs font-medium text-muted-foreground block mb-1.5">
                 {t('expenses.filters.to', { defaultValue: 'To' })}
               </label>
@@ -248,11 +297,28 @@ export const ExpensesTracker: React.FC = () => {
                 onChange={(e) => setTo(e.target.value)}
               />
             </div>
+            <div className="flex gap-2">
+              {hasFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="flex-1 lg:flex-none">
+                  <FilterX className="h-3.5 w-3.5" /> Clear
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={fetchExpenses} disabled={isLoading} className="flex-1 lg:flex-none">
+                <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="overflow-hidden hover:translate-y-0">
+        <CardHeader className="flex-row items-center justify-between border-b border-border/50 py-4">
+          <div>
+            <CardTitle className="text-base">Expense activity</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">{isLoading ? 'Loading records…' : `${expenses.length} record${expenses.length === 1 ? '' : 's'} shown`}</p>
+          </div>
+          {hasFilters && <Badge variant="secondary">Filtered view</Badge>}
+        </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-2">
@@ -269,14 +335,18 @@ export const ExpensesTracker: React.FC = () => {
             </div>
           ) : expenses.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">
-              <Wallet className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>{t('expenses.emptyTitle', { defaultValue: 'No expenses recorded yet.' })}</p>
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary">
+                <Wallet className="w-6 h-6 opacity-60" />
+              </div>
+              <p className="font-medium text-foreground">{hasFilters ? 'No records match these filters.' : t('expenses.emptyTitle', { defaultValue: 'No expenses recorded yet.' })}</p>
+              <p className="mt-1 text-sm">{hasFilters ? 'Clear or adjust the filters to see more records.' : 'Add the first one to begin tracking business spending.'}</p>
+              {hasFilters ? <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>Clear filters</Button> : <Button size="sm" className="mt-4" onClick={openCreate}><Plus className="h-3.5 w-3.5" />Add expense</Button>}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
+                  <tr className="border-b border-border bg-secondary/40 text-muted-foreground text-xs font-semibold">
                     <th className="px-4 py-3 text-left font-semibold">{t('expenses.table.date', { defaultValue: 'Date' })}</th>
                     <th className="px-4 py-3 text-left font-semibold">{t('expenses.table.category', { defaultValue: 'Category' })}</th>
                     <th className="px-4 py-3 text-left font-semibold">{t('expenses.table.description', { defaultValue: 'Description' })}</th>
@@ -289,10 +359,13 @@ export const ExpensesTracker: React.FC = () => {
                   {expenses.map((expense) => (
                     <tr
                       key={expense.id}
-                      className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors"
+                      className="border-b border-border/50 last:border-0 hover:bg-primary/[0.035] transition-colors"
                     >
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {new Date(expense.date).toLocaleDateString()}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                          {new Date(expense.date).toLocaleDateString()}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={CATEGORY_BADGE[expense.category]}>
