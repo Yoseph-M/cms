@@ -52,9 +52,6 @@ const CashierOrderingPanel = lazy(() =>
 const ManagerDashboard = lazy(() =>
   import('./pages/manager/ManagerDashboard').then((m) => ({ default: m.ManagerDashboard }))
 );
-const CancellationReview = lazy(() =>
-  import('./pages/manager/CancellationReview').then((m) => ({ default: m.CancellationReview }))
-);
 const ManagerPayroll = lazy(() =>
   import('./pages/manager/ManagerPayroll').then((m) => ({ default: m.ManagerPayroll }))
 );
@@ -66,6 +63,9 @@ const OperationalReconciliation = lazy(() =>
 );
 const CashierDashboard = lazy(() =>
   import('./pages/cashier/CashierDashboard').then((m) => ({ default: m.CashierDashboard }))
+);
+const CashierTicketsPage = lazy(() =>
+  import('./pages/cashier/CashierTicketsPage').then((m) => ({ default: m.CashierTicketsPage }))
 );
 const MenuCatalog = lazy(() =>
   import('./components/common/MenuCatalog').then((m) => ({ default: m.MenuCatalog }))
@@ -79,9 +79,7 @@ const ProfilePage = lazy(() =>
 const GlobalSettlementHistory = lazy(() =>
   import('./pages/shared/GlobalSettlementHistory').then((m) => ({ default: m.GlobalSettlementHistory }))
 );
-const LoginHistory = lazy(() =>
-  import('./pages/owner/LoginHistory').then((m) => ({ default: m.LoginHistory }))
-);
+
 
 const Lazy: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
@@ -167,13 +165,13 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Lazy><OwnerDashboard /></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} /></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} showAvailability={false} /></Lazy>} />
           <Route path="finance" element={<Lazy><OwnerFinance /></Lazy>} />
           <Route path="expenses" element={<Lazy><OwnerExpenses /></Lazy>} />
           <Route path="attendance" element={<Lazy><AttendanceCalendar isOwner /></Lazy>} />
           <Route path="payroll" element={<Lazy><OwnerPayroll /></Lazy>} />
           <Route path="admin" element={<Lazy><SystemAdminPage /></Lazy>} />
-          <Route path="login-history" element={<Lazy><LoginHistory /></Lazy>} />
+
           <Route path="settings" element={<Lazy><OwnerSettings /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
@@ -191,9 +189,8 @@ export const AppRoutes: React.FC = () => {
           <Route index element={<Navigate to="people" replace />} />
           <Route path="attendance" element={<Lazy><ManagerDashboard /></Lazy>} />
           <Route path="people" element={<Lazy><ManagerDashboard /></Lazy>} />
-          <Route path="cancellations" element={<Lazy><CancellationReview /></Lazy>} />
           <Route path="reconciliation" element={<Lazy><OperationalReconciliation /></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} /></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} showAvailability={false} /></Lazy>} />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
           <Route path="expenses" element={<Lazy><ManagerExpenses /></Lazy>} />
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
@@ -211,6 +208,7 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<Lazy><ShiftManager><CashierDashboard /></ShiftManager></Lazy>} />
+          <Route path="tickets" element={<Lazy><ShiftManager><CashierTicketsPage /></ShiftManager></Lazy>} />
           <Route path="menu" element={<Lazy><MenuCatalog canEdit={settings['cashierMenuManagementEnabled'] === 'true'} /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="settings" element={<Lazy><CashierSettings /></Lazy>} />
