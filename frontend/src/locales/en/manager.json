@@ -1,4 +1,19 @@
 {
+  "nav": {
+    "people": "People",
+    "menu": "Menu Catalog",
+    "reconciliation": "End of Day",
+    "settlements": "Settlements",
+    "expenses": "Expenses",
+    "attendance": "Attendance",
+    "payroll": "Payroll",
+    "systemSettings": "System Settings",
+    "groups": {
+      "core": "Insights",
+      "people": "People & HR",
+      "ops": "Operations"
+    }
+  },
   "dashboard": {
     "subtitle": "Manager",
     "title": "Staff Roster",
