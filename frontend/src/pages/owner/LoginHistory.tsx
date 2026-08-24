@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent } from '../../components/ui/card';
-import { Button } from '../../components/ui/button';
+import { Card, CardContent } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
 import { RefreshCw, Shield, CheckCircle, XCircle, Lock, User, Clock, Monitor } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 
