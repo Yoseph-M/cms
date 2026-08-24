@@ -89,7 +89,7 @@ export const KpiCard: React.FC<KpiCardProps> = ({
         'flex items-center gap-2.5 sm:gap-3.5 lg:gap-4',
         // Floating-card look matching SectionCard so KPIs read as islands too
         'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_-14px_rgba(15,23,42,0.10),0_4px_10px_-8px_rgba(249,115,22,0.08)]',
-        'transition-all duration-200 hover:-translate-y-0.5',
+        'transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5',
         'min-w-0',
         TONE_BG[tone],
       )}
