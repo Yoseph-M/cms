@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
+import { useAuthStore } from './authStore';
 
 interface SocketState {
   socket: Socket | null;
@@ -19,6 +20,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       autoConnect: true,
+      auth: (cb) => cb({ token: useAuthStore.getState().accessToken }),
     });
 
     socketInstance.on('connect', () => {
