@@ -35,3 +35,4 @@ e2e/playwright-report/
 
 # Docker volumes
 mongo-data/
+.freebuff/
