@@ -1,11 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Armchair, ChevronLeft, ShoppingCart, CheckCircle2, Clock, Timer } from 'lucide-react';
+import { Armchair, ChevronLeft, Plus } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import { formatCurrency } from '../../../utils/currency';
 import type { Order } from '../../../types';
-
-export type TableStatus = 'free' | 'cooking' | 'ready';
 
 export interface TableMapProps {
   tableCount: number;
@@ -15,20 +12,9 @@ export interface TableMapProps {
   className?: string;
 }
 
-function tableState(tableNumber: string, active: Order[]): { status: TableStatus; order?: Order } {
-  const order = active.find((o) => o.tableNumber === tableNumber);
-  if (!order) return { status: 'free' };
-  if (order.status === 'SERVED') return { status: 'ready', order };
-  return { status: 'cooking', order };
-}
-
 /**
- * Table map. Visual grid of tables with real status colors.
- *  - emerald = free / open
- *  - sky     = in progress (kitchen)
- *  - amber   = ready to pay (with subtle pulse)
- * Tap a free table to start a new order, or an occupied table to jump
- * straight to its ticket.
+ * New-order table picker. Only available tables are shown; active tables are
+ * managed from the Tickets workspace.
  */
 export const TableMap: React.FC<TableMapProps> = ({
   tableCount,
@@ -38,13 +24,13 @@ export const TableMap: React.FC<TableMapProps> = ({
   className,
 }) => {
   const numbers = Array.from({ length: tableCount }, (_, i) => String(i + 1));
-  const occupied = numbers.filter((n) => activeOrders.some((o) => o.tableNumber === n)).length;
-  const ready = numbers.filter((n) => activeOrders.some((o) => o.tableNumber === n && o.status === 'SERVED')).length;
-  const free = tableCount - occupied;
+  // New orders can only be started on available tables. Active tables remain
+  // accessible from Tickets, so they are intentionally omitted here.
+  const availableNumbers = numbers.filter((n) => !activeOrders.some((o) => o.tableNumber === n));
 
   return (
     <div className={cn('h-full flex flex-col bg-app-gradient text-foreground overflow-hidden', className)}>
-      <header className="h-16 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-5 sm:px-6 shrink-0 relative">
+      <header className="min-h-16 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between gap-3 px-4 py-3 sm:px-6 shrink-0 relative">
         <span
           aria-hidden
           className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent"
@@ -62,34 +48,36 @@ export const TableMap: React.FC<TableMapProps> = ({
             <span className="w-7 h-7 rounded-lg bg-cyan-500 text-white flex items-center justify-center shadow-cyan">
               <Armchair className="w-3.5 h-3.5" />
             </span>
-            Table Map
+            New order
           </span>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px]">
-          <StatusChip tone="emerald" label={`${free} free`} />
-          <StatusChip tone="sky" label={`${occupied - ready} in kitchen`} />
-          <StatusChip tone="amber" label={`${ready} ready`} />
+        <div className="hidden items-center gap-2 text-[11px] sm:flex">
+          <StatusChip tone="emerald" label={`${availableNumbers.length} available`} />
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <p className="mb-4 text-sm text-muted-foreground max-w-xl">
-          Tap a free table to start a new order, or jump to an active ticket to take payment.
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-          {numbers.map((n) => {
-            const { status, order } = tableState(n, activeOrders);
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Choose a table</p>
+              <h2 className="mt-1 font-display text-xl font-bold text-foreground">Start a new order</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Only available tables are shown. Open Tickets to manage tables already in service.</p>
+            </div>
+            <MapStat value={availableNumbers.length} label="Available" tone="emerald" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {availableNumbers.map((n) => {
             return (
               <TableTile
                 key={n}
                 number={n}
-                status={status}
-                amount={order?.totalAmount}
                 onClick={() => onTableClick(n)}
               />
             );
           })}
+          </div>
         </div>
       </main>
     </div>
@@ -98,29 +86,8 @@ export const TableMap: React.FC<TableMapProps> = ({
 
 const TableTile: React.FC<{
   number: string;
-  status: TableStatus;
-  amount?: number;
   onClick: () => void;
-}> = ({ number, status, amount, onClick }) => {
-  const styleByStatus: Record<TableStatus, string> = {
-    free: 'border-border bg-card hover:border-emerald-500/40 hover:shadow-[0_8px_24px_-12px_rgba(16,185,129,0.45)]',
-    cooking:
-      'border-sky-500/40 bg-gradient-to-br from-sky-500/12 to-sky-500/0 shadow-[0_8px_24px_-14px_rgba(56,189,248,0.55)]',
-    ready:
-      'border-amber-500/50 bg-gradient-to-br from-amber-500/15 to-amber-500/0 shadow-[0_8px_24px_-12px_rgba(245,158,11,0.5)]',
-  };
-  const labelByStatus: Record<TableStatus, string> = {
-    free: 'Open',
-    cooking: 'In kitchen',
-    ready: 'Ready to pay',
-  };
-  const colorByStatus: Record<TableStatus, string> = {
-    free: 'text-emerald-600',
-    cooking: 'text-sky-600',
-    ready: 'text-amber-700',
-  };
-  const Icon = status === 'free' ? Armchair : status === 'cooking' ? Clock : CheckCircle2;
-
+}> = ({ number, onClick }) => {
   return (
     <motion.button
       type="button"
@@ -129,29 +96,44 @@ const TableTile: React.FC<{
       whileTap={{ scale: 0.97 }}
       transition={{ type: 'spring', stiffness: 380, damping: 28 }}
       className={cn(
-        'relative rounded-2xl border p-3.5 text-left transition-all overflow-hidden min-h-[124px] flex flex-col',
-        styleByStatus[status],
-        status === 'ready' && 'before:absolute before:inset-0 before:rounded-2xl before:animate-pulse-ring before:pointer-events-none',
+        'relative min-h-[142px] overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.07] to-card p-3.5 text-left transition-all hover:border-emerald-500/50 hover:shadow-[0_12px_28px_-14px_rgba(16,185,129,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 flex flex-col',
       )}
     >
-      <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Table</p>
-      <p className="mt-1 font-display text-3xl font-bold tabular-nums leading-none text-foreground">
-        {number}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Table</p>
+          <p className="mt-1 font-display text-3xl font-bold tabular-nums leading-none text-foreground">{number}</p>
+        </div>
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-emerald-600/10 bg-background/70 text-emerald-600">
+          <Plus className="h-3.5 w-3.5" />
+        </span>
+      </div>
       <div className="mt-auto pt-3 space-y-0.5">
-        <p className={cn('text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1', colorByStatus[status])}>
-          <Icon className="w-3 h-3" />
-          {labelByStatus[status]}
+        <p className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+          <Plus className="w-3 h-3" />
+          Available
         </p>
-        {amount != null && (
-          <p className="text-xs text-muted-foreground tabular-nums">{formatCurrency(amount)}</p>
-        )}
+        <p className="pt-1 text-[11px] font-semibold text-foreground/70">Start order →</p>
       </div>
     </motion.button>
   );
 };
 
-const StatusChip: React.FC<{ tone: 'emerald' | 'sky' | 'amber'; label: string }> = ({ tone, label }) => {
+const MapStat: React.FC<{ value: number; label: string; tone: 'emerald' }> = ({ value, label, tone }) => {
+  const colors = {
+    emerald: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700',
+    sky: 'border-sky-500/20 bg-sky-500/10 text-sky-700',
+    amber: 'border-amber-500/20 bg-amber-500/10 text-amber-700',
+  }[tone];
+  return (
+    <div className={cn('min-w-[70px] rounded-xl border px-3 py-2', colors)}>
+      <p className="font-display text-lg font-bold leading-none tabular-nums">{value}</p>
+      <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] opacity-80">{label}</p>
+    </div>
+  );
+};
+
+const StatusChip: React.FC<{ tone: 'emerald'; label: string }> = ({ tone, label }) => {
   const toneClass = {
     emerald: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
     sky: 'bg-sky-500/10 text-sky-700 border-sky-500/30',
