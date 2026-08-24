@@ -9,7 +9,6 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { FloatingCard } from '../../components/ui/FloatingCard';
 import { LoadingState } from '../../components/common/LoadingState';
-import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 import {
   User as UserIcon,
   Lock,
@@ -29,7 +28,6 @@ import {
   ArrowRight,
   BadgeCheck,
   KeyRound,
-  Languages,
   Activity,
   ShieldCheck,
   AlertCircle,
@@ -493,15 +491,6 @@ export const ProfilePage: React.FC = () => {
             </motion.div>
           </div>
 
-          {/* ─── Preferences row ─── */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.15 }}
-          >
-            <LanguagePreferenceSection />
-          </motion.div>
-
           {/* ─── Session / Activity card (role-flavoured) ─── */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -514,7 +503,7 @@ export const ProfilePage: React.FC = () => {
                 title="Session"
                 subtitle="Quick overview of your current sign-in."
               />
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FloatingCard className="p-4">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     <Activity className="w-3 h-3" />
@@ -533,15 +522,6 @@ export const ProfilePage: React.FC = () => {
                   <p className="mt-2 font-display text-lg font-bold text-foreground flex items-center gap-2">
                     <RoleIcon className="w-4 h-4 text-primary" />
                     {meta.label}
-                  </p>
-                </FloatingCard>
-                <FloatingCard className="p-4">
-                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    <Languages className="w-3 h-3" />
-                    Language
-                  </div>
-                  <p className="mt-2 font-display text-lg font-bold text-foreground">
-                    {(typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('am')) ? 'አማርኛ' : 'English'}
                   </p>
                 </FloatingCard>
               </div>
