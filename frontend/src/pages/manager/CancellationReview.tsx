@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
+import { extractErrorMessage } from '../../utils/errorHandler';
 import { useToastStore } from '../../store/toastStore';
 import { useSocketStore } from '../../store/socketStore';
 
@@ -100,8 +101,7 @@ export const CancellationReview: React.FC = () => {
       setRequests((prev) => prev.filter((r) => r.id !== requestId));
       setSelectedRequest(null);
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
-      addToast({ type: 'error', title: 'Unable to approve cancellation', message: error.response?.data?.error || 'Something went wrong. Please try again.' });
+      addToast({ type: 'error', title: 'Unable to approve cancellation', message: extractErrorMessage(err, 'Something went wrong. Please try again.') });
     } finally {
       setIsProcessing(false);
     }
@@ -129,8 +129,7 @@ export const CancellationReview: React.FC = () => {
       setSelectedRequest(null);
       setRejectReason('');
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { error?: string } } };
-      addToast({ type: 'error', title: 'Unable to reject cancellation', message: error.response?.data?.error || 'Something went wrong. Please try again.' });
+      addToast({ type: 'error', title: 'Unable to reject cancellation', message: extractErrorMessage(err, 'Something went wrong. Please try again.') });
     } finally {
       setIsProcessing(false);
     }
