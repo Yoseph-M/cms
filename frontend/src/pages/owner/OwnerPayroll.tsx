@@ -12,6 +12,7 @@ import {
   DollarSign, Plus, Download, RotateCcw, ChevronRight
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
+import { exportRowsCSV } from '../../utils/csvExport';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
 
@@ -208,24 +209,22 @@ export const OwnerPayroll: React.FC = () => {
   }, [paymentRows, ledger]);
 
   const exportCSV = useCallback(() => {
-    const rows = [['Staff', 'Role', 'Period', 'Base Salary', 'Paid', 'Processed By', 'Date', 'Note']];
-    ledger.forEach(r => {
-      if (r.recordType === 'adjustment') {
-        rows.push(['(correction)', r.user.name, `${r.periodMonth}/${r.periodYear}`, '', formatCurrency(r.paidAmount), r.processedBy?.name || '', new Date(r.createdAt).toLocaleDateString(), r.reason || '']);
-      } else {
-        rows.push([
+    exportRowsCSV(
+      ['Staff', 'Role', 'Period', 'Base Salary', 'Paid', 'Processed By', 'Date', 'Note'],
+      ledger.map((r) => {
+        if (r.recordType === 'adjustment') {
+          return ['(correction)', r.user.name, `${r.periodMonth}/${r.periodYear}`, '', formatCurrency(r.paidAmount), r.processedBy?.name || '', new Date(r.createdAt).toLocaleDateString(), r.reason || ''];
+        }
+        return [
           r.user.name, r.user.role,
           `${r.periodMonth}/${r.periodYear}`,
           formatCurrency(r.baseSalary), formatCurrency(r.paidAmount),
           r.processedBy?.name || '', new Date(r.createdAt).toLocaleDateString(), r.note || ''
-        ]);
-      }
-    });
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'payroll-ledger.csv'; a.click();
+        ];
+      }),
+      'payroll-ledger',
+      { title: 'Payroll Ledger', meta: [`Generated: ${new Date().toLocaleString()}`] }
+    );
   }, [ledger]);
 
   const renderLedgerRow = useCallback(
