@@ -21,6 +21,9 @@ export interface OrderCardProps {
   isSelected: boolean;
   onClick: () => void;
   cardRef?: (node: HTMLDivElement | null) => void;
+  selectMode?: boolean;
+  bulkSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 /**
@@ -28,7 +31,7 @@ export interface OrderCardProps {
  * so the cashier can scan ready-to-pay vs in-kitchen at a glance.
  */
 export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
-  ({ order, isSelected, onClick, cardRef }, ref) => {
+  ({ order, isSelected, onClick, cardRef, selectMode, bulkSelected, onToggleSelect }, ref) => {
     const elapsed = useElapsedTime(order.createdAt);
     const status = getOrderStatus(order);
     const accent = statusAccent(status);
@@ -67,17 +70,18 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
         className={cn(
           'group relative cursor-pointer rounded-2xl text-left transition-all duration-200',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-          'bg-card border p-4 pb-5 flex flex-col gap-3 min-h-[150px] overflow-hidden',
+          'bg-white border px-4 py-3.5 overflow-hidden min-h-[112px]',
           isSelected
-            ? 'border-primary shadow-brand-lg ring-1 ring-primary/40 bg-gradient-to-br from-card via-card to-primary/[0.04]'
-            : 'border-border hover:border-primary/40 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_14px_-8px_rgba(59,130,246,0.18)] hover:shadow-brand',
+            ? 'border-slate-900 shadow-[0_14px_30px_-18px_rgba(15,23,42,0.45)] ring-1 ring-slate-900/10 bg-gradient-to-br from-white to-slate-50'
+            : 'border-slate-200 hover:border-slate-300 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_18px_-14px_rgba(15,23,42,0.18)] hover:shadow-[0_14px_28px_-18px_rgba(15,23,42,0.30)]',
+          selectMode && bulkSelected && 'border-primary ring-2 ring-primary bg-primary/5',
         )}
       >
         {/* Brand accent strip — visible on selected, hint on hover */}
         <span
           aria-hidden
           className={cn(
-            'absolute inset-x-0 top-0 h-0.5 bg-brand-gradient transition-opacity',
+            'absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-slate-950 via-primary to-cyan-400 transition-opacity',
             isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-60',
           )}
         />
@@ -91,67 +95,32 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
           )}
         />
 
-        <div className="pl-2.5">
-          <div className="flex justify-between items-start gap-2">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className={cn(
-                  'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border',
-                  isTakeout
-                    ? isSelected
-                      ? 'bg-cyan-500 text-white border-transparent shadow-cyan'
-                      : 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20'
-                    : isSelected
-                      ? 'bg-brand-gradient text-white border-transparent shadow-brand'
-                      : 'bg-primary/10 text-primary border-primary/20',
-                )}
-              >
-                {isTakeout ? (
-                  <ShoppingCart className="w-4 h-4" />
-                ) : (
-                  <span className="font-display font-bold text-base leading-none">{tableLabel}</span>
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  {isTakeout ? 'Takeout' : 'Table'}
-                </p>
-                <p className="font-display text-lg font-semibold text-foreground leading-tight truncate">
-                  {order.clientOrderId.slice(0, 8).toUpperCase()}
-                </p>
-              </div>
-            </div>
-            <StatusBadge status={status} />
-          </div>
-
-          <div className="flex justify-between items-end">
-            <WaitChip elapsed={elapsed} />
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                {itemCount} {itemCount === 1 ? 'item' : 'items'}
-              </p>
-              <p
-                className={cn(
-                  'font-display text-xl font-bold tabular-nums leading-none mt-1',
-                  isSelected
-                    ? 'text-brand-gradient bg-clip-text text-transparent'
-                    : 'text-foreground',
-                )}
-              >
-                {formatCurrency(order.totalAmount)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {order.waiter && (
-          <div className="-mx-4 -mb-5 px-4 py-2 border-t border-border/60 bg-secondary/30 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <CircleDot className="w-3 h-3" />
-            <span className="truncate">
-              by <span className="font-medium text-foreground">{order.waiter.name}</span>
-            </span>
-          </div>
+        {/* Bulk-select checkbox (select mode) */}
+        {selectMode && (
+          <span
+            aria-hidden
+            className={cn(
+              'absolute top-2.5 right-2.5 z-10 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors shadow-sm',
+              bulkSelected ? 'bg-primary border-primary' : 'bg-white/95 border-slate-300',
+            )}
+          >
+            {bulkSelected && <CheckCircle2 className="w-4 h-4 text-white" strokeWidth={3} />}
+          </span>
         )}
+
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border', isTakeout ? 'bg-cyan-50 text-cyan-700 border-cyan-100' : isSelected ? 'bg-slate-950 text-white border-slate-950' : 'bg-primary/10 text-primary border-primary/15')}>
+              {isTakeout ? <ShoppingCart className="w-4 h-4" /> : <span className="font-display font-bold text-lg leading-none">{tableLabel}</span>}
+            </div>
+            <div className="min-w-0"><p className="font-display text-base font-bold text-slate-950 leading-tight truncate">{isTakeout ? 'Takeout' : `Table ${tableLabel}`}</p><p className="mt-1 font-mono text-[10px] tracking-wide text-slate-400">#{order.clientOrderId.slice(0, 6).toUpperCase()}</p></div>
+          </div>
+          {!selectMode && <StatusBadge status={status} />}
+        </div>
+        <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
+          <div className="min-w-0 text-[11px] text-slate-500"><p>{itemCount} {itemCount === 1 ? 'item' : 'items'}{order.waiter && <span className="ml-1.5 inline-flex items-center gap-1 truncate"><CircleDot className="w-2.5 h-2.5" />{order.waiter.name}</span>}</p><div className="mt-1"><WaitChip elapsed={elapsed} /></div></div>
+          <p className="font-display text-lg font-bold tabular-nums leading-none text-slate-950">{formatCurrency(order.totalAmount)}</p>
+        </div>
       </motion.div>
     );
   },
@@ -173,12 +142,12 @@ const StatusBadge: React.FC<{ status: ReturnType<typeof getOrderStatus> }> = ({ 
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border',
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border shrink-0',
         accent.badge,
       )}
     >
       <Icon className="w-3 h-3" />
-      {STATUS_LABEL[status]}
+      <span className="hidden sm:inline">{STATUS_LABEL[status]}</span>
     </span>
   );
 };
@@ -193,7 +162,7 @@ const WaitChip: React.FC<{ elapsed: ReturnType<typeof useElapsedTime> }> = ({ el
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-semibold tabular-nums border',
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold tabular-nums border shrink-0',
         elapsed.tone === 'danger'
           ? 'bg-destructive/10 text-destructive border-destructive/30 animate-pulse'
           : elapsed.tone === 'warning'
@@ -201,7 +170,7 @@ const WaitChip: React.FC<{ elapsed: ReturnType<typeof useElapsedTime> }> = ({ el
             : 'bg-secondary/60 text-muted-foreground border-transparent',
       )}
     >
-      <Icon className="w-3.5 h-3.5" />
+      <Icon className="w-3 h-3" />
       {elapsed.display}
     </div>
   );
