@@ -4,6 +4,10 @@ import { App } from './App';
 import './index.css';
 import './i18n';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { useThemeStore } from './store/themeStore';
+
+// Apply saved theme before first render to avoid a flash of the wrong theme
+useThemeStore.getState().initTheme();
 
 // Register Service Worker for PWA & Background Sync
 if ('serviceWorker' in navigator) {
