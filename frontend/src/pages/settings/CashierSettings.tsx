@@ -1,6 +1,7 @@
 import React from 'react';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
+import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
 
 /**
  * Cashier Settings page — mirrors Manager/Owner structure but scoped to
@@ -24,6 +25,8 @@ export const CashierSettings: React.FC = () => {
       <NotificationPreferencesSection />
 
       <LanguagePreferenceSection />
+
+      <ThemePreferenceSection />
     </div>
   );
 };
