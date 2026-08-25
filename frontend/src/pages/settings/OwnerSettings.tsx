@@ -8,6 +8,7 @@ import { ShoppingCart, RotateCcw, CalendarCheck, Settings } from 'lucide-react';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { OwnerAttendanceToggle } from '../../components/settings/OwnerAttendanceToggle';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
+import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
 import { FeatureToggles } from '../../components/settings/FeatureToggles';
 
 /**
@@ -39,6 +40,8 @@ export const OwnerSettings: React.FC = () => {
       <NotificationPreferencesSection />
 
       <LanguagePreferenceSection />
+
+      <ThemePreferenceSection />
 
       <BusinessProfileSection />
 
