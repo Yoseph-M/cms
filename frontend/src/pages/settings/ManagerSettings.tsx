@@ -5,6 +5,7 @@ import { TableCountSetting } from '../../components/settings/TableCountSetting';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { ShoppingCart } from 'lucide-react';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
+import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
 
 /**
  * Manager Settings page — Phase 14, §3.3.
@@ -29,6 +30,8 @@ export const ManagerSettings: React.FC = () => {
       <NotificationPreferencesSection />
 
       <LanguagePreferenceSection />
+
+      <ThemePreferenceSection />
 
       <Card>
         <CardHeader>
