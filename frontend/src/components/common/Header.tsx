@@ -101,19 +101,19 @@ export const Header: React.FC = () => {
     <header
       className={cn(
         'relative h-[72px] sm:h-[88px] px-4 sm:px-8 flex items-center justify-between gap-4',
-        'border-b border-[#ece6dd] bg-[#fdfaf6] z-30 shrink-0',
+        'border-b border-[hsl(var(--shell-border))] bg-[hsl(var(--canvas-warm))] z-30 shrink-0',
       )}
     >
       {/* Brand accent strip */}
       <span
         aria-hidden
-        className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-orange-300/50 to-transparent"
+        className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[hsl(var(--orange-300)/0.5)] to-transparent"
       />
 
       {/* Left: title + (optional) date range chip + status pill */}
       <div className="flex items-center gap-3 sm:gap-5 min-w-0 flex-1">
         <div className="min-w-0">
-          <h1 className="font-display text-[20px] sm:text-[26px] font-semibold text-slate-800 tracking-tight leading-tight truncate">
+          <h1 className="font-display text-[20px] sm:text-[26px] font-semibold text-foreground tracking-tight leading-tight truncate">
             Analytics Overview
           </h1>
           <div className="hidden sm:flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
@@ -149,31 +149,31 @@ export const Header: React.FC = () => {
             <button
               onClick={() => setDateOpen((o) => !o)}
               className={cn(
-                'h-10 px-3.5 rounded-xl border border-[#e5e0d8] bg-white text-sm font-medium text-slate-600',
+                'h-10 px-3.5 rounded-xl border border-input bg-card text-sm font-medium text-muted-foreground',
                 'hover:shadow-sm transition-all inline-flex items-center gap-2',
-                dateOpen && 'shadow-sm border-slate-300',
+                dateOpen && 'shadow-sm border-primary/40',
               )}
             >
-              <Calendar className="w-4 h-4 text-slate-400" />
+              <Calendar className="w-4 h-4 text-muted-foreground" />
               <span>{formatShort(dateRange.from)}</span>
-              <span className="text-slate-300">→</span>
+              <span className="text-muted-foreground/60">→</span>
               <span>{formatShort(dateRange.to)}</span>
-              <ChevronDown className="w-4 h-4 ml-1 text-slate-400" />
+              <ChevronDown className="w-4 h-4 ml-1 text-muted-foreground" />
             </button>
             {dateOpen && (
-              <div className="absolute top-full left-0 mt-2 p-3 bg-white border border-[#e5e0d8] rounded-xl shadow-lg z-50 flex items-center gap-2">
+              <div className="absolute top-full left-0 mt-2 p-3 bg-card border border-border rounded-xl shadow-lg z-50 flex items-center gap-2">
                 <input
                   type="date"
                   value={dateRange.from}
                   onChange={(e) => setDateRange({ from: e.target.value, to: dateRange.to })}
-                  className="text-sm bg-slate-50 border border-slate-200 rounded p-1 outline-none focus:border-orange-500"
+                  className="text-sm bg-secondary border border-input rounded p-1 outline-none focus:border-primary"
                 />
-                <span className="text-slate-400 text-xs">to</span>
+                <span className="text-muted-foreground text-xs">to</span>
                 <input
                   type="date"
                   value={dateRange.to}
                   onChange={(e) => setDateRange({ from: dateRange.from, to: e.target.value })}
-                  className="text-sm bg-slate-50 border border-slate-200 rounded p-1 outline-none focus:border-orange-500"
+                  className="text-sm bg-secondary border border-input rounded p-1 outline-none focus:border-primary"
                 />
               </div>
             )}
@@ -188,7 +188,7 @@ export const Header: React.FC = () => {
           <Search
             className={cn(
               'absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none transition-colors',
-              searchFocused ? 'text-orange-500' : 'text-slate-400',
+              searchFocused ? 'text-primary' : 'text-muted-foreground',
             )}
           />
           <input
@@ -207,14 +207,14 @@ export const Header: React.FC = () => {
               }
             }}
             className={cn(
-              'h-10 pl-10 pr-16 w-44 sm:w-64 lg:w-80 rounded-full bg-white border border-[#e5e0d8]',
-              'focus:border-orange-300 focus:shadow-[0_0_0_3px_rgba(249,115,22,0.1)]',
-              'text-[14px] text-slate-800 placeholder:text-slate-400 outline-none transition-all shadow-sm',
+              'h-10 pl-10 pr-16 w-44 sm:w-64 lg:w-80 rounded-full bg-card border border-input',
+              'focus:border-primary/60 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]',
+              'text-[14px] text-foreground placeholder:text-muted-foreground outline-none transition-all shadow-sm',
             )}
           />
           <kbd
             aria-hidden
-            className="hidden sm:inline-flex absolute right-3 top-1/2 -translate-y-1/2 items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-slate-100 text-[10px] font-mono font-semibold text-slate-500 border border-slate-200 pointer-events-none"
+            className="hidden sm:inline-flex absolute right-3 top-1/2 -translate-y-1/2 items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-secondary text-[10px] font-mono font-semibold text-muted-foreground border border-border pointer-events-none"
           >
             ⌘K
           </kbd>
@@ -243,10 +243,10 @@ export const Header: React.FC = () => {
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
-              className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border border-[#e5e0d8] hover:bg-white bg-white transition-colors shadow-sm"
+              className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border border-input hover:bg-card bg-card transition-colors shadow-sm"
               aria-label="Open profile menu"
             >
-              <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-200 border border-[#e5e0d8] flex items-center justify-center shrink-0">
+              <div className="w-9 h-9 rounded-full overflow-hidden bg-secondary border border-border flex items-center justify-center shrink-0">
                 <img
                   src={`https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(
                     user.name || 'Felix',
@@ -256,13 +256,13 @@ export const Header: React.FC = () => {
                 />
               </div>
               <div className="hidden md:block text-left leading-tight pr-1">
-                <p className="text-sm font-medium text-slate-800">{user.name}</p>
-                <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">
+                <p className="text-sm font-medium text-foreground">{user.name}</p>
+                <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">
                   {user.role}
                 </p>
               </div>
               <ChevronDown
-                className={`hidden md:block w-3.5 h-3.5 text-slate-400 transition-transform ${
+                className={`hidden md:block w-3.5 h-3.5 text-muted-foreground transition-transform ${
                   menuOpen ? 'rotate-180' : ''
                 }`}
               />
