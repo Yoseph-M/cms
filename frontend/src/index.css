@@ -15,6 +15,7 @@
 
   /* ─── Light Theme (Default) — Brand Blue identity, mirrors login #3B82F6 ─── */
   :root {
+    color-scheme: light;
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
 
@@ -56,6 +57,11 @@
     /* Subtle blue-tinted sidebar surface so the shell feels brand-cohesive */
     --sidebar: 220 100% 99%;
 
+    /* App-shell canvases (layouts): warm cream for dashboards, cool for pages */
+    --canvas-warm: 38 55% 98%;
+    --canvas-cool: 210 29% 96%;
+    --shell-border: 38 33% 90%;
+
     /* ─── Owner dashboard palette (warm, food-friendly) ─── */
     --orange-50: 30 100% 96%;
     --orange-100: 28 100% 90%;
@@ -92,18 +98,21 @@
 
   /* ─── Dark Theme (opt-in via .dark class) ─── */
   .dark {
+    /* Native widgets (date pickers, selects, scrollbars) render dark */
+    color-scheme: dark;
+
     --background: 222 47% 7%;
     --foreground: 210 40% 98%;
-    --card: 222 47% 10%;
+    --card: 222 40% 13%;
     --card-foreground: 210 40% 98%;
-    --popover: 222 47% 10%;
+    --popover: 222 42% 13%;
     --popover-foreground: 210 40% 98%;
     --primary: 213 94% 68%;
     --primary-foreground: 222 47% 7%;
-    --secondary: 217 33% 14%;
+    --secondary: 217 33% 17%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 70%;
+    --muted: 217 30% 21%;
+    --muted-foreground: 215 22% 75%;
     --accent: 187 95% 55%;
     --accent-foreground: 222 47% 7%;
     --destructive: 0 75% 60%;
@@ -112,10 +121,43 @@
     --success-foreground: 222 47% 7%;
     --warning: 38 90% 60%;
     --warning-foreground: 222 47% 7%;
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
+    --border: 217 28% 25%;
+    --input: 217 28% 27%;
     --ring: 213 94% 68%;
-    --sidebar: 222 47% 9%;
+    --sidebar: 222 40% 11%;
+
+    /* App-shell canvases — same warm/cool rhythm, dark-tuned */
+    --canvas-warm: 24 22% 8%;
+    --canvas-cool: 220 25% 7%;
+    --shell-border: 217 28% 23%;
+
+    /* Owner dashboard palette — deep, muted versions of the light pastels */
+    --orange-200: 27 50% 26%;
+    --orange-300: 25 70% 42%;
+    --orange-400: 22 92% 62%;
+    --orange-600: 24 95% 64%;
+    --orange-700: 20 90% 70%;
+
+    /* KPI card pastels → deep tinted surfaces (light text stays readable) */
+    --kpi-cream: 38 40% 15%;
+    --kpi-mint: 152 35% 14%;
+    --kpi-blush: 340 35% 16%;
+    --kpi-rose: 350 35% 16%;
+
+    /* Chart palette */
+    --chart-income: 20 95% 60%;
+    --chart-expense: 24 45% 58%;
+    --chart-grid: 217 28% 24%;
+
+    /* Donut palette */
+    --donut-3: 30 55% 48%;
+    --donut-4: 32 45% 30%;
+
+    /* Status pills — brightened for dark surfaces */
+    --status-paid: 152 65% 52%;
+    --status-cancelled: 0 80% 64%;
+    --status-pending: 45 95% 60%;
+    --status-feedback: 14 90% 64%;
   }
 
   * {
@@ -396,12 +438,31 @@
   color: hsl(222 47% 11%);
 }
 
+/* Dark selection — same brand hue, tuned for dark surfaces */
+.dark ::selection {
+  background: hsl(213 94% 45% / 0.65);
+  color: hsl(210 40% 98%);
+}
+
+.dark ::-moz-selection {
+  background: hsl(213 94% 45% / 0.65);
+  color: hsl(210 40% 98%);
+}
+
 input::selection,
 input::-moz-selection,
 textarea::selection,
 textarea::-moz-selection {
   background: hsl(213 94% 78% / 0.55);
   color: hsl(222 47% 11%);
+}
+
+.dark input::selection,
+.dark input::-moz-selection,
+.dark textarea::selection,
+.dark textarea::-moz-selection {
+  background: hsl(213 94% 45% / 0.65);
+  color: hsl(210 40% 98%);
 }
 
 /*
@@ -514,3 +575,77 @@ textarea::-moz-selection {
     display: none !important;
   }
 }
+
+/*
+ * ─── Dark-mode compatibility layer ───
+ *
+ * Many pre-existing components use raw Tailwind palette utilities
+ * (bg-white, text-slate-800, bg-emerald-50, …) instead of semantic tokens,
+ * so they ignored the .dark class. These rules remap the common raw
+ * utilities to theme variables while `.dark` is active. New code should
+ * use semantic tokens directly (see `npm run lint:colors`).
+ */
+
+  /* Neutral surfaces → card / secondary / muted */
+  .dark .bg-white { background-color: hsl(var(--card)); }
+  .dark .bg-gray-50, .dark .bg-slate-50, .dark .bg-stone-50, .dark .bg-zinc-50, .dark .bg-neutral-50 { background-color: hsl(var(--secondary)); }
+  .dark .bg-gray-100, .dark .bg-slate-100, .dark .bg-stone-100, .dark .bg-zinc-100, .dark .bg-neutral-100 { background-color: hsl(var(--muted)); }
+  .dark .bg-gray-200, .dark .bg-slate-200, .dark .bg-stone-200, .dark .bg-zinc-200, .dark .bg-neutral-200 { background-color: hsl(var(--muted)); }
+  .dark .hover\:bg-white:hover { background-color: hsl(var(--card)); }
+  .dark .hover\:bg-gray-50:hover, .dark .hover\:bg-slate-50:hover { background-color: hsl(var(--secondary)); }
+  .dark .hover\:bg-gray-100:hover, .dark .hover\:bg-slate-100:hover { background-color: hsl(var(--muted)); }
+  .dark .hover\:bg-gray-200:hover, .dark .hover\:bg-slate-200:hover { background-color: hsl(var(--muted)); }
+
+  /* Neutral borders */
+  .dark .border-gray-100, .dark .border-gray-200, .dark .border-gray-300, .dark .border-gray-400,
+  .dark .border-slate-100, .dark .border-slate-200, .dark .border-slate-300,
+  .dark .border-stone-200, .dark .border-zinc-200 {
+    border-color: hsl(var(--border));
+  }
+  .dark .hover\:border-gray-300:hover, .dark .hover\:border-slate-300:hover { border-color: hsl(var(--border)); }
+  .dark .ring-gray-300, .dark .ring-slate-300 { --tw-ring-color: hsl(var(--border)); }
+  .dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+  .dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: hsl(var(--border));
+  }
+
+/* Neutral text — soft grays to muted, dark grays to foreground */
+.dark .text-gray-400, .dark .text-gray-500, .dark .text-gray-600,
+.dark .text-slate-400, .dark .text-slate-500, .dark .text-slate-600,
+.dark .text-stone-400, .dark .text-stone-500 {
+  color: hsl(var(--muted-foreground));
+}
+.dark .text-gray-700, .dark .text-gray-800, .dark .text-gray-900,
+.dark .text-slate-700, .dark .text-slate-800, .dark .text-slate-900,
+.dark .text-slate-950 {
+  color: hsl(var(--foreground));
+}
+.dark .hover\:text-gray-700:hover, .dark .hover\:text-gray-800:hover,
+.dark .hover\:text-gray-900:hover, .dark .hover\:text-slate-700:hover,
+.dark .hover\:text-slate-800:hover, .dark .hover\:text-slate-900:hover,
+.dark .hover\:text-slate-950:hover {
+  color: hsl(var(--foreground));
+}
+
+/* Colored pastel surfaces → translucent tints (keep hue meaning) */
+.dark .bg-blue-50, .dark .bg-blue-100, .dark .bg-indigo-50, .dark .bg-indigo-100 { background-color: hsl(217 91% 60% / 0.22); }
+.dark .bg-sky-50, .dark .bg-sky-100, .dark .bg-cyan-50, .dark .bg-cyan-100, .dark .bg-teal-50, .dark .bg-teal-100 { background-color: hsl(var(--accent) / 0.18); }
+.dark .bg-green-50, .dark .bg-green-100, .dark .bg-emerald-50, .dark .bg-emerald-100, .dark .bg-lime-50, .dark .bg-lime-100 { background-color: hsl(var(--success) / 0.20); }
+.dark .bg-red-50, .dark .bg-red-100, .dark .bg-rose-50, .dark .bg-rose-100 { background-color: hsl(var(--destructive) / 0.20); }
+.dark .bg-amber-50, .dark .bg-amber-100, .dark .bg-yellow-50, .dark .bg-yellow-100 { background-color: hsl(var(--warning) / 0.20); }
+.dark .bg-orange-50, .dark .bg-orange-100 { background-color: hsl(var(--orange-500) / 0.22); }
+.dark .bg-purple-50, .dark .bg-purple-100, .dark .bg-violet-50, .dark .bg-violet-100, .dark .bg-fuchsia-50, .dark .bg-fuchsia-100 { background-color: hsl(262 83% 66% / 0.22); }
+.dark .bg-pink-50, .dark .bg-pink-100 { background-color: hsl(340 80% 65% / 0.22); }
+
+  /* Colored text → brightened for contrast on dark surfaces */
+  .dark .text-blue-600, .dark .text-blue-700, .dark .text-blue-800, .dark .text-indigo-600, .dark .text-indigo-700 { color: hsl(213 94% 72%); }
+  .dark .text-sky-600, .dark .text-sky-700, .dark .text-cyan-600, .dark .text-cyan-700, .dark .text-teal-600, .dark .text-teal-700 { color: hsl(187 95% 60%); }
+  .dark .text-green-500, .dark .text-green-600, .dark .text-green-700,
+  .dark .text-emerald-500, .dark .text-emerald-600, .dark .text-emerald-700 { color: hsl(160 70% 55%); }
+  .dark .text-red-500, .dark .text-red-600, .dark .text-red-700,
+  .dark .text-rose-500, .dark .text-rose-600, .dark .text-rose-700 { color: hsl(0 85% 68%); }
+  .dark .text-amber-500, .dark .text-amber-600, .dark .text-amber-700,
+  .dark .text-yellow-600, .dark .text-yellow-700 { color: hsl(38 92% 64%); }
+  .dark .text-orange-500, .dark .text-orange-600, .dark .text-orange-700 { color: hsl(var(--orange-400)); }
+  .dark .text-purple-600, .dark .text-purple-700, .dark .text-violet-600, .dark .text-violet-700 { color: hsl(262 84% 74%); }
+  .dark .text-pink-600, .dark .text-pink-700 { color: hsl(340 80% 74%); }
