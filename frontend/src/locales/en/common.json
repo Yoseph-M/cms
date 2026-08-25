@@ -37,5 +37,12 @@
     "english": "English",
     "amharic": "አማርኛ",
     "description": "Your language preference is saved to your account and restored on any device."
+  },
+  "theme": {
+    "label": "Appearance",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "description": "Choose light or dark mode. \"System\" follows your device setting. Saved per device."
   }
 }
