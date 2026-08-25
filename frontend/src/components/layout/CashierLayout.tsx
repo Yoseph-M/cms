@@ -58,10 +58,10 @@ const CashierLayoutInner: React.FC = () => {
   return (
     <div
       className={cn(
-        'h-screen w-screen flex overflow-hidden text-slate-800 relative',
+        'h-screen w-screen flex overflow-hidden text-foreground relative',
         // Warm cream for the live POS dashboard, cool slate for everything else —
         // same convention as the Owner layout.
-        isDashboard ? 'bg-[#fdfaf6]' : 'bg-[#F1F5F9]',
+        isDashboard ? 'bg-[hsl(var(--canvas-warm))]' : 'bg-[hsl(var(--canvas-cool))]',
       )}
     >
       {/* Subtle radial glow — warm on dashboard, cool elsewhere */}
@@ -70,8 +70,8 @@ const CashierLayoutInner: React.FC = () => {
         className={cn(
           'pointer-events-none absolute inset-0',
           isDashboard
-            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,rgba(255,173,102,0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,rgba(255,236,210,0.55),transparent_60%)]'
-            : 'bg-[radial-gradient(120%_80%_at_0%_0%,rgba(148,163,184,0.18),transparent_55%),radial-gradient(100%_70%_at_100%_100%,rgba(203,213,225,0.35),transparent_60%)]',
+            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--orange-400)/0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--orange-200)/0.35),transparent_60%)]'
+            : 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--primary)/0.08),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--accent)/0.10),transparent_60%)]',
         )}
       />
 
@@ -81,7 +81,7 @@ const CashierLayoutInner: React.FC = () => {
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
         className={cn(
           'shrink-0 sticky top-0 h-screen flex flex-col z-20',
-          'bg-white border-r border-[#ece6dd]',
+          'bg-[hsl(var(--sidebar))] border-r border-[hsl(var(--shell-border))]',
         )}
       >
         <div
@@ -94,7 +94,7 @@ const CashierLayoutInner: React.FC = () => {
             <button
               onClick={toggle}
               aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors"
+              className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
             >
               <PanelLeftRounded className="w-5 h-5" />
             </button>
@@ -105,7 +105,7 @@ const CashierLayoutInner: React.FC = () => {
           {grouped.map(({ group, items }) => (
             <div key={group}>
               {!collapsed && GROUP_LABELS[group] !== 'Insights' && (
-                <p className="px-4 mb-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                <p className="px-4 mb-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                   {GROUP_LABELS[group]}
                 </p>
               )}
@@ -119,8 +119,8 @@ const CashierLayoutInner: React.FC = () => {
                       end={'end' in link ? link.end : false}
                       className={({ isActive }) =>
                         `group relative flex items-center ${collapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
-                          ? 'text-orange-600 bg-[#fff5eb]'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                          ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
                         }`
                       }
                     >
@@ -128,8 +128,8 @@ const CashierLayoutInner: React.FC = () => {
                         <>
                           <Icon
                             className={`relative w-5 h-5 shrink-0 transition-colors ${isActive
-                              ? 'text-orange-500'
-                              : 'text-slate-400 group-hover:text-slate-600'
+                              ? 'text-[hsl(var(--orange-500))]'
+                              : 'text-muted-foreground/70 group-hover:text-muted-foreground'
                               }`}
                             strokeWidth={2.5}
                           />
@@ -158,7 +158,7 @@ const CashierLayoutInner: React.FC = () => {
         {/* System Settings — pinned to the bottom of the sidebar */}
         <div
           className={cn(
-            'shrink-0 border-t border-[#ece6dd] p-3',
+            'shrink-0 border-t border-[hsl(var(--shell-border))] p-3',
             collapsed ? 'flex justify-center' : '',
           )}
         >
@@ -171,8 +171,8 @@ const CashierLayoutInner: React.FC = () => {
                   ? 'justify-center w-12 h-12 mx-auto'
                   : 'gap-3 px-4 h-11 w-full',
                 isActive
-                  ? 'text-orange-600 bg-[#fff5eb]'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50',
+                  ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70',
               )
             }
           >
@@ -181,7 +181,7 @@ const CashierLayoutInner: React.FC = () => {
                 <SYSTEM_SETTINGS.icon
                   className={cn(
                     'shrink-0 w-[18px] h-[18px]',
-                    isActive ? 'text-orange-500' : 'text-slate-400 group-hover:text-slate-600',
+                    isActive ? 'text-[hsl(var(--orange-500))]' : 'text-muted-foreground/70 group-hover:text-muted-foreground',
                   )}
                   strokeWidth={2.25}
                 />
