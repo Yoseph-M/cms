@@ -28,7 +28,7 @@ import {
   UtensilsCrossed,
   Search,
   Upload,
-  ArrowDownWideNarrow,
+  ArrowUpDown,
   CheckSquare,
   XSquare,
   Check,
@@ -88,6 +88,25 @@ const EMPTY_FORM = {
   imageUrl: '',
   isAvailable: true,
 };
+
+const StatCard: React.FC<{
+  icon: LucideIcon;
+  iconClass: string;
+  value: number;
+  label: string;
+}> = ({ icon: Icon, iconClass, value, label }) => (
+  <Card className="p-5 flex items-center gap-4">
+    <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center shrink-0', iconClass)}>
+      <Icon className="w-6 h-6" />
+    </div>
+    <div className="min-w-0">
+      <p className="text-2xl font-bold text-foreground leading-none tracking-tight">
+        <AnimatedNumber value={value} />
+      </p>
+      <p className="text-sm text-muted-foreground mt-1.5 font-medium truncate">{label}</p>
+    </div>
+  </Card>
+);
 
 interface MenuCatalogProps {
   canEdit?: boolean;
@@ -631,72 +650,43 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
   return (
     <div className="space-y-5">
-      <div className={cn('grid gap-3', showAvailability ? 'grid-cols-4' : 'grid-cols-2')}>
-        <Card className="p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <Layers className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-xl font-bold text-foreground leading-none">
-              <AnimatedNumber value={stats.total} />
-            </p>
-            <p className="text-xs text-muted-foreground mt-1 font-medium">Total Items</p>
-          </div>
-        </Card>
+      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-2 xl:grid-cols-4' : 'grid-cols-2')}>
+        <StatCard icon={Layers} iconClass="bg-primary/10 text-primary" value={stats.total} label="Total Items" />
         {showAvailability ? (
           <>
-            <Card className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[hsl(var(--success))]/10 text-success flex items-center justify-center shrink-0">
-                <CircleCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xl font-bold text-foreground leading-none">
-                  <AnimatedNumber value={stats.available} />
-                </p>
-                <p className="text-xs text-muted-foreground mt-1 font-medium">Available Now</p>
-              </div>
-            </Card>
-            <Card className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center shrink-0">
-                <EyeOff className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xl font-bold text-foreground leading-none">
-                  <AnimatedNumber value={stats.hidden} />
-                </p>
-                <p className="text-xs text-muted-foreground mt-1 font-medium">Unavailable Items</p>
-              </div>
-            </Card>
+            <StatCard
+              icon={CircleCheck}
+              iconClass="bg-[hsl(var(--success))]/10 text-success"
+              value={stats.available}
+              label="Available Now"
+            />
+            <StatCard
+              icon={EyeOff}
+              iconClass="bg-destructive/10 text-destructive"
+              value={stats.hidden}
+              label="Unavailable Items"
+            />
           </>
         ) : null}
-        <Card className="p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-secondary text-muted-foreground flex items-center justify-center shrink-0">
-            <UtensilsCrossed className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-xl font-bold text-foreground leading-none">
-              <AnimatedNumber value={stats.categories} />
-            </p>
-            <p className="text-xs text-muted-foreground mt-1 font-medium">Categories</p>
-          </div>
-        </Card>
+        <StatCard icon={UtensilsCrossed} iconClass="bg-secondary text-slate-600" value={stats.categories} label="Categories" />
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap order-last w-full lg:order-first lg:w-auto min-w-0">
+      <Card className="p-4 sm:p-5 space-y-4">
+        {/* Row 1 — search, sort, primary actions */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap">
           <Input
             type="text"
             defaultValue={search}
             onChange={handleSearchChange}
             placeholder="Search menu items…"
             leftIcon={<Search className="w-4 h-4" />}
-            className="flex-1 sm:flex-none sm:w-44 xl:w-52 [&>input]:h-9"
+            className="flex-1 min-w-[200px]"
             aria-label="Search menu items"
           />
 
           <DropdownMenu>
-            <DropdownMenuTrigger aria-label="Sort menu items" className="shrink-0 w-[150px]">
-              <ArrowDownWideNarrow className="w-4 h-4 text-muted-foreground" />
+            <DropdownMenuTrigger aria-label="Sort menu items" className="shrink-0 w-[170px] h-11">
+              <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
               <span className="hidden xl:inline text-muted-foreground font-normal">Sort:</span>
               <span className="truncate">{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label}</span>
             </DropdownMenuTrigger>
@@ -713,110 +703,137 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0">
-              {categoryFilter === 'All'
-                ? <LayoutGrid className="w-4 h-4 text-muted-foreground" />
-                : React.createElement(CATEGORY_META[categoryFilter as MenuCategory].icon, { className: 'w-4 h-4 text-muted-foreground' })}
-              <span className="hidden xl:inline text-muted-foreground font-normal">Type:</span>
-              <span>{categoryFilter === 'All' ? 'All' : CATEGORY_META[categoryFilter as MenuCategory].label}</span>
-              <span className="text-[10px] font-bold rounded-md bg-background px-1.5 py-0.5 border border-border/60">
-                {categoryCounts[categoryFilter] ?? 0}
-              </span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              {CATEGORIES.map((cat) => {
-                const Icon = cat === 'All' ? LayoutGrid : CATEGORY_META[cat].icon;
-                return (
-                  <DropdownMenuItem
-                    key={cat}
-                    selected={categoryFilter === cat}
-                    onSelect={() => setCategoryFilter(cat)}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span>{cat === 'All' ? 'All' : CATEGORY_META[cat].label}</span>
-                    <span className="ml-auto text-xs text-muted-foreground font-mono">{categoryCounts[cat] ?? 0}</span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {canEdit && !selectMode && (
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap ml-auto shrink-0 justify-end">
+              <Button variant="outline" className="h-11" onClick={() => csvFileRef.current?.click()}>
+                <Upload className="w-4 h-4" />
+                Import CSV
+              </Button>
+              <Button id="add-menu-item-btn" className="h-11" onClick={openAdd}>
+                <Plus className="w-4 h-4" />
+                Add Item
+              </Button>
+            </div>
+          )}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger aria-label="View mode" className="shrink-0 w-[92px]">
-              {view === 'grid' ? <LayoutGrid className="w-4 h-4 text-muted-foreground" /> : <List className="w-4 h-4 text-muted-foreground" />}
-              <span>{view === 'grid' ? 'Grid' : 'List'}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36">
-              <DropdownMenuItem selected={view === 'grid'} onSelect={() => setView('grid')}>
-                <LayoutGrid className="w-4 h-4 shrink-0" />
-                Grid view
-              </DropdownMenuItem>
-              <DropdownMenuItem selected={view === 'list'} onSelect={() => setView('list')}>
-                <List className="w-4 h-4 shrink-0" />
-                List view
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {canEdit && selectMode && (
+            <div className="flex items-center gap-2 flex-wrap ml-auto shrink-0 justify-end">
+              <Button variant="outline" size="sm" onClick={selectAllVisible} disabled={visibleItems.length === 0}>
+                <CheckSquare className="w-3.5 h-3.5" />
+                Select All ({visibleItems.length})
+              </Button>
+              <Button variant="outline" size="sm" onClick={clearSelection} disabled={selectedIds.size === 0}>
+                <XSquare className="w-3.5 h-3.5" />
+                Clear
+              </Button>
+              {showAvailability && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => handleBulkAvailability(true)} disabled={selectedIds.size === 0 || bulkActioning}>
+                    Mark Available
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => handleBulkAvailability(false)} disabled={selectedIds.size === 0 || bulkActioning}>
+                    Mark Unavailable
+                  </Button>
+                </>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => { setSelectMode(false); clearSelection(); }}>
+                Exit Select
+              </Button>
+              {selectedIds.size > 0 && (
+                <Badge variant="default" className="text-xs">
+                  {selectedIds.size} selected
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
 
-        {canEdit && (
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap ml-auto shrink-0 justify-end">
-            {selectMode ? (
-              <>
-                <Button variant="outline" size="sm" onClick={selectAllVisible} disabled={visibleItems.length === 0}>
-                  <CheckSquare className="w-3.5 h-3.5" />
-                  Select All ({visibleItems.length})
-                </Button>
-                <Button variant="outline" size="sm" onClick={clearSelection} disabled={selectedIds.size === 0}>
-                  <XSquare className="w-3.5 h-3.5" />
-                  Clear
-                </Button>
-                {showAvailability && (
-                  <>
-                    <Button size="sm" variant="outline" onClick={() => handleBulkAvailability(true)} disabled={selectedIds.size === 0 || bulkActioning}>
-                      Mark Available
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleBulkAvailability(false)} disabled={selectedIds.size === 0 || bulkActioning}>
-                      Mark Unavailable
-                    </Button>
-                  </>
-                )}
-                <Button size="sm" variant="ghost" onClick={() => { setSelectMode(false); clearSelection(); }}>
-                  Exit Select
-                </Button>
-                {selectedIds.size > 0 && (
-                  <Badge variant="default" className="text-xs">
-                    {selectedIds.size} selected
-                  </Badge>
-                )}
-              </>
-            ) : (
-              <>
-                <Button id="add-menu-item-btn" onClick={openAdd}>
-                  <Plus className="w-4 h-4" />
-                  Add Item
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => csvFileRef.current?.click()}>
-                  <Upload className="w-3.5 h-3.5" />
-                  Import CSV
-                </Button>
-                {canSelect && (
-                  <Button variant="ghost" size="sm" onClick={() => setSelectMode(true)}>
-                    <CheckSquare className="w-3.5 h-3.5" />
-                    Select
-                  </Button>
-                )}
-              </>
+        {/* Divider */}
+        <div className="border-t border-border/40" />
+
+        {/* Row 2 — result count, category filter, view mode, select */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-between">
+          <p className="text-xs text-muted-foreground font-medium hidden sm:block">
+            Showing <span className="font-bold text-foreground">{visibleItems.length}</span> of{' '}
+            <span className="font-bold text-foreground">{displayItems.length}</span> items
+          </p>
+
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap ml-auto justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0 h-11">
+                {categoryFilter === 'All'
+                  ? <LayoutGrid className="w-4 h-4 text-muted-foreground" />
+                  : React.createElement(CATEGORY_META[categoryFilter as MenuCategory].icon, { className: 'w-4 h-4 text-muted-foreground' })}
+                <span>{categoryFilter === 'All' ? 'All' : CATEGORY_META[categoryFilter as MenuCategory].label}</span>
+                <span className="text-[10px] font-bold rounded-md bg-background px-1.5 py-0.5 border border-border/60">
+                  {categoryCounts[categoryFilter] ?? 0}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {CATEGORIES.map((cat) => {
+                  const Icon = cat === 'All' ? LayoutGrid : CATEGORY_META[cat].icon;
+                  return (
+                    <DropdownMenuItem
+                      key={cat}
+                      selected={categoryFilter === cat}
+                      onSelect={() => setCategoryFilter(cat)}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span>{cat === 'All' ? 'All' : CATEGORY_META[cat].label}</span>
+                      <span className="ml-auto text-xs text-muted-foreground font-mono">{categoryCounts[cat] ?? 0}</span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger aria-label="View mode" className="shrink-0 w-[104px] h-11">
+                {view === 'grid' ? <LayoutGrid className="w-4 h-4 text-muted-foreground" /> : <List className="w-4 h-4 text-muted-foreground" />}
+                <span>{view === 'grid' ? 'Grid' : 'List'}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem selected={view === 'grid'} onSelect={() => setView('grid')}>
+                  <LayoutGrid className="w-4 h-4 shrink-0" />
+                  Grid view
+                </DropdownMenuItem>
+                <DropdownMenuItem selected={view === 'list'} onSelect={() => setView('list')}>
+                  <List className="w-4 h-4 shrink-0" />
+                  List view
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {canSelect && (
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={selectMode}
+                aria-label="Select mode"
+                onClick={() => {
+                  if (selectMode) {
+                    setSelectMode(false);
+                    clearSelection();
+                  } else {
+                    setSelectMode(true);
+                  }
+                }}
+                className="flex items-center gap-2.5 h-11 px-2 rounded-lg text-sm font-medium text-foreground hover:bg-accent/10 transition-colors"
+              >
+                <span
+                  className={cn(
+                    'w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors',
+                    selectMode ? 'bg-primary border-primary' : 'bg-background border-border'
+                  )}
+                >
+                  {selectMode && <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />}
+                </span>
+                Select
+              </button>
             )}
           </div>
-        )}
-      </div>
-
-      <p className="text-xs text-muted-foreground font-medium -mt-2 hidden sm:block">
-        Showing <span className="font-bold text-foreground">{visibleItems.length}</span> of{' '}
-        <span className="font-bold text-foreground">{displayItems.length}</span> items
-      </p>
+        </div>
+      </Card>
 
       <input
         ref={csvFileRef}
