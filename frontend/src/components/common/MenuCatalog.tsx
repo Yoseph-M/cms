@@ -111,9 +111,10 @@ const StatCard: React.FC<{
 interface MenuCatalogProps {
   canEdit?: boolean;
   showAvailability?: boolean;
+  allowCsvImport?: boolean;
 }
 
-export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAvailability = true }) => {
+export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAvailability = true, allowCsvImport = true }) => {
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
 
@@ -650,7 +651,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
   return (
     <div className="space-y-5">
-      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-2 xl:grid-cols-4' : 'grid-cols-2')}>
+      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-4' : 'grid-cols-2')}>
         <StatCard icon={Layers} iconClass="bg-primary/10 text-primary" value={stats.total} label="Total Items" />
         {showAvailability ? (
           <>
@@ -672,7 +673,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       </div>
 
       <Card className="p-4 sm:p-5 space-y-4">
-        {/* Row 1 — search, sort, primary actions */}
+        {/* Row 1 — search, primary actions */}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap">
           <Input
             type="text"
@@ -684,31 +685,14 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             aria-label="Search menu items"
           />
 
-          <DropdownMenu>
-            <DropdownMenuTrigger aria-label="Sort menu items" className="shrink-0 w-[170px] h-11">
-              <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
-              <span className="hidden xl:inline text-muted-foreground font-normal">Sort:</span>
-              <span className="truncate">{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              {SORT_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  selected={sortBy === opt.value}
-                  onSelect={() => setSortBy(opt.value)}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           {canEdit && !selectMode && (
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap ml-auto shrink-0 justify-end">
-              <Button variant="outline" className="h-11" onClick={() => csvFileRef.current?.click()}>
-                <Upload className="w-4 h-4" />
-                Import CSV
-              </Button>
+              {allowCsvImport && (
+                <Button variant="outline" className="h-11" onClick={() => csvFileRef.current?.click()}>
+                  <Upload className="w-4 h-4" />
+                  Import CSV
+                </Button>
+              )}
               <Button id="add-menu-item-btn" className="h-11" onClick={openAdd}>
                 <Plus className="w-4 h-4" />
                 Add Item
@@ -759,6 +743,24 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
           </p>
 
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap ml-auto justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger aria-label="Sort menu items" className="shrink-0 w-[170px] h-11">
+                <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+                <span>{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {SORT_OPTIONS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    selected={sortBy === opt.value}
+                    onSelect={() => setSortBy(opt.value)}
+                  >
+                    {opt.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <DropdownMenu>
               <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0 h-11">
                 {categoryFilter === 'All'
