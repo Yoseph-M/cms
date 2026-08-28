@@ -258,6 +258,13 @@ export const CashierTicketsPage: React.FC = () => {
   const [phase, setPhase] = useState<PaymentPhase>('idle');
   const isSettlingRef = useRef(false);
 
+  // Reset payment state when selecting a different order
+  useEffect(() => {
+    setPhase('idle');
+    setPaymentMethod('CASH');
+    isSettlingRef.current = false;
+  }, [selectedOrderId]);
+
   /* ── Cancellation ── */
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellationState, setCancellationState] = useState<'idle' | 'processing' | 'complete'>('idle');
