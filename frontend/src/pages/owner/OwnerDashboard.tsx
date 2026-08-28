@@ -145,7 +145,7 @@ export const OwnerDashboard: React.FC = () => {
   const [topItems, setTopItems] = useState<TopItem[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [recentOrders, setRecentOrders] = useState<RecentOrderRow[]>([]);
-  const [completedCount, setCompletedCount] = useState(0);
+  const [totalSales, setTotalSales] = useState<{ totalRevenue: number, orderCount: number } | null>(null);
   const [profitLoss, setProfitLoss] = useState<ProfitLossRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -162,7 +162,7 @@ export const OwnerDashboard: React.FC = () => {
           axiosClient.get('/analytics/top-items', { params: { from: fromIso, to: toIso, limit: 5 } }),
           axiosClient.get('/analytics/category-split', { params: { from: fromIso, to: toIso } }),
           axiosClient.get('/orders', { params: { limit: 8, sort: 'createdAt:desc' } }),
-          axiosClient.get('/orders', { params: { status: 'PAID', from: fromIso, to: toIso, limit: 1 } }),
+          axiosClient.get('/analytics/sales/total'),
           axiosClient.get('/analytics/profit-loss'),
         ]);
         if (!alive) return;
@@ -172,8 +172,7 @@ export const OwnerDashboard: React.FC = () => {
         setCategories(cat.data || []);
         const orderList = ord.data?.data || ord.data || [];
         setRecentOrders(Array.isArray(orderList) ? orderList : []);
-        const compList = comp.data?.data || comp.data;
-        setCompletedCount(Array.isArray(compList) ? compList.length : 0);
+        setTotalSales(comp.data || null);
         setProfitLoss(pl.data || null);
       } catch (err) {
         console.error('owner dashboard load error', err);
@@ -192,11 +191,12 @@ export const OwnerDashboard: React.FC = () => {
     return {
       totalOrders: daily?.orderCount ?? 0,
       inProgress: daily?.activeOrdersCount ?? 0,
-      completed: completedCount,
-      totalRevenue: daily?.totalRevenue ?? 0,
+      completed: totalSales?.orderCount ?? 0,
+      todayRevenue: daily?.totalRevenue ?? 0,
+      totalRevenue: totalSales?.totalRevenue ?? 0,
       revenueDelta: daily?.deltas.revenueVsPriorDay ?? null,
     };
-  }, [daily, completedCount]);
+  }, [daily, totalSales]);
 
   /* ── Line chart: monthly revenue + expenses derived from the real
         profit/loss aggregate (payroll + other expenses vs revenue) ── */
@@ -282,6 +282,7 @@ export const OwnerDashboard: React.FC = () => {
             totalOrders={kpis.totalOrders}
             inProgress={kpis.inProgress}
             completed={kpis.completed}
+            todayRevenue={kpis.todayRevenue}
             totalRevenue={kpis.totalRevenue}
           />
 
