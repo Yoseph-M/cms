@@ -13,7 +13,6 @@ import {
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
-import { exportCSV } from '../../utils/csvExport';
 
 function exportPDF(title: string, rows: string[][]) {
   const body = rows.map((r) => r.join('\t')).join('\n');
@@ -245,18 +244,6 @@ export const OwnerFinance: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topItm.data, topItemsMode]);
 
-  const exportRange = useCallback(
-    (title: string, data: unknown, filename: string) => {
-      const records = data as Record<string, unknown>[] | null | undefined;
-      if (!records?.length) return;
-      exportCSV(records, filename, {
-        title,
-        meta: [`Period: ${fmtDate(new Date(from))} to ${fmtDate(new Date(to))}`, `Generated: ${new Date().toLocaleString()}`],
-      });
-    },
-    [from, to]
-  );
-
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -307,21 +294,6 @@ export const OwnerFinance: React.FC = () => {
         loading={pnl.loading}
         error={pnl.error}
         onRetry={pnl.refetch}
-        onExportCSV={() =>
-          pnl.data &&
-          exportRange(
-            'Revenue vs Costs',
-            [
-              {
-                revenue: formatCurrency(pnl.data.revenue),
-                payrollCost: formatCurrency(pnl.data.payrollCost),
-                otherExpenses: formatCurrency(pnl.data.otherExpenses),
-                netProfit: formatCurrency(pnl.data.netProfit),
-              },
-            ],
-            'profit-loss'
-          )
-        }
         empty={false}
       >
         {pnl.data && (
@@ -365,7 +337,6 @@ export const OwnerFinance: React.FC = () => {
         onRetry={trend.refetch}
         empty={!trend.data?.length}
         emptyMsg="No revenue in this date range."
-        onExportCSV={() => exportRange('Revenue Trend', trend.data, 'revenue-trend')}
         onExportPDF={() => trend.data && exportPDF('Revenue Trend', [['Date', 'Revenue', 'Orders'], ...trend.data.map((d) => [d.date, String(d.revenue), String(d.orderCount)])])}
         headerExtra={
           <div className="flex gap-1">
@@ -393,7 +364,6 @@ export const OwnerFinance: React.FC = () => {
         error={topItm.error}
         onRetry={topItm.refetch}
         empty={!topItm.data?.length}
-          onExportCSV={() => exportRange('Top Items', topItm.data, 'top-items')}
         headerExtra={
           <div className="flex gap-1">
             <button onClick={() => setTopItemsMode('qty')} className={`px-2 py-1 text-xs rounded border ${topItemsMode === 'qty' ? 'border-primary bg-primary/10' : 'border-border'}`}>Qty</button>
@@ -416,7 +386,6 @@ export const OwnerFinance: React.FC = () => {
           error={staffP.error}
           onRetry={staffP.refetch}
           empty={!staffP.data?.length}
-          onExportCSV={() => exportRange('Staff Leaderboard', staffP.data, 'staff-performance')}
           headerExtra={
             <Select value={staffRole} onChange={(e) => setStaffRole(e.target.value)} className="h-7 text-xs w-28">
               <option value="">All roles</option>
@@ -455,7 +424,6 @@ export const OwnerFinance: React.FC = () => {
           onRetry={cancels.refetch}
           empty={!cancels.data?.length}
           emptyMsg="No cancellations in this period."
-          onExportCSV={() => exportRange('Cancellation Analysis', cancels.data, 'cancellations')}
         >
           <div className="space-y-2">
             {(cancels.data || []).slice(0, 10).map((d, i) => {
@@ -484,7 +452,6 @@ export const OwnerFinance: React.FC = () => {
         error={peak.error}
         onRetry={peak.refetch}
         empty={!peak.data?.length}
-        onExportCSV={() => exportRange('Peak Hours', peak.data, 'peak-hours')}
       >
         <div className="overflow-x-auto">
           <div style={{ minWidth: 600 }}>
@@ -518,7 +485,6 @@ export const OwnerFinance: React.FC = () => {
           error={catSpl.error}
           onRetry={catSpl.refetch}
           empty={!catSpl.data?.length}
-          onExportCSV={() => exportRange('Revenue by Category', catSpl.data, 'category-split')}
         >
           <Donut
             slices={(catSpl.data || []).map((d, i) => ({
@@ -535,7 +501,6 @@ export const OwnerFinance: React.FC = () => {
           error={payMth.error}
           onRetry={payMth.refetch}
           empty={!payMth.data?.length}
-          onExportCSV={() => exportRange('Payment Method Split', payMth.data, 'payment-methods')}
         >
           <Donut
             slices={(payMth.data || []).map((d, i) => ({
