@@ -40,6 +40,22 @@ export const changeOwnPasswordSchema = z.object({
   newPassword: z.string().min(6, 'New password must be at least 6 characters'),
 });
 
+/** User-generated avatar — same constraints as menu images (data URL or http(s) URL). */
+const avatarUrlSchema = z
+  .string()
+  .max(3_500_000, 'Image is too large (max ~2.5MB)')
+  .refine(
+    (v) => /^data:image\//i.test(v) || /^https?:\/\//i.test(v),
+    'Image must be a data URL or http(s) URL'
+  );
+
+export const updateOwnProfileSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').optional(),
+  email: z.string().email('Valid email is required').optional().nullable(),
+  phone: z.string().min(5, 'Valid phone number is required').optional(),
+  avatarUrl: avatarUrlSchema.nullable().optional(),
+});
+
 export const updateSystemSettingSchema = z.object({
   value: z.string().min(1, 'Value is required'),
 });
