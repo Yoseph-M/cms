@@ -430,26 +430,12 @@ export const ProfilePage: React.FC = () => {
                     <span className="leading-none">{firstName.charAt(0).toUpperCase()}</span>
                   )}
                 </div>
-                {/* Hover overlay: dark tint + centered camera icon that "moves in" on hover */}
+                {/* Camera icon — small chip tucked inside the top-right of the avatar box, fades in on hover */}
                 <span
                   aria-hidden
-                  className="absolute inset-0 rounded-2xl bg-slate-900/0 group-hover:bg-slate-900/40 transition-colors duration-200 pointer-events-none"
-                />
-                <span
-                  aria-hidden
-                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-slate-900/85 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity"
                 >
-                  <span
-                    className={cn(
-                      'w-12 h-12 rounded-full bg-white text-slate-900 shadow-xl',
-                      'flex items-center justify-center',
-                      'opacity-0 -translate-y-1 scale-90',
-                      'group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100',
-                      'transition-all duration-200 ease-out',
-                    )}
-                  >
-                    <Camera className="w-5 h-5" />
-                  </span>
+                  <Camera className="w-3.5 h-3.5" />
                 </span>
                 {role !== 'OWNER' && (
                   <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-card border-2 border-card flex items-center justify-center shadow-md pointer-events-none">
@@ -465,7 +451,7 @@ export const ProfilePage: React.FC = () => {
                       e.stopPropagation();
                       removeAvatarPhoto();
                     }}
-                    className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-destructive/90 text-white shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-destructive"
+                    className="absolute bottom-2 right-2 w-7 h-7 rounded-full bg-destructive/90 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity hover:bg-destructive"
                     aria-label="Remove photo"
                     title="Remove photo"
                   >
