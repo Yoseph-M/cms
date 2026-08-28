@@ -241,11 +241,6 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Footer */}
-          <p className="mt-4 text-center text-xs text-gray-400">
-            {t('footer')}
-          </p>
         </div>
       </div>
     </>
