@@ -27,6 +27,7 @@ RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 COPY --from=builder /app/dist ./dist
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma ./prisma
+COPY swagger.yaml ./
 COPY package.json ./
 
 USER appuser
