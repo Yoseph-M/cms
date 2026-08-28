@@ -14,6 +14,7 @@ export interface User {
   role: Role;
   email?: string | null;
   phone: string;
+  avatarUrl?: string | null;
   salaryAmount: number;
   isActive: boolean;
   createdAt?: string;
