@@ -96,7 +96,10 @@ axiosClient.interceptors.response.use(
       } catch (refreshErr) {
         console.warn('Token refresh failed, logging out user', refreshErr);
         processQueue(refreshErr, null);
-        // refreshSession already calls logout/clearLocalAuth on failure
+        useAuthStore.getState().logout();
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
         return Promise.reject(error);
       }
     }
