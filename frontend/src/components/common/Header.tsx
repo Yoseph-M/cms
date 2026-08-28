@@ -246,14 +246,18 @@ export const Header: React.FC = () => {
               className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full border border-input hover:bg-card bg-card transition-colors shadow-sm"
               aria-label="Open profile menu"
             >
-              <div className="w-9 h-9 rounded-full overflow-hidden bg-secondary border border-border flex items-center justify-center shrink-0">
-                <img
-                  src={`https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(
-                    user.name || 'Felix',
-                  )}`}
-                  alt={user.name}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-9 h-9 rounded-full overflow-hidden bg-primary/15 text-primary text-xs font-bold flex items-center justify-center shrink-0">
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="px-1 truncate">
+                    {(user.name || '?').trim().charAt(0).toUpperCase() || '?'}
+                  </span>
+                )}
               </div>
               <div className="hidden md:block text-left leading-tight pr-1">
                 <p className="text-sm font-medium text-foreground">{user.name}</p>
