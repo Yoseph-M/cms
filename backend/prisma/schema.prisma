@@ -153,6 +153,7 @@ model User {
   role         Role
   email        String?  @unique
   phone        String
+  avatarUrl    String?
   passwordHash String?
   salaryAmount      Int      @default(0) // Stored in minor units (e.g. cents)
   isActive          Boolean  @default(true)
