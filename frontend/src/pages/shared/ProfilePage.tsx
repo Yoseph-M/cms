@@ -430,12 +430,12 @@ export const ProfilePage: React.FC = () => {
                     <span className="leading-none">{firstName.charAt(0).toUpperCase()}</span>
                   )}
                 </div>
-                {/* Camera icon — small chip tucked inside the top-right of the avatar box, fades in on hover */}
+                {/* Camera icon — sits on top of the avatar box (overlapping the top edge), fades in on hover */}
                 <span
                   aria-hidden
-                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-slate-900/85 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity"
+                  className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-slate-900/90 text-white shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity ring-2 ring-card"
                 >
-                  <Camera className="w-3.5 h-3.5" />
+                  <Camera className="w-4 h-4" />
                 </span>
                 {role !== 'OWNER' && (
                   <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-card border-2 border-card flex items-center justify-center shadow-md pointer-events-none">
