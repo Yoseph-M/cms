@@ -8,6 +8,7 @@ import {
   updateUserSchema,
   resetPasswordSchema,
   changeOwnPasswordSchema,
+  updateOwnProfileSchema,
 } from '../schemas';
 import { Role } from '@prisma/client';
 
@@ -23,6 +24,7 @@ router.patch(
   UsersController.changeOwnPassword
 );
 router.patch('/me/language', UsersController.changeLanguage);
+router.patch('/me', validate(updateOwnProfileSchema), UsersController.updateOwnProfile);
 
 // Admin staff management — Owner and Manager only
 router.use(requireRole([Role.OWNER, Role.MANAGER]));
