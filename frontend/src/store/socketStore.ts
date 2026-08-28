@@ -16,7 +16,8 @@ export const useSocketStore = create<SocketState>((set, get) => ({
   connect: () => {
     if (get().socket) return;
 
-    const socketInstance = io('/live', {
+    const baseUrl = import.meta.env.VITE_API_URL || '';
+    const socketInstance = io(`${baseUrl}/live`, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       autoConnect: true,
