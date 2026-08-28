@@ -228,24 +228,14 @@ export const ExpensesTracker: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
-      <section className="relative overflow-hidden rounded-2xl bg-slate-950 px-5 py-6 text-white shadow-[0_16px_40px_-22px_rgba(15,23,42,0.75)] sm:px-7 sm:py-7">
-        <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-primary/30 blur-3xl" />
-        <div className="absolute -bottom-28 right-36 h-44 w-44 rounded-full bg-amber-300/10 blur-3xl" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-              <Wallet className="h-5 w-5 text-amber-300" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t('expenses.title', { defaultValue: 'Expenses' })}</h1>
-            <p className="mt-1.5 max-w-xl text-sm text-slate-300">Keep business spending organized, review records quickly, and stay on top of outgoing cash.</p>
-          </div>
-          <Button id="add-expense-btn" onClick={openCreate} className="bg-white text-slate-950 hover:bg-slate-100 shadow-none">
-            <Plus className="w-4 h-4" />{t('expenses.addExpense', { defaultValue: 'Add Expense' })}
-          </Button>
-        </div>
-      </section>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">{t('expenses.title', { defaultValue: 'Expenses' })}</h1>
+        <Button id="add-expense-btn" onClick={openCreate}>
+          <Plus className="w-4 h-4" />{t('expenses.addExpense', { defaultValue: 'Add Expense' })}
+        </Button>
+      </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 grid-cols-3">
         <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Total in view" value={formatCurrency(totalSpent)} accent="text-primary" />
         <SummaryCard icon={<ReceiptText className="h-4 w-4" />} label="Expense records" value={String(expenses.length)} accent="text-sky-600" />
         <SummaryCard icon={<Tag className="h-4 w-4" />} label="Categories used" value={String(categoryCount)} accent="text-violet-600" />
