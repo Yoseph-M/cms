@@ -209,7 +209,7 @@ export const AppRoutes: React.FC = () => {
         >
           <Route index element={<Lazy><ShiftManager><CashierDashboard /></ShiftManager></Lazy>} />
           <Route path="tickets" element={<Lazy><ShiftManager><CashierTicketsPage /></ShiftManager></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit={settings['cashierMenuManagementEnabled'] === 'true'} /></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit={settings['cashierMenuManagementEnabled'] === 'true'} allowCsvImport={false} /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="settings" element={<Lazy><CashierSettings /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
