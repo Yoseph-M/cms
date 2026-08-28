@@ -141,6 +141,7 @@ export interface KpiCardsProps {
   totalOrders: number;
   inProgress: number;
   completed: number;
+  todayRevenue: number;
   totalRevenue: number;
 }
 
@@ -149,6 +150,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
   totalOrders,
   inProgress,
   completed,
+  todayRevenue,
   totalRevenue,
 }) => {
   return (
@@ -162,7 +164,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
       />
       <KpiCard
         label="Today's revenue"
-        value={totalRevenue}
+        value={todayRevenue}
         kind="currency"
         icon={DollarGlyph as unknown as LucideIcon}
         tone="mint"
