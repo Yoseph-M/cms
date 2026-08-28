@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { useToastStore } from '../../store/toastStore';
 import { axiosClient } from '../../api/axiosClient';
@@ -7,16 +7,12 @@ import { useMeQuery } from '../../hooks/useCachedQueries';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { FloatingCard } from '../../components/ui/FloatingCard';
 import { LoadingState } from '../../components/common/LoadingState';
 import {
   User as UserIcon,
   Lock,
-  LogOut,
-  Shield,
   Mail,
   Phone,
-  CalendarDays,
   Crown,
   Briefcase,
   Calculator,
@@ -25,16 +21,17 @@ import {
   Eye,
   EyeOff,
   Sparkles,
-  ArrowRight,
   BadgeCheck,
   KeyRound,
-  Activity,
-  ShieldCheck,
   AlertCircle,
+  Pencil,
+  X,
+  Camera,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { fileToCompressedDataUrl } from '../../utils/imageResize';
 import type { Role } from '../../types';
 
 /* ─── Role-themed config ─── */
@@ -52,7 +49,7 @@ const ROLE_META: Record<Role, RoleMeta> = {
   OWNER: {
     icon: Crown,
     label: 'Owner',
-    tagline: 'Full access to your business — finance, people, settings.',
+    tagline: 'You run the whole business: money, people, and settings.',
     cta: 'Open owner console',
     ctaTo: '/owner',
     tone: 'violet',
@@ -82,24 +79,8 @@ const ROLE_META: Record<Role, RoleMeta> = {
   BARISTA: { icon: UserIcon,  label: 'Barista', tagline: 'Bar-side access.',    cta: 'Open bar',      ctaTo: '/bar',     tone: 'blue',  gradient: 'from-brand-600 via-brand-500 to-cyan-400' },
 };
 
-const TONE_BADGE: Record<RoleMeta['tone'], string> = {
-  violet: 'bg-violet-500/10 text-violet-600 border-violet-500/30',
-  blue:   'bg-primary/10 text-primary border-primary/30',
-  cyan:   'bg-cyan-500/10 text-cyan-600 border-cyan-500/30',
-};
-
 /* ─── Helpers ─── */
-const initialsOf = (name: string) =>
-  name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
-
-const formatMemberSince = (iso?: string) => {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  } catch {
-    return '—';
-  }
-};
+const firstNameOf = (name: string) => name.trim().split(' ')[0] || '?';
 
 const passwordStrength = (pwd: string): { score: 0 | 1 | 2 | 3; label: string; color: string } => {
   if (!pwd) return { score: 0, label: 'Empty', color: 'bg-border' };
@@ -194,6 +175,46 @@ const PasswordInput: React.FC<{
   );
 };
 
+/* Ethiopian phone input: locked +251 prefix, 9 digit payload */
+const ET_PHONE_PREFIX = '+251';
+const ET_PHONE_DIGITS = 9;
+
+const EthiopiaPhoneInput: React.FC<{
+  /** Just the 9 digits (no prefix). */
+  digits: string;
+  onDigitsChange: (digits: string) => void;
+  required?: boolean;
+  autoComplete?: string;
+}> = ({ digits, onDigitsChange, required, autoComplete }) => {
+  return (
+    <div
+      className={cn(
+        'group flex items-center rounded-xl',
+        'bg-secondary/50 border border-input transition-all',
+        'hover:border-primary/40 focus-within:border-primary focus-within:bg-background',
+        'focus-within:shadow-[0_0_0_4px_hsl(217_91%_60%/0.14)]',
+      )}
+    >
+      <span className="pl-3 pr-1 flex items-center gap-1.5 text-sm select-none">
+        <Phone className="w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+        <span className="font-semibold text-foreground tabular-nums">{ET_PHONE_PREFIX}</span>
+      </span>
+      <span aria-hidden className="h-6 w-px bg-border/70" />
+      <input
+        type="tel"
+        inputMode="numeric"
+        autoComplete={autoComplete}
+        value={digits}
+        onChange={(e) => onDigitsChange(e.target.value.replace(/\D/g, '').slice(0, ET_PHONE_DIGITS))}
+        placeholder="9X XXX XXXX"
+        required={required}
+        maxLength={ET_PHONE_DIGITS}
+        className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground/70 text-sm h-11 px-3 outline-none border-0 disabled:opacity-50 tabular-nums"
+      />
+    </div>
+  );
+};
+
 const SectionTitle: React.FC<{
   icon: React.ReactNode;
   title: string;
@@ -216,19 +237,26 @@ const SectionTitle: React.FC<{
 
 /* ─── Page ─── */
 export const ProfilePage: React.FC = () => {
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const { addToast } = useToastStore();
+  const queryClient = useQueryClient();
   const meQuery = useMeQuery();
-  const navigate = useNavigate();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [draftName, setDraftName] = useState('');
+  const [draftEmail, setDraftEmail] = useState('');
+  const [draftPhone, setDraftPhone] = useState('');
+  const [draftAvatar, setDraftAvatar] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
   const role = user?.role as Role | undefined;
   const meta = role ? ROLE_META[role] : undefined;
-  const RoleIcon = meta?.icon ?? UserIcon;
 
   const me = meQuery.data;
   const strength = useMemo(() => passwordStrength(newPassword), [newPassword]);
@@ -238,7 +266,87 @@ export const ProfilePage: React.FC = () => {
 
   if (!user || !meta) return null;
 
-  const initials = initialsOf(user.name);
+  const displayName = isEditing ? draftName || user.name : user.name;
+  const displayEmail = isEditing ? draftEmail || '' : (me?.email ?? user.email ?? '');
+  const displayPhone = isEditing
+    ? (draftPhone ? `${ET_PHONE_PREFIX} ${draftPhone}` : '')
+    : (me?.phone ?? user.phone ?? '');
+  const avatarSrc = isEditing ? draftAvatar : (me?.avatarUrl ?? user.avatarUrl ?? null);
+  /* Avatar fallback: the first word of the user's name (e.g. "Girm" for "Girm Tsegaye"). */
+  const firstName = firstNameOf(displayName);
+
+  const startEditing = () => {
+    setDraftName(me?.name ?? user.name);
+    setDraftEmail(me?.email ?? user.email ?? '');
+    // Pull the last 9 digits so a stored value like "+251 91 234 5678" or "0911234567" works.
+    const storedPhone = (me?.phone ?? user.phone ?? '').toString();
+    const phoneDigits = storedPhone.replace(/\D/g, '').slice(-ET_PHONE_DIGITS);
+    setDraftPhone(phoneDigits);
+    setDraftAvatar(me?.avatarUrl ?? user.avatarUrl ?? null);
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+  };
+
+  const handleAvatarFile = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      addToast({ type: 'error', title: 'Invalid file', message: 'Please choose an image file.' });
+      return;
+    }
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file);
+      setDraftAvatar(dataUrl);
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Could not read image', message: extractErrorMessage(err, 'Please try a different image.') });
+    }
+  };
+
+  const openAvatarPicker = () => {
+    if (!isEditing) setIsEditing(true);
+    // Wait a tick so the file picker can open after the re-render.
+    requestAnimationFrame(() => avatarInputRef.current?.click());
+  };
+
+  const removeAvatarPhoto = () => {
+    if (!isEditing) setIsEditing(true);
+    setDraftAvatar(null);
+  };
+
+  const handleSaveProfile = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const name = draftName.trim();
+    // Re-assemble the full Ethiopia phone number from the 9 digit payload.
+    const phone = draftPhone ? `${ET_PHONE_PREFIX}${draftPhone}` : '';
+    if (name.length < 2) {
+      addToast({ type: 'error', title: 'Invalid name', message: 'Full name must be at least 2 characters.' });
+      return;
+    }
+    if (draftPhone.length !== ET_PHONE_DIGITS) {
+      addToast({ type: 'error', title: 'Invalid phone', message: `Phone number must be ${ET_PHONE_DIGITS} digits.` });
+      return;
+    }
+    setIsSavingProfile(true);
+    try {
+      const res = await axiosClient.patch('/users/me', {
+        name,
+        email: draftEmail.trim() || null,
+        phone,
+        avatarUrl: draftAvatar,
+      });
+      const updated = res.data;
+      queryClient.setQueryData(['me'], updated);
+      useAuthStore.getState().setUser({ ...user, ...updated });
+      addToast({ type: 'success', title: 'Profile updated', message: 'Your profile changes have been saved.' });
+      setIsEditing(false);
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Update failed', message: extractErrorMessage(err) });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,7 +387,6 @@ export const ProfilePage: React.FC = () => {
       >
         {/* Gradient header */}
         <div className={cn('relative h-32 bg-gradient-to-br', meta.gradient)}>
-          {/* Subtle pattern overlay */}
           <div
             aria-hidden
             className="absolute inset-0 opacity-30 mix-blend-soft-light"
@@ -290,7 +397,6 @@ export const ProfilePage: React.FC = () => {
             }}
           />
           <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-white/20" />
-          {/* Decorative orbs */}
           <span aria-hidden className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
           <span aria-hidden className="absolute -bottom-12 -left-6 w-32 h-32 rounded-full bg-cyan-300/20 blur-2xl" />
         </div>
@@ -299,55 +405,98 @@ export const ProfilePage: React.FC = () => {
         <div className="px-6 sm:px-8 pb-6 -mt-14">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5">
             <div className="flex flex-col sm:flex-row sm:items-end gap-5 min-w-0">
-              <div className="relative shrink-0">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={openAvatarPicker}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openAvatarPicker();
+                  }
+                }}
+                aria-label={avatarSrc ? 'Change photo' : 'Add photo'}
+                title={avatarSrc ? 'Change photo' : 'Add photo'}
+                className="group relative shrink-0 rounded-2xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+              >
                 <div className={cn(
                   'w-28 h-28 rounded-2xl bg-gradient-to-br text-white flex items-center justify-center',
-                  'font-display text-4xl font-bold shadow-2xl ring-4 ring-card',
+                  'font-display text-4xl font-bold shadow-2xl overflow-hidden',
                   meta.gradient,
                 )}>
-                  {initials}
+                  {avatarSrc ? (
+                    <img src={avatarSrc} alt={firstName} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="leading-none">{firstName.charAt(0).toUpperCase()}</span>
+                  )}
                 </div>
-                <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-card border-2 border-card flex items-center justify-center shadow-md">
-                  <span className="w-full h-full rounded-full bg-emerald-500 flex items-center justify-center">
-                    <BadgeCheck className="w-3.5 h-3.5 text-white" />
+                {/* Hover overlay: dark tint + centered camera icon that "moves in" on hover */}
+                <span
+                  aria-hidden
+                  className="absolute inset-0 rounded-2xl bg-slate-900/0 group-hover:bg-slate-900/40 transition-colors duration-200 pointer-events-none"
+                />
+                <span
+                  aria-hidden
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                >
+                  <span
+                    className={cn(
+                      'w-12 h-12 rounded-full bg-white text-slate-900 shadow-xl',
+                      'flex items-center justify-center',
+                      'opacity-0 -translate-y-1 scale-90',
+                      'group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100',
+                      'transition-all duration-200 ease-out',
+                    )}
+                  >
+                    <Camera className="w-5 h-5" />
                   </span>
                 </span>
+                {role !== 'OWNER' && (
+                  <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-card border-2 border-card flex items-center justify-center shadow-md pointer-events-none">
+                    <span className="w-full h-full rounded-full bg-emerald-500 flex items-center justify-center">
+                      <BadgeCheck className="w-3.5 h-3.5 text-white" />
+                    </span>
+                  </span>
+                )}
+                {avatarSrc && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeAvatarPhoto();
+                    }}
+                    className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-destructive/90 text-white shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-destructive"
+                    aria-label="Remove photo"
+                    title="Remove photo"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    handleAvatarFile(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
               </div>
               <div className="min-w-0 pb-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="font-display text-2xl sm:text-3xl font-bold text-foreground leading-tight truncate">
-                    {user.name}
+                    {firstName}
                   </h1>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1 max-w-md">{meta.tagline}</p>
                 <div className="flex items-center gap-2 mt-3 flex-wrap">
-                  <span className={cn(
-                    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border',
-                    TONE_BADGE[meta.tone],
-                  )}>
-                    <RoleIcon className="w-3.5 h-3.5" />
-                    {meta.label}
-                  </span>
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Active
                   </span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-secondary/60 text-muted-foreground border border-border/60">
-                    <CalendarDays className="w-3.5 h-3.5" />
-                    Since {formatMemberSince(me?.createdAt || user.createdAt)}
-                  </span>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Button
-                onClick={() => navigate(meta.ctaTo)}
-                className="shadow-brand h-10"
-              >
-                <RoleIcon className="w-4 h-4 mr-1.5" />
-                {meta.cta}
-                <ArrowRight className="w-3.5 h-3.5 ml-1" />
-              </Button>
             </div>
           </div>
         </div>
@@ -370,24 +519,99 @@ export const ProfilePage: React.FC = () => {
                 <SectionTitle
                   icon={<UserIcon className="w-5 h-5" />}
                   title="Account details"
-                  subtitle="Your contact info is managed by your Owner or Manager."
+                  subtitle={isEditing ? 'Update your details, then save.' : 'Your contact info, at a glance.'}
+                  badge={
+                    isEditing ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={cancelEditing}
+                          disabled={isSavingProfile}
+                          className="w-9 h-9 rounded-full bg-secondary text-foreground hover:bg-secondary/80 border border-border shadow-sm flex items-center justify-center transition-colors disabled:opacity-50"
+                          aria-label="Cancel editing"
+                          title="Cancel"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveProfile()}
+                          disabled={isSavingProfile}
+                          className="w-9 h-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm flex items-center justify-center transition-colors disabled:opacity-60"
+                          aria-label="Apply changes"
+                          title="Apply changes"
+                        >
+                          {isSavingProfile ? (
+                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={startEditing}
+                        className="w-9 h-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm flex items-center justify-center transition-colors"
+                        aria-label="Edit profile"
+                        title="Edit profile"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    )
+                  }
                 />
-                <div className="space-y-2.5">
-                  <FieldRow icon={<UserIcon className="w-4 h-4" />} label="Full name" value={me?.name ?? user.name} />
-                  <FieldRow icon={<Mail className="w-4 h-4" />}    label="Email"    value={me?.email ?? user.email} copyable />
-                  <FieldRow icon={<Phone className="w-4 h-4" />}    label="Phone"    value={me?.phone ?? user.phone} copyable />
-                  <FieldRow
-                    icon={<ShieldCheck className="w-4 h-4" />}
-                    label="Account status"
-                    value={me?.isActive === false ? 'Suspended' : 'Active'}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-4 flex items-start gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span>
-                    Need to update your contact details? Ask your Owner or Manager to update your staff record.
-                  </span>
-                </p>
+                {isEditing ? (
+                  <form onSubmit={handleSaveProfile} className="space-y-3.5">
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                        Full name
+                      </label>
+                      <Input
+                        leftIcon={<UserIcon className="w-4 h-4" />}
+                        value={draftName}
+                        onChange={(e) => setDraftName(e.target.value)}
+                        placeholder="Your full name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                        Email
+                      </label>
+                      <Input
+                        type="email"
+                        leftIcon={<Mail className="w-4 h-4" />}
+                        value={draftEmail}
+                        onChange={(e) => setDraftEmail(e.target.value)}
+                        placeholder="you@restaurant.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                        Phone
+                      </label>
+                      <EthiopiaPhoneInput
+                        digits={draftPhone}
+                        onDigitsChange={setDraftPhone}
+                        autoComplete="tel"
+                      />
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div className="space-y-2.5">
+                      <FieldRow icon={<UserIcon className="w-4 h-4" />} label="Full name" value={displayName} />
+                      <FieldRow icon={<Mail className="w-4 h-4" />}    label="Email"    value={displayEmail} copyable={!!displayEmail} />
+                      <FieldRow icon={<Phone className="w-4 h-4" />}    label="Phone"    value={displayPhone} copyable={!!displayPhone} />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-4 flex items-start gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span>
+                        Use the edit icon above to update your name, contact details, or profile photo.
+                      </span>
+                    </p>
+                  </>
+                )}
               </Card>
             </motion.div>
 
@@ -427,7 +651,6 @@ export const ProfilePage: React.FC = () => {
                       minLength={6}
                       required
                     />
-                    {/* Strength meter */}
                     <div className="mt-2 flex items-center gap-2">
                       <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
                         <motion.div
@@ -490,72 +713,6 @@ export const ProfilePage: React.FC = () => {
               </Card>
             </motion.div>
           </div>
-
-          {/* ─── Session / Activity card (role-flavoured) ─── */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
-          >
-            <Card className="p-6">
-              <SectionTitle
-                icon={<Activity className="w-5 h-5" />}
-                title="Session"
-                subtitle="Quick overview of your current sign-in."
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <FloatingCard className="p-4">
-                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    <Activity className="w-3 h-3" />
-                    Status
-                  </div>
-                  <p className="mt-2 font-display text-lg font-bold text-emerald-600 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Online
-                  </p>
-                </FloatingCard>
-                <FloatingCard className="p-4">
-                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    <Shield className="w-3 h-3" />
-                    Access level
-                  </div>
-                  <p className="mt-2 font-display text-lg font-bold text-foreground flex items-center gap-2">
-                    <RoleIcon className="w-4 h-4 text-primary" />
-                    {meta.label}
-                  </p>
-                </FloatingCard>
-              </div>
-            </Card>
-          </motion.div>
-
-          {/* ─── Danger zone (sign out) ─── */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.25 }}
-          >
-            <Card className="p-6 border-destructive/20 bg-gradient-to-br from-destructive/[0.04] to-transparent">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h3 className="font-display text-base font-bold text-foreground flex items-center gap-2">
-                    <LogOut className="w-4 h-4 text-destructive" />
-                    Sign out
-                  </h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    End your session on this device. You'll need to log in again to use the console.
-                  </p>
-                </div>
-                <Button
-                  variant="destructive"
-                  onClick={logout}
-                  className="shrink-0 shadow-sm"
-                >
-                  <LogOut className="w-4 h-4 mr-1.5" />
-                  Sign out
-                </Button>
-              </div>
-            </Card>
-          </motion.div>
         </>
       )}
     </div>
