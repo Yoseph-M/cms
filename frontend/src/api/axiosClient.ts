@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
 export const axiosClient = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api',
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -67,10 +67,10 @@ axiosClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     
-    // Do not intercept 401s for the refresh endpoint itself
-    const isRefreshRequest = originalRequest.url?.includes('/auth/refresh');
+    // Do not intercept 401s for any auth endpoints (login, logout, refresh)
+    const isAuthEndpoint = originalRequest.url?.includes('/auth/');
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isRefreshRequest) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
 
       const { isRefreshing, refreshSession } = useAuthStore.getState();
