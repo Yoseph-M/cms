@@ -11,6 +11,7 @@ router.use(requireRole([Role.OWNER, Role.MANAGER]));
 
 router.get('/sales/daily', AnalyticsController.getDailySales);
 router.get('/sales/monthly', AnalyticsController.getMonthlySales);
+router.get('/sales/total', AnalyticsController.getTotalSales);
 router.get('/sales/trend', AnalyticsController.getTrendSales);
 router.get('/top-items', AnalyticsController.getTopItems);
 router.get('/category-split', AnalyticsController.getCategorySplit);
