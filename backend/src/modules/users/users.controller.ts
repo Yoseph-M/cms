@@ -241,6 +241,7 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
       role: true,
       email: true,
       phone: true,
+      avatarUrl: true,
       salaryAmount: true,
       isActive: true,
       preferredLanguage: true,
@@ -254,6 +255,57 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
   }
 
   return res.json(user);
+}
+
+export async function updateOwnProfile(req: AuthenticatedRequest, res: Response) {
+  const userId = req.user!.userId;
+  const { name, email, phone, avatarUrl } = req.body;
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  // Keep the address unique when the email is being changed
+  if (email && email !== user.email) {
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing && existing.id !== userId) {
+      return res.status(400).json({ error: 'User with this email already exists.' });
+    }
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      ...(name !== undefined && { name }),
+      ...(email !== undefined && { email: email || null }),
+      ...(phone !== undefined && { phone }),
+      ...(avatarUrl !== undefined && { avatarUrl: avatarUrl || null }),
+    },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      email: true,
+      phone: true,
+      avatarUrl: true,
+      salaryAmount: true,
+      isActive: true,
+      preferredLanguage: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  await recordAudit({
+    actorId: req.user!.userId,
+    actionType: 'USER_UPDATED',
+    targetType: 'User',
+    targetId: userId,
+    details: { self: true, changes: req.body },
+  });
+
+  return res.json(updatedUser);
 }
 
 export async function changeOwnPassword(req: AuthenticatedRequest, res: Response) {
