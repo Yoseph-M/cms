@@ -17,6 +17,7 @@ RUN npm run build
 
 # ── Stage 3: production image ─────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
+ENV NODE_ENV=production
 WORKDIR /app
 
 # Run as non-root to limit blast radius
