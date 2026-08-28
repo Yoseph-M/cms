@@ -10,11 +10,11 @@ export const config = {
   jwtAccessExpiresIn: '15m',
   jwtRefreshExpiresIn: '7d',
   /** Frontend origin for CORS in production */
-  webAppUrl: process.env.WEB_APP_URL || 'http://localhost:5173',
+  webAppUrl: (process.env.WEB_APP_URL || 'http://localhost:5173').replace(/\/$/, ''),
   /** Extra origins (comma-separated), e.g. external ordering app */
   extraCorsOrigins: (process.env.CORS_EXTRA_ORIGINS || '')
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean),
   businessTimezone: process.env.BUSINESS_TIMEZONE || 'UTC',
 };
