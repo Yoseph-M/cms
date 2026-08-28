@@ -64,10 +64,11 @@ export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
       const p1 = pts[i];
       const p2 = pts[i + 1];
       const p3 = pts[i + 2] ?? p2;
+      const clampY = (y: number) => Math.max(padTop, Math.min(padTop + innerH, y));
       const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-      const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c1y = clampY(p1[1] + (p2[1] - p0[1]) / 6);
       const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-      const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      const c2y = clampY(p2[1] - (p3[1] - p1[1]) / 6);
       d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2[0]} ${p2[1]}`;
     }
     return d;
