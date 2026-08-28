@@ -115,6 +115,25 @@ export async function getDailySales(req: AuthenticatedRequest, res: Response) {
   });
 }
 
+export async function getTotalSales(req: AuthenticatedRequest, res: Response) {
+  const result = await prisma.order.aggregate({
+    _sum: {
+      totalAmount: true,
+    },
+    _count: {
+      id: true,
+    },
+    where: {
+      status: 'PAID',
+    },
+  });
+
+  return res.json({
+    totalRevenue: result._sum.totalAmount || 0,
+    orderCount: result._count.id || 0,
+  });
+}
+
 export async function getMonthlySales(req: AuthenticatedRequest, res: Response) {
   const offsetHours = 3;
   const now = new Date();
