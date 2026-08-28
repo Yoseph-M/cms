@@ -10,12 +10,8 @@ export const SidebarProfile: React.FC = () => {
 
   if (!user) return null;
 
-  const initials = user.name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  const firstName = user.name.trim().split(' ')[0] || '?';
+  const avatarUrl = user.avatarUrl;
 
   return (
     <div className={`mt-auto border-t border-border ${collapsed ? 'p-2' : 'p-3'}`}>
@@ -26,8 +22,12 @@ export const SidebarProfile: React.FC = () => {
         }`}
         title={collapsed ? 'Profile & Settings' : undefined}
       >
-        <div className="w-9 h-9 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center shrink-0">
-          {initials}
+        <div className="w-9 h-9 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={firstName} className="w-full h-full object-cover" />
+          ) : (
+            <span className="px-1 truncate">{(firstName || '?').charAt(0).toUpperCase()}</span>
+          )}
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0">
