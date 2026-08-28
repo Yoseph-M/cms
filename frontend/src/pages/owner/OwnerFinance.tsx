@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { DateRangePicker, computeRange, type DateRange } from '../../components/ui/DateRangePicker';
 import { Donut, BarChart, LineChart } from '../../components/ui/Charts';
-import { OrderVolumePulse } from '../../components/common/OrderVolumePulse';
+import { Tooltip } from '../../components/ui/Tooltip';
 import { motion } from 'framer-motion';
 import {
   Download, AlertCircle, RotateCcw, TrendingUp, ShoppingCart, DollarSign, PieChart
@@ -102,11 +102,9 @@ function useWidget<T>(endpoint: string, deps: Record<string, string> = {}) {
 }
 
 const DONUT_PALETTE = [
-  'hsl(var(--primary))',
-  'hsl(var(--accent))',
-  'hsl(142,55%,48%)',
-  'hsl(217,80%,58%)',
-  'hsl(280,65%,58%)',
+  'hsl(220,80%,55%)',
+  'hsl(35,90%,55%)',
+  'hsl(150,65%,42%)',
 ];
 
 const fmtDate = (d: Date) => d.toISOString().split('T')[0];
@@ -268,8 +266,6 @@ export const OwnerFinance: React.FC = () => {
         </div>
         <DateRangePicker value={range} onChange={setRange} />
       </div>
-
-      <OrderVolumePulse />
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -502,8 +498,10 @@ export const OwnerFinance: React.FC = () => {
                   const v = heatmap[dow]?.[h] || 0;
                   const intensity = maxHeat > 0 ? v / maxHeat : 0;
                   return (
-                    <div key={h} className="flex-1 mx-px" title={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`}>
-                      <div className="h-5 rounded-sm" style={{ background: `hsla(24,80%,55%,${0.08 + intensity * 0.87})` }} />
+                    <div key={h} className="flex-1 mx-px">
+                      <Tooltip label={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`} side="top">
+                        <div className="h-5 w-full rounded-sm cursor-default" style={{ background: `hsla(24,80%,55%,${0.08 + intensity * 0.87})` }} />
+                      </Tooltip>
                     </div>
                   );
                 })}
