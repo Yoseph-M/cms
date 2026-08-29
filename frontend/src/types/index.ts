@@ -12,7 +12,7 @@ export interface User {
   id: string;
   name: string;
   role: Role;
-  email?: string | null;
+  username?: string | null;
   phone: string;
   avatarUrl?: string | null;
   salaryAmount: number;
