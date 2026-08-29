@@ -30,7 +30,12 @@ const ROLE_TONE: Record<Role, 'default' | 'secondary' | 'success' | 'outline'> =
 export const ManagerDashboard: React.FC = () => {
   const { addToast } = useToastStore();
   const { t } = useTranslation('manager');
-  const { dateRange: headerDateRange, setDateRange: setHeaderDateRange, setShowDateRange } = useHeaderStore();
+  const { dateRange: headerDateRange, setDateRange: setHeaderDateRange, setShowDateRange, setPageTitle } = useHeaderStore();
+
+  useEffect(() => {
+    setPageTitle({ title: 'People & attendance', subtitle: 'Manage your team and the shift' });
+    return () => setPageTitle({ title: 'Overview', subtitle: '' });
+  }, [setPageTitle]);
 
   const today = new Date();
   const monthAgo = new Date(today);
@@ -215,7 +220,7 @@ export const ManagerDashboard: React.FC = () => {
                           <Badge variant={ROLE_TONE[staff.role] || 'outline'}>{staff.role}</Badge>
                         </td>
                         <td className="px-5 py-3 text-muted-foreground text-xs">
-                          {staff.email || staff.phone || '—'}
+                          {staff.username || staff.phone || '—'}
                         </td>
                         <td className="px-5 py-3 text-right">
                           <ToggleGroup
