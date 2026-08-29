@@ -151,7 +151,7 @@ model User {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   name         String
   role         Role
-  email        String?  @unique
+  username     String?  @unique
   phone        String
   avatarUrl    String?
   passwordHash String?
