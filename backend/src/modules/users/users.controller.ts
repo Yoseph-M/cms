@@ -25,7 +25,7 @@ export async function getUsers(req: AuthenticatedRequest, res: Response) {
       id: true,
       name: true,
       role: true,
-      email: true,
+      username: true,
       phone: true,
       salaryAmount: true,
       isActive: true,
@@ -41,7 +41,7 @@ export async function getUsers(req: AuthenticatedRequest, res: Response) {
 
 export async function createUser(req: AuthenticatedRequest, res: Response) {
   const callerRole = req.user!.role as Role;
-  const { name, role, email, phone, password, salaryAmount } = req.body;
+  const { name, role, username, phone, password, salaryAmount } = req.body;
 
   // Role matrix enforcement: Manager cannot create another Manager or Owner
   if (callerRole === Role.MANAGER && (role === Role.MANAGER || role === Role.OWNER)) {
@@ -57,11 +57,11 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
 
   const passHash = await hashPassword(password);
 
-  // Check unique email if provided
-  if (email) {
-    const existing = await prisma.user.findUnique({ where: { email } });
+  // Check unique username if provided
+  if (username) {
+    const existing = await prisma.user.findUnique({ where: { username } });
     if (existing) {
-      return res.status(400).json({ error: 'User with this email already exists.' });
+      return res.status(400).json({ error: 'User with this username already exists.' });
     }
   }
 
@@ -69,7 +69,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
     data: {
       name,
       role,
-      email: email || null,
+      username: username || null,
       phone,
       passwordHash: passHash,
       salaryAmount: salaryAmount || 0, // Already in cents from frontend
@@ -78,7 +78,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
       id: true,
       name: true,
       role: true,
-      email: true,
+      username: true,
       phone: true,
       salaryAmount: true,
       isActive: true,
@@ -121,7 +121,7 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
       id: true,
       name: true,
       role: true,
-      email: true,
+      username: true,
       phone: true,
       salaryAmount: true,
       isActive: true,
@@ -239,7 +239,7 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
       id: true,
       name: true,
       role: true,
-      email: true,
+      username: true,
       phone: true,
       avatarUrl: true,
       salaryAmount: true,
@@ -259,18 +259,18 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
 
 export async function updateOwnProfile(req: AuthenticatedRequest, res: Response) {
   const userId = req.user!.userId;
-  const { name, email, phone, avatarUrl } = req.body;
+  const { name, username, phone, avatarUrl } = req.body;
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || !user.isActive) {
     return res.status(404).json({ error: 'User not found.' });
   }
 
-  // Keep the address unique when the email is being changed
-  if (email && email !== user.email) {
-    const existing = await prisma.user.findUnique({ where: { email } });
+  // Keep the username unique when the username is being changed
+  if (username && username !== user.username) {
+    const existing = await prisma.user.findUnique({ where: { username } });
     if (existing && existing.id !== userId) {
-      return res.status(400).json({ error: 'User with this email already exists.' });
+      return res.status(400).json({ error: 'User with this username already exists.' });
     }
   }
 
@@ -278,7 +278,7 @@ export async function updateOwnProfile(req: AuthenticatedRequest, res: Response)
     where: { id: userId },
     data: {
       ...(name !== undefined && { name }),
-      ...(email !== undefined && { email: email || null }),
+      ...(username !== undefined && { username: username || null }),
       ...(phone !== undefined && { phone }),
       ...(avatarUrl !== undefined && { avatarUrl: avatarUrl || null }),
     },
@@ -286,7 +286,7 @@ export async function updateOwnProfile(req: AuthenticatedRequest, res: Response)
       id: true,
       name: true,
       role: true,
-      email: true,
+      username: true,
       phone: true,
       avatarUrl: true,
       salaryAmount: true,
