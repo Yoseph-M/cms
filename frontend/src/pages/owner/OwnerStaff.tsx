@@ -23,7 +23,7 @@ interface User {
   id: string;
   name: string;
   role: string;
-  email?: string;
+  username?: string;
   phone: string;
   salaryAmount: number;
   isActive: boolean;
@@ -40,7 +40,7 @@ const ROLE_COLORS: Record<string, any> = {
 
 const STAFF_ROLES = ['MANAGER', 'CASHIER', 'WAITER', 'COOKER', 'BARISTA'];
 
-const EMPTY_FORM = { name: '', role: 'CASHIER', email: '', phone: '', salaryAmount: '', credential: '' };
+const EMPTY_FORM = { name: '', role: 'CASHIER', username: '', phone: '', salaryAmount: '', credential: '' };
 
 export const OwnerStaff: React.FC = () => {
   const { addToast } = useToastStore();
@@ -87,7 +87,7 @@ export const OwnerStaff: React.FC = () => {
           statusFilter === 'all' || (statusFilter === 'active' ? u.isActive : !u.isActive);
         const matchSearch =
           u.name.toLowerCase().includes(search.toLowerCase()) ||
-          (u.email || '').toLowerCase().includes(search.toLowerCase());
+          (u.username || '').toLowerCase().includes(search.toLowerCase());
         return matchRole && matchStatus && matchSearch;
       }),
     [users, roleFilter, statusFilter, search]
@@ -102,7 +102,7 @@ export const OwnerStaff: React.FC = () => {
 
   const openEdit = (user: User) => {
     setEditingUser(user);
-    setForm({ name: user.name, role: user.role, email: user.email || '', phone: user.phone, salaryAmount: String(user.salaryAmount / 100), credential: '' }); // Convert cents to dollars for display
+    setForm({ name: user.name, role: user.role, username: user.username || '', phone: user.phone, salaryAmount: String(user.salaryAmount / 100), credential: '' }); // Convert cents to dollars for display
     setShowCredential(false);
     setSlideOverOpen(true);
   };
@@ -121,7 +121,7 @@ export const OwnerStaff: React.FC = () => {
       const payload: any = {
         name: form.name.trim(),
         role: form.role,
-        email: form.email || undefined,
+        username: form.username || undefined,
         phone: form.phone.trim(),
         salaryAmount: Math.round(parseFloat(form.salaryAmount) * 100) || 0, // Convert dollars to cents
       };
@@ -278,7 +278,7 @@ export const OwnerStaff: React.FC = () => {
                     <Badge variant={ROLE_COLORS[user.role]}>{user.role}</Badge>
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell text-muted-foreground text-xs">
-                    <div>{user.email || '—'}</div>
+                    <div>{user.username || '—'}</div>
                     <div>{user.phone}</div>
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell text-right font-mono text-sm">
@@ -345,7 +345,7 @@ export const OwnerStaff: React.FC = () => {
                 {[
                   { id: 'sf-name', label: 'Full Name', key: 'name', placeholder: 'e.g. Alice Johnson', required: true },
                   { id: 'sf-phone', label: 'Phone', key: 'phone', placeholder: '+251 9XX XXX XXX', required: true, phone: true },
-                  { id: 'sf-email', label: 'Email', key: 'email', placeholder: 'staff@cafe.com' },
+                  { id: 'sf-username', label: 'Username', key: 'username', placeholder: 'staff_username' },
                   { id: 'sf-salary', label: 'Monthly Salary (ETB)', key: 'salaryAmount', placeholder: '2500' },
                 ].map(field => (
                   <div key={field.key}>
