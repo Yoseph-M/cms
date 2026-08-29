@@ -31,7 +31,7 @@ export async function getAllLoginHistory(req: AuthenticatedRequest, res: Respons
         where,
         include: {
           user: {
-            select: { id: true, name: true, role: true, email: true, phone: true },
+            select: { id: true, name: true, role: true, username: true, phone: true },
           },
         },
         orderBy: { createdAt: 'desc' },
