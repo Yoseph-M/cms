@@ -12,7 +12,7 @@ interface AuthenticatedSocket extends Socket {
     userId: string;
     role: Role;
     name: string;
-    email?: string | null;
+    username?: string | null;
   };
 }
 
