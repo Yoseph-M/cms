@@ -75,6 +75,44 @@
     "title": "Printers"
   },
   "settings": {
-    "title": "Settings"
+    "title": "Settings",
+    "subtitle": "Manage your business profile, preferences, and what each role can do across the system.",
+    "reRunSetup": "Re-run Setup Guide",
+    "onThisPage": "On this page",
+    "groups": {
+      "profile": "Profile & business",
+      "preferences": "Preferences",
+      "access": "Access & permissions"
+    },
+    "sections": {
+      "business": {
+        "title": "Business profile",
+        "description": "Name, address, and currency shown on receipts and reports."
+      },
+      "language": {
+        "title": "Language",
+        "description": "Choose how the app reads. Saved to your account so it follows you across devices."
+      },
+      "appearance": {
+        "title": "Appearance",
+        "description": "Switch the app between light and dark. \"System\" uses the app's default light mode."
+      },
+      "notifications": {
+        "title": "Notifications",
+        "description": "Pick which alerts reach your notification bell on this device."
+      },
+      "ordering": {
+        "title": "Cashier ordering",
+        "description": "What cashiers can do on their dashboard."
+      },
+      "attendance": {
+        "title": "Attendance",
+        "description": "Whether the owner can correct historical attendance records."
+      },
+      "features": {
+        "title": "Feature toggles",
+        "description": "Switch optional areas of the app on or off system-wide."
+      }
+    }
   }
 }
