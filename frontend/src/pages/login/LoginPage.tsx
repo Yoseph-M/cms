@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useToastStore } from '../../store/toastStore';
 import { axiosClient } from '../../api/axiosClient';
-import { Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
@@ -14,12 +14,12 @@ export const LoginPage: React.FC = () => {
   const { addToast } = useToastStore();
   const { t } = useTranslation('auth');
 
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
+  const [focusedField, setFocusedField] = useState<'username' | 'password' | null>(null);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -39,13 +39,13 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!username || !password) return;
 
     setIsLoading(true);
     setErrorMsg('');
 
     try {
-      const res = await axiosClient.post('/auth/login', { email, password });
+      const res = await axiosClient.post('/auth/login', { username, password });
       const { user: authUser, accessToken } = res.data;
 
       // Restore user's preferred language on login
@@ -143,28 +143,28 @@ export const LoginPage: React.FC = () => {
             <div
               className={cn(
                 'group relative flex items-center w-full rounded-full transition-all duration-200 overflow-hidden',
-                focusedField === 'email'
+                focusedField === 'username'
                   ? 'bg-card border-2 border-primary shadow-[0_0_0_4px_hsl(var(--primary)/0.15)]'
                   : 'bg-secondary border-2 border-transparent shadow-none'
               )}
               style={{ borderRadius: '9999px' }}
             >
               <div className="pl-4 pr-3 flex items-center justify-center">
-                <Mail
+                <User
                   className={cn(
                     'w-5 h-5 transition-colors duration-200',
-                    focusedField === 'email' ? 'text-primary' : 'text-muted-foreground'
+                    focusedField === 'username' ? 'text-primary' : 'text-muted-foreground'
                   )}
                 />
               </div>
               <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onFocus={() => setFocusedField('email')}
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onFocus={() => setFocusedField('username')}
                 onBlur={() => setFocusedField(null)}
-                placeholder={t('fields.email')}
+                placeholder={t('fields.username') || 'Username'}
                 autoComplete="off"
                 required
                 className="login-input flex-1 min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
@@ -219,7 +219,7 @@ export const LoginPage: React.FC = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isLoading || !email || !password}
+              disabled={isLoading || !username || !password}
               className={cn(
                 'relative w-full flex items-center justify-center gap-2 h-12 rounded-full',
                 'bg-primary text-primary-foreground hover:opacity-90 text-sm font-semibold',
