@@ -249,7 +249,7 @@ export const ExpensesTracker: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent className="pt-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(10rem,1fr)_auto] lg:items-end">
+          <div className="grid grid-cols-4 gap-3 items-end">
             <div>
               <label htmlFor="expense-category-filter" className="text-xs font-medium text-muted-foreground block mb-1.5">
                 {t('expenses.filters.category', { defaultValue: 'Category' })}
@@ -289,11 +289,11 @@ export const ExpensesTracker: React.FC = () => {
             </div>
             <div className="flex gap-2">
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="flex-1 lg:flex-none">
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
                   <FilterX className="h-3.5 w-3.5" /> Clear
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={fetchExpenses} disabled={isLoading} className="flex-1 lg:flex-none">
+              <Button variant="outline" size="sm" onClick={fetchExpenses} disabled={isLoading}>
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
               </Button>
             </div>
