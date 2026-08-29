@@ -250,7 +250,7 @@ export const ProfilePage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [draftName, setDraftName] = useState('');
-  const [draftEmail, setDraftEmail] = useState('');
+  const [draftUsername, setDraftUsername] = useState('');
   const [draftPhone, setDraftPhone] = useState('');
   const [draftAvatar, setDraftAvatar] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -267,7 +267,7 @@ export const ProfilePage: React.FC = () => {
   if (!user || !meta) return null;
 
   const displayName = isEditing ? draftName || user.name : user.name;
-  const displayEmail = isEditing ? draftEmail || '' : (me?.email ?? user.email ?? '');
+  const displayUsername = isEditing ? draftUsername || '' : (me?.username ?? user.username ?? '');
   const displayPhone = isEditing
     ? (draftPhone ? `${ET_PHONE_PREFIX} ${draftPhone}` : '')
     : (me?.phone ?? user.phone ?? '');
@@ -277,7 +277,7 @@ export const ProfilePage: React.FC = () => {
 
   const startEditing = () => {
     setDraftName(me?.name ?? user.name);
-    setDraftEmail(me?.email ?? user.email ?? '');
+    setDraftUsername(me?.username ?? user.username ?? '');
     // Pull the last 9 digits so a stored value like "+251 91 234 5678" or "0911234567" works.
     const storedPhone = (me?.phone ?? user.phone ?? '').toString();
     const phoneDigits = storedPhone.replace(/\D/g, '').slice(-ET_PHONE_DIGITS);
@@ -332,7 +332,7 @@ export const ProfilePage: React.FC = () => {
     try {
       const res = await axiosClient.patch('/users/me', {
         name,
-        email: draftEmail.trim() || null,
+        username: draftUsername.trim() || null,
         phone,
         avatarUrl: draftAvatar,
       });
@@ -562,13 +562,13 @@ export const ProfilePage: React.FC = () => {
                     </div>
                     <div>
                       <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                        Email
+                        Username
                       </label>
                       <Input
-                        type="email"
+                        type="text"
                         leftIcon={<Mail className="w-4 h-4" />}
-                        value={draftEmail}
-                        onChange={(e) => setDraftEmail(e.target.value)}
+                        value={draftUsername}
+                        onChange={(e) => setDraftUsername(e.target.value)}
                         placeholder="you@restaurant.com"
                       />
                     </div>
@@ -587,7 +587,7 @@ export const ProfilePage: React.FC = () => {
                   <>
                     <div className="space-y-2.5">
                       <FieldRow icon={<UserIcon className="w-4 h-4" />} label="Full name" value={displayName} />
-                      <FieldRow icon={<Mail className="w-4 h-4" />}    label="Email"    value={displayEmail} copyable={!!displayEmail} />
+                      <FieldRow icon={<Mail className="w-4 h-4" />}    label="Username"    value={displayUsername} copyable={!!displayUsername} />
                       <FieldRow icon={<Phone className="w-4 h-4" />}    label="Phone"    value={displayPhone} copyable={!!displayPhone} />
                     </div>
                     <p className="text-xs text-muted-foreground mt-4 flex items-start gap-1.5">
