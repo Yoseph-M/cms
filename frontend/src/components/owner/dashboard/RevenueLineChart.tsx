@@ -174,7 +174,7 @@ export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
           {hoverIdx != null && (
             <>
               <div
-                className="absolute w-[2px] rounded-full pointer-events-none transition-[top] duration-75"
+                className="pointer-events-none absolute w-[2px] rounded-full transition-[top] duration-75"
                 style={{
                   left: `${hoverPct}%`,
                   top: `${hoverValuePct}%`,
@@ -185,7 +185,7 @@ export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
                 }}
               />
               <div
-                className="absolute w-3.5 h-3.5 rounded-full pointer-events-none ring-[3px] ring-white shadow-md transition-[left,top] duration-75"
+                className="pointer-events-none absolute h-3.5 w-3.5 rounded-full shadow-md ring-[3px] ring-card transition-[left,top] duration-75"
                 style={{
                   left: `${hoverPct}%`,
                   top: `${hoverValuePct}%`,
@@ -199,18 +199,18 @@ export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
           {/* Tooltip floating above the active point */}
           {hoverIdx != null && (
             <div
-              className="absolute pointer-events-none z-10"
+              className="pointer-events-none absolute z-10"
               style={{
                 left: `${tooltipPct}%`,
                 top: `${hoverValuePct}%`,
                 transform: 'translate(-50%, calc(-100% - 16px))',
               }}
             >
-              <div className="bg-white border border-border/60 rounded-xl shadow-[0_10px_30px_-8px_rgba(15,23,42,0.18)] px-4 py-2 text-center whitespace-nowrap">
-                <p className="text-[15px] font-bold text-foreground tabular-nums leading-tight">
+              <div className="whitespace-nowrap rounded-xl border border-border/60 bg-popover px-4 py-2 text-center text-popover-foreground shadow-[0_10px_30px_-8px_rgba(15,23,42,0.18)]">
+                <p className="text-[15px] font-bold leading-none tabular-nums">
                   {fmtTooltip(series[0]?.values[hoverIdx] ?? 0)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">{labels[hoverIdx]}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{labels[hoverIdx]}</p>
               </div>
             </div>
           )}
