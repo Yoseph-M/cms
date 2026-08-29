@@ -479,7 +479,7 @@ export async function getLoginHistory(req: AuthenticatedRequest, res: Response) 
     cursor: cursor ? { id: cursor as string } : undefined,
     include: {
       user: {
-        select: { id: true, name: true, role: true, email: true },
+        select: { id: true, name: true, role: true, username: true },
       },
     },
     orderBy: { createdAt: 'desc' },
