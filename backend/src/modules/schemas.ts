@@ -3,7 +3,7 @@ import { Role, MenuCategory, OrderStatus, PaymentMethod, AttendanceStatus } from
 
 // ---------- Auth Schemas ----------
 export const loginSchema = z.object({
-  email: z.string().email('Valid email is required'),
+  username: z.string().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -16,7 +16,7 @@ export const refreshTokenSchema = z.object({
 export const createUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   role: z.nativeEnum(Role),
-  email: z.string().email().optional().nullable(),
+  username: z.string().min(3).optional().nullable(),
   phone: z.string().min(5, 'Valid phone number is required'),
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
   salaryAmount: z.number().int('Salary must be an integer (cents)').nonnegative().default(0),
@@ -25,7 +25,7 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z.object({
   name: z.string().min(2).optional(),
   role: z.nativeEnum(Role).optional(),
-  email: z.string().email().optional().nullable(),
+  username: z.string().min(3).optional().nullable(),
   phone: z.string().min(5).optional(),
   salaryAmount: z.number().nonnegative().optional(),
   isActive: z.boolean().optional(),
@@ -51,7 +51,7 @@ const avatarUrlSchema = z
 
 export const updateOwnProfileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').optional(),
-  email: z.string().email('Valid email is required').optional().nullable(),
+  username: z.string().min(3, 'Username must be at least 3 characters').optional().nullable(),
   phone: z.string().min(5, 'Valid phone number is required').optional(),
   avatarUrl: avatarUrlSchema.nullable().optional(),
 });
