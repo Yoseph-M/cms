@@ -15,7 +15,7 @@ interface LoginHistoryRecord {
   id: string;
   createdAt: string;
   userId: string;
-  user: { name: string; role: string; email: string | null };
+  user: { name: string; role: string; username: string | null };
   ip: string | null;
   userAgent: string | null;
   outcome: 'SUCCESS' | 'FAILURE' | 'LOCKED';
@@ -68,7 +68,7 @@ const LoginRow = React.memo<{
     </div>
     <div className="w-[20%] pr-2">
       <div className="text-xs font-medium truncate">{record.user?.name || record.userId.slice(0, 8)}</div>
-      <div className="text-[10px] text-muted-foreground">{record.user?.email || 'No email'}</div>
+      <div className="text-[10px] text-muted-foreground">{record.user?.username || 'No username'}</div>
     </div>
     <div className="w-[12%]">
       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
@@ -175,12 +175,12 @@ export const OwnerLoginHistory: React.FC = () => {
 
   const exportCSV = useCallback(() => {
     exportRowsCSV(
-      ['Timestamp', 'User', 'Role', 'Email', 'Outcome', 'IP', 'User Agent'],
+      ['Timestamp', 'User', 'Role', 'Username', 'Outcome', 'IP', 'User Agent'],
       logs.map((l) => [
         new Date(l.createdAt).toISOString(),
         l.user?.name || l.userId,
         l.user?.role || '',
-        l.user?.email || '',
+        l.user?.username || '',
         l.outcome,
         l.ip || '',
         l.userAgent || '',
