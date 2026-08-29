@@ -9,33 +9,26 @@ interface ThemeState {
   initTheme: () => void;
 }
 
+// "System" is treated as the project's default light mode — it does NOT
+// follow the OS `prefers-color-scheme`. Only the explicit "Dark" option
+// switches to dark mode. This keeps the app visually consistent for users
+// who pick System, regardless of their device setting.
 const applyThemeClass = (mode: ThemeMode) => {
   if (typeof document === 'undefined') return;
-  const prefersDark =
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-  const isDark = mode === 'dark' || (mode === 'system' && prefersDark);
+  const isDark = mode === 'dark';
   document.documentElement.classList.toggle('dark', isDark);
 };
-
-let systemListenerBound = false;
 
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      theme: 'system',
+      theme: 'light',
       setTheme: (theme) => {
         set({ theme });
         applyThemeClass(theme);
       },
       initTheme: () => {
         applyThemeClass(get().theme);
-        if (!systemListenerBound && typeof window !== 'undefined' && window.matchMedia) {
-          window
-            .matchMedia('(prefers-color-scheme: dark)')
-            .addEventListener('change', () => applyThemeClass(get().theme));
-          systemListenerBound = true;
-        }
       },
     }),
     {
