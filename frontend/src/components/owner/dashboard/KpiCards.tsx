@@ -1,5 +1,5 @@
 import React from 'react';
-import { Truck, Package, ShoppingCart, TrendingUp, type LucideIcon } from 'lucide-react';
+import { Package, ShoppingCart, TrendingUp, type LucideIcon } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { AnimatedCurrency, AnimatedNumber } from '../../ui/AnimatedNumber';
 
@@ -29,50 +29,44 @@ export interface KpiCardProps {
   kind: 'currency' | 'number';
   icon?: LucideIcon;
   tone: KpiTone;
-  /**
-   * Three small dots shown between the label and the value (e.g. progress).
-   * `active` is how many of the three are filled; the rest are muted.
-   */
   trendDots?: { active: number; total?: number; tone?: 'orange' | 'green' | 'gray' };
 }
 
-/* Card backgrounds — soft pastels from the reference image */
+/* Soft tinted card backgrounds — use Tailwind opacity utilities so the
+   surface picks up the right base color in both light and dark mode. */
 const TONE_BG: Record<KpiTone, string> = {
-  cream: 'bg-[#fff5d1]', // warm yellow
-  mint:  'bg-[#e3f6e9]', // soft green
-  blush: 'bg-[#fce4f1]', // soft pink
-  rose:  'bg-[#fde3d7]', // soft peach
+  cream: 'bg-amber-100 dark:bg-amber-500/10',
+  mint:  'bg-emerald-100 dark:bg-emerald-500/10',
+  blush: 'bg-pink-100 dark:bg-pink-500/10',
+  rose:  'bg-orange-100 dark:bg-orange-500/10',
 };
 
-/* Solid colour for the icon circle */
+/* Solid color for the icon circle. In light mode we use a vibrant solid;
+   in dark mode we use a brighter tinted solid so the icon stays legible. */
 const TONE_CIRCLE: Record<KpiTone, string> = {
-  cream: 'bg-[#f9b400]', // solid amber/yellow
-  mint:  'bg-[#b9e8c5]', // solid light green
-  blush: 'bg-[#f5b6dc]', // solid light pink
-  rose:  'bg-[#f6b29f]', // solid coral
+  cream: 'bg-amber-400 dark:bg-amber-400/80',
+  mint:  'bg-emerald-400 dark:bg-emerald-400/80',
+  blush: 'bg-pink-400 dark:bg-pink-400/80',
+  rose:  'bg-orange-400 dark:bg-orange-400/80',
 };
 
-/* Icon stroke colour inside the circle */
+/* Icon stroke colour inside the circle. Dark mode uses a dark ink so the
+   icon stays high-contrast against the bright tint. */
 const TONE_ICON: Record<KpiTone, string> = {
-  cream: 'text-white',
-  mint:  'text-emerald-800',
-  blush: 'text-pink-800',
-  rose:  'text-white',
+  cream: 'text-white dark:text-amber-950',
+  mint:  'text-white dark:text-emerald-950',
+  blush: 'text-white dark:text-pink-950',
+  rose:  'text-white dark:text-orange-950',
 };
 
 const TREND_DOT_ACTIVE: Record<string, string> = {
-  orange: 'bg-orange-400',
-  green: 'bg-emerald-400',
+  orange: 'bg-orange-500',
+  green: 'bg-emerald-500',
   gray: 'bg-slate-400',
 };
 
 /**
- * Single KPI card. Layout, taken from the design reference:
- *  ┌────────────────────────────────────────────┐
- *  │  ┌───┐   Label                              │
- *  │  │ ⓘ │   • • •   (trend dots, optional)     │
- *  │  └───┘   240                                 │
- *  └────────────────────────────────────────────┘
+ * Single KPI card.
  */
 export const KpiCard: React.FC<KpiCardProps> = ({
   label,
@@ -85,41 +79,42 @@ export const KpiCard: React.FC<KpiCardProps> = ({
   return (
     <div
       className={cn(
-        'relative rounded-2xl px-3 py-3.5 sm:px-4 sm:py-4 lg:px-5 lg:py-5',
-        'flex items-center gap-2.5 sm:gap-3.5 lg:gap-4',
-        // Floating-card look matching SectionCard so KPIs read as islands too
-        'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_-14px_rgba(15,23,42,0.10),0_4px_10px_-8px_rgba(249,115,22,0.08)]',
+        'relative flex min-w-0 items-center gap-2.5 rounded-2xl border border-border/40 px-3 py-3.5 sm:gap-3.5 sm:px-4 sm:py-4 lg:gap-4 lg:px-5 lg:py-5',
+        // Subtle shadow + lift matching the rest of the dashboard
+        'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_-14px_rgba(15,23,42,0.10)]',
         'transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5',
-        'min-w-0',
         TONE_BG[tone],
       )}
     >
-      {/* Solid circle — first card has no icon (per image) */}
       <div
         className={cn(
-          'w-9 h-9 sm:w-11 sm:h-11 lg:w-12 lg:h-12 rounded-full flex items-center justify-center shrink-0',
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full sm:h-11 sm:w-11 lg:h-12 lg:w-12',
           TONE_CIRCLE[tone],
         )}
       >
-        {Icon && <Icon className={cn('w-4 h-4 sm:w-5 sm:h-5 lg:w-5 lg:h-5', TONE_ICON[tone])} strokeWidth={2.25} />}
+        {Icon && (
+          <Icon
+            className={cn('h-4 w-4 sm:h-5 sm:w-5', TONE_ICON[tone])}
+            strokeWidth={2.25}
+          />
+        )}
       </div>
 
-      {/* Label + (optional) trend dots + value, stacked vertically */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        <p className="text-[11px] sm:text-[12px] lg:text-[13px] font-medium text-slate-700 leading-tight truncate">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <p className="truncate text-[11px] font-medium leading-tight text-foreground/80 sm:text-[12px] lg:text-[13px]">
           {label}
         </p>
 
         {trendDots && (
-          <div className="flex items-center gap-1.5 mt-1 sm:mt-1.5">
+          <div className="mt-1 flex items-center gap-1.5 sm:mt-1.5">
             {Array.from({ length: trendDots.total ?? 3 }).map((_, i) => (
               <span
                 key={i}
                 className={cn(
-                  'w-1.5 h-1.5 rounded-full',
+                  'h-1.5 w-1.5 rounded-full',
                   i < trendDots.active
                     ? TREND_DOT_ACTIVE[trendDots.tone ?? 'gray']
-                    : 'bg-slate-300',
+                    : 'bg-foreground/20',
                 )}
               />
             ))}
@@ -127,10 +122,12 @@ export const KpiCard: React.FC<KpiCardProps> = ({
         )}
         {!trendDots && <div className="h-2 sm:h-2.5" />}
 
-        <p className="font-display text-[16px] sm:text-[20px] lg:text-[24px] font-semibold leading-none text-slate-900 tabular-nums">
-          {kind === 'currency'
-            ? <AnimatedCurrency value={value} />
-            : <AnimatedNumber value={value} />}
+        <p className="font-display text-[16px] font-semibold leading-none text-foreground tabular-nums sm:text-[20px] lg:text-[24px]">
+          {kind === 'currency' ? (
+            <AnimatedCurrency value={value} />
+          ) : (
+            <AnimatedNumber value={value} />
+          )}
         </p>
       </div>
     </div>
@@ -156,7 +153,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
   return (
     <div className="grid grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
       <KpiCard
-        label="Today's order"
+        label="Today's orders"
         value={totalOrders}
         kind="number"
         icon={Package}
@@ -170,7 +167,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
         tone="mint"
       />
       <KpiCard
-        label="Total order"
+        label="Total orders"
         value={completed}
         kind="number"
         icon={ShoppingCart}
