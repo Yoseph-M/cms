@@ -78,8 +78,8 @@ export const LoginPage: React.FC = () => {
         .login-input:-webkit-autofill:focus,
         .login-input:-webkit-autofill:active {
           -webkit-box-shadow: 0 0 0 30px transparent inset !important;
-          -webkit-text-fill-color: #111827 !important;
-          caret-color: #111827;
+          -webkit-text-fill-color: hsl(var(--foreground)) !important;
+          caret-color: hsl(var(--foreground));
           transition: background-color 5000s ease-in-out 0s;
         }
         .login-input {
@@ -104,13 +104,13 @@ export const LoginPage: React.FC = () => {
         }
       `}</style>
 
-      <div className="min-h-screen w-full bg-white flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen w-full bg-background flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-md animate-fade-in">
           {/* Logo/Brand */}
           <div className="text-center mb-12">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#3B82F6] mb-5">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary mb-5">
               <svg
-                className="w-7 h-7 text-white"
+                className="w-7 h-7 text-primary-foreground"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -119,10 +119,10 @@ export const LoginPage: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
             </div>
-            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
+            <h1 className="text-2xl font-semibold text-foreground tracking-tight">
               {t('title')}
             </h1>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-muted-foreground">
               {t('subtitle')}
             </p>
           </div>
@@ -144,8 +144,8 @@ export const LoginPage: React.FC = () => {
               className={cn(
                 'group relative flex items-center w-full rounded-full transition-all duration-200 overflow-hidden',
                 focusedField === 'email'
-                  ? 'bg-white border-2 border-[#3B82F6] shadow-[0_0_0_4px_rgba(59,130,246,0.1)]'
-                  : 'bg-[#EBF2FF] border-2 border-transparent shadow-none'
+                  ? 'bg-card border-2 border-primary shadow-[0_0_0_4px_hsl(var(--primary)/0.15)]'
+                  : 'bg-secondary border-2 border-transparent shadow-none'
               )}
               style={{ borderRadius: '9999px' }}
             >
@@ -153,7 +153,7 @@ export const LoginPage: React.FC = () => {
                 <Mail
                   className={cn(
                     'w-5 h-5 transition-colors duration-200',
-                    focusedField === 'email' ? 'text-[#3B82F6]' : 'text-gray-400'
+                    focusedField === 'email' ? 'text-primary' : 'text-muted-foreground'
                   )}
                 />
               </div>
@@ -167,7 +167,7 @@ export const LoginPage: React.FC = () => {
                 placeholder={t('fields.email')}
                 autoComplete="off"
                 required
-                className="login-input flex-1 min-w-0 bg-transparent text-gray-900 placeholder:text-gray-400 text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
+                className="login-input flex-1 min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
               />
               <div className="pr-5 w-2 shrink-0" aria-hidden="true" />
             </div>
@@ -177,8 +177,8 @@ export const LoginPage: React.FC = () => {
               className={cn(
                 'group relative flex items-center w-full rounded-full transition-all duration-200 overflow-hidden',
                 focusedField === 'password'
-                  ? 'bg-white border-2 border-[#3B82F6] shadow-[0_0_0_4px_rgba(59,130,246,0.1)]'
-                  : 'bg-[#EBF2FF] border-2 border-transparent shadow-none'
+                  ? 'bg-card border-2 border-primary shadow-[0_0_0_4px_hsl(var(--primary)/0.15)]'
+                  : 'bg-secondary border-2 border-transparent shadow-none'
               )}
               style={{ borderRadius: '9999px' }}
             >
@@ -186,7 +186,7 @@ export const LoginPage: React.FC = () => {
                 <Lock
                   className={cn(
                     'w-5 h-5 transition-colors duration-200',
-                    focusedField === 'password' ? 'text-[#3B82F6]' : 'text-gray-400'
+                    focusedField === 'password' ? 'text-primary' : 'text-muted-foreground'
                   )}
                 />
               </div>
@@ -200,12 +200,12 @@ export const LoginPage: React.FC = () => {
                 placeholder={t('fields.password')}
                 autoComplete="off"
                 required
-                className="login-input flex-1 min-w-0 bg-transparent text-gray-900 placeholder:text-gray-400 text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
+                className="login-input flex-1 min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="pr-4 pl-2 text-gray-400 hover:text-gray-600 transition-colors flex items-center justify-center"
+                className="pr-4 pl-2 text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center"
                 tabIndex={-1}
               >
                 {showPassword ? (
@@ -222,15 +222,15 @@ export const LoginPage: React.FC = () => {
               disabled={isLoading || !email || !password}
               className={cn(
                 'relative w-full flex items-center justify-center gap-2 h-12 rounded-full',
-                'bg-[#3B82F6] hover:bg-[#2563EB] text-white text-sm font-semibold',
-                'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#3B82F6]',
+                'bg-primary text-primary-foreground hover:opacity-90 text-sm font-semibold',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
                 'transition-all duration-200 active:scale-[0.98] mt-4'
               )}
               style={{ borderRadius: '9999px' }}
             >
               {isLoading ? (
                 <span className="inline-flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                   {t('actions.signingIn')}
                 </span>
               ) : (
