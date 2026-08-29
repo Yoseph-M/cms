@@ -43,6 +43,6 @@
     "light": "Light",
     "dark": "Dark",
     "system": "System",
-    "description": "Choose light or dark mode. \"System\" follows your device setting. Saved per device."
+    "description": "Choose light or dark mode. \"System\" uses the app's default light mode. Saved per device."
   }
 }
