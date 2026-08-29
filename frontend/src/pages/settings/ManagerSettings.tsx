@@ -1,50 +1,92 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+import { Bell, Globe, Settings, ShoppingCart, Sun } from 'lucide-react';
+import { SettingsGroup } from '../../components/ui/SettingsGroup';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { CashierOrderingToggle } from '../../components/settings/CashierOrderingToggle';
 import { TableCountSetting } from '../../components/settings/TableCountSetting';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { ShoppingCart } from 'lucide-react';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
 
 /**
  * Manager Settings page — Phase 14, §3.3.
  *
- * Layers:
- *   1. Notification preferences      (shared, per-device)
- *   2. Cashier-ordering toggle       (Manager can edit the same global toggle as Owner;
- *                                     component itself notes "applies to all stations")
- *
- * No business-profile or printers-shortcut here — those are Owner-only.
+ * Mirrors the owner page's visual treatment but is scoped to what managers
+ * can change on this device plus the global ordering toggle.
  */
 export const ManagerSettings: React.FC = () => {
+  const { t } = useTranslation('owner');
+
   return (
-    <div className="space-y-6">
-      <header>
-        <h3 className="text-lg font-bold">Settings</h3>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Manage notifications and the system behavior shared with Owners.
-        </p>
+    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+      <header className="relative overflow-hidden rounded-2xl border border-border/40 bg-card px-6 py-7 shadow-[0_18px_48px_-28px_rgba(15,23,42,0.30),0_4px_12px_-8px_rgba(249,115,22,0.10)] sm:px-8 sm:py-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-accent/10 blur-3xl"
+        />
+        <div className="relative flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_8px_24px_-10px_hsl(var(--primary)/0.55)] ring-1 ring-inset ring-white/10">
+            <Settings className="h-6 w-6" />
+          </div>
+          <div className="space-y-1.5">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              {t('settings.title', { defaultValue: 'Settings' })}
+            </h1>
+            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              Manage notifications and the system behavior shared with Owners.
+            </p>
+          </div>
+        </div>
       </header>
 
-      <NotificationPreferencesSection />
+      <div className="space-y-3">
+        <SettingsGroup
+          icon={Bell}
+          iconClassName="text-violet-700 dark:text-violet-300"
+          iconBgClassName="bg-violet-500/15"
+          title="Notifications"
+          description="Pick which alerts reach your notification bell on this device."
+        >
+          <NotificationPreferencesSection />
+        </SettingsGroup>
 
-      <LanguagePreferenceSection />
+        <SettingsGroup
+          icon={Globe}
+          iconClassName="text-violet-700 dark:text-violet-300"
+          iconBgClassName="bg-violet-500/15"
+          title="Language"
+          description="Choose how the app reads. Saved to your account so it follows you across devices."
+        >
+          <LanguagePreferenceSection />
+        </SettingsGroup>
 
-      <ThemePreferenceSection />
+        <SettingsGroup
+          icon={Sun}
+          iconClassName="text-violet-700 dark:text-violet-300"
+          iconBgClassName="bg-violet-500/15"
+          title="Appearance"
+          description={"Switch the app between light and dark. \"System\" uses the app's default light mode."}
+        >
+          <ThemePreferenceSection />
+        </SettingsGroup>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4 text-primary" />
-            Cashier Ordering
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CashierOrderingToggle />
-          <TableCountSetting />
-        </CardContent>
-      </Card>
+        <SettingsGroup
+          icon={ShoppingCart}
+          iconClassName="text-emerald-700 dark:text-emerald-300"
+          iconBgClassName="bg-emerald-500/15"
+          title="Cashier ordering"
+          description="What cashiers can do on their dashboard."
+        >
+          <div>
+            <CashierOrderingToggle />
+            <TableCountSetting />
+          </div>
+        </SettingsGroup>
+      </div>
     </div>
   );
 };
