@@ -1,4 +1,4 @@
-import { extractErrorMessage } from "../../utils/errorHandler";
+import { extractErrorMessage } from '../../utils/errorHandler';
 import React, { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
@@ -6,6 +6,8 @@ import { useToastStore } from '../../store/toastStore';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { useSocketStore } from '../../store/socketStore';
 import { Switch } from '../ui/Switch';
+import { SettingsRow } from '../ui/SettingsRow';
+import { ShoppingCart } from 'lucide-react';
 import { LoadingState } from '../common/LoadingState';
 
 export const CashierOrderingToggle: React.FC = () => {
@@ -27,7 +29,7 @@ export const CashierOrderingToggle: React.FC = () => {
     const handler = (payload: { value: string }) => {
       setEnabled(payload.value === 'true');
       queryClient.setQueryData(['systemSetting', 'cashierOrderingEnabled'], (old: any) =>
-        old ? { ...old, value: payload.value } : old
+        old ? { ...old, value: payload.value } : old,
       );
     };
     socket.on('settings:cashierOrderingChanged', handler);
@@ -65,19 +67,26 @@ export const CashierOrderingToggle: React.FC = () => {
   if (settingQuery.isLoading) return <LoadingState message="Loading setting..." />;
 
   return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">Allow Cashiers to create orders directly</p>
-        <p className="text-xs text-muted-foreground max-w-lg">
-          When enabled, Cashier stations show a menu and cart for placing orders that flow through
-          the same kitchen print pipeline as waiter orders. When disabled, Cashiers handle payment
-          only.
-        </p>
-        <p className="text-xs text-accent font-medium">
-          This applies to all Cashier stations.
-        </p>
-      </div>
-      <Switch checked={enabled} onCheckedChange={handleToggle} disabled={isSaving} />
-    </div>
+    <SettingsRow
+      icon={ShoppingCart}
+      iconClassName="text-primary"
+      iconBgClassName="bg-primary/10"
+      title="Allow cashiers to create orders directly"
+      description="When on, cashier stations show a menu and cart for placing orders that flow through the same kitchen print pipeline as waiter orders. When off, cashiers handle payment only."
+      meta={
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-0.5 font-medium text-accent">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          Applies to all cashier stations
+        </span>
+      }
+      control={
+        <Switch
+          checked={enabled}
+          onCheckedChange={handleToggle}
+          disabled={isSaving}
+          aria-label="Allow cashiers to create orders"
+        />
+      }
+    />
   );
 };
