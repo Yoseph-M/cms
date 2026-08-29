@@ -1,14 +1,49 @@
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Switch } from '../ui/Switch';
-import { Bell } from 'lucide-react';
+import { SettingsRow } from '../ui/SettingsRow';
+import { Bell, AlertTriangle, Printer, CalendarClock, Utensils, ShieldAlert } from 'lucide-react';
 
 const NOTIFICATION_TYPES = [
-  { key: 'MISSING_ATTENDANCE', label: 'Missing attendance alerts' },
-  { key: 'PRINTER_FAILURE', label: 'Printer failure alerts' },
-  { key: 'PAYROLL_PERIOD_DUE', label: 'Payroll period reminders' },
-  { key: 'MENU_ITEM_UNAVAILABLE', label: 'Menu availability changes' },
-  { key: 'SYSTEM_OVERRIDE', label: 'System override notices' },
+  {
+    key: 'MISSING_ATTENDANCE',
+    label: 'Missing attendance alerts',
+    description: 'Notify when a staff member has not clocked in for an active shift.',
+    icon: AlertTriangle,
+    iconClassName: 'text-amber-600 dark:text-amber-400',
+    iconBgClassName: 'bg-amber-500/10',
+  },
+  {
+    key: 'PRINTER_FAILURE',
+    label: 'Printer failure alerts',
+    description: 'Alert the moment a receipt or kitchen printer goes offline.',
+    icon: Printer,
+    iconClassName: 'text-rose-600 dark:text-rose-400',
+    iconBgClassName: 'bg-rose-500/10',
+  },
+  {
+    key: 'PAYROLL_PERIOD_DUE',
+    label: 'Payroll period reminders',
+    description: 'Get a heads-up before each payroll cut-off date.',
+    icon: CalendarClock,
+    iconClassName: 'text-sky-600 dark:text-sky-400',
+    iconBgClassName: 'bg-sky-500/10',
+  },
+  {
+    key: 'MENU_ITEM_UNAVAILABLE',
+    label: 'Menu availability changes',
+    description: 'When a popular item is marked unavailable, you’ll hear about it.',
+    icon: Utensils,
+    iconClassName: 'text-emerald-600 dark:text-emerald-400',
+    iconBgClassName: 'bg-emerald-500/10',
+  },
+  {
+    key: 'SYSTEM_OVERRIDE',
+    label: 'System override notices',
+    description: 'Critical alerts about manual changes to your live operation.',
+    icon: ShieldAlert,
+    iconClassName: 'text-violet-600 dark:text-violet-400',
+    iconBgClassName: 'bg-violet-500/10',
+  },
 ] as const;
 
 const PREFS_KEY = 'cafeflow:notificationPrefs';
@@ -37,28 +72,32 @@ export const NotificationPreferencesSection: React.FC = () => {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Bell className="w-4 h-4 text-primary" />
-          Notification Preferences
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-xs text-muted-foreground">
-          Choose which notification types appear in your bell menu. This only affects your
-          device.
-        </p>
-        {NOTIFICATION_TYPES.map(({ key, label }) => (
-          <div key={key} className="flex items-center justify-between gap-4">
-            <span className="text-sm text-foreground">{label}</span>
+    <div>
+      <SettingsRow
+        icon={Bell}
+        iconClassName="text-primary"
+        iconBgClassName="bg-primary/10"
+        title="Notification channels"
+        description="Choose which alert types reach your notification bell on this device. Other devices keep their own preferences."
+      />
+      {NOTIFICATION_TYPES.map((n) => (
+        <SettingsRow
+          key={n.key}
+          icon={n.icon}
+          iconClassName={n.iconClassName}
+          iconBgClassName={n.iconBgClassName}
+          title={n.label}
+          description={n.description}
+          divider
+          control={
             <Switch
-              checked={notifPrefs[key] !== false}
-              onCheckedChange={(checked) => toggleNotifPref(key, checked)}
+              checked={notifPrefs[n.key] !== false}
+              onCheckedChange={(checked) => toggleNotifPref(n.key, checked)}
+              aria-label={n.label}
             />
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+          }
+        />
+      ))}
+    </div>
   );
 };
