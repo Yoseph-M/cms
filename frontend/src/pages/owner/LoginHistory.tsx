@@ -15,7 +15,7 @@ interface LoginRecord {
     id: string;
     name: string;
     role: string;
-    email: string | null;
+    username: string | null;
     phone: string;
   };
 }
