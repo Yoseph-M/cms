@@ -20,7 +20,7 @@ export interface TokenPayload {
   userId: string;
   role: Role;
   name: string;
-  email?: string | null;
+  username?: string | null;
 }
 
 export function generateAccessToken(payload: TokenPayload): string {
