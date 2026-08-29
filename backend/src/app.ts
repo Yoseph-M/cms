@@ -170,7 +170,7 @@ export async function seedInitialData() {
         data: {
           name: 'Alice Owner',
           role: Role.OWNER,
-          email: 'owner@pos.com',
+          username: 'owner',
           phone: '+251911000001',
           passwordHash: defaultPasswordHash,
           salaryAmount: 45000,
@@ -181,7 +181,7 @@ export async function seedInitialData() {
         data: {
           name: 'Bob Manager',
           role: Role.MANAGER,
-          email: 'manager@pos.com',
+          username: 'manager',
           phone: '+251911000002',
           passwordHash: defaultPasswordHash,
           salaryAmount: 30000,
@@ -192,7 +192,7 @@ export async function seedInitialData() {
         data: {
           name: 'Charlie Cashier',
           role: Role.CASHIER,
-          email: 'cashier@pos.com',
+          username: 'cashier',
           phone: '+251911000003',
           passwordHash: defaultPasswordHash,
           salaryAmount: 18000,
@@ -203,14 +203,14 @@ export async function seedInitialData() {
         data: {
           name: 'David Waiter',
           role: Role.WAITER,
-          email: 'waiter@pos.com',
+          username: 'waiter',
           phone: '+251911000004',
           passwordHash: defaultPasswordHash,
           salaryAmount: 12000,
         },
       });
 
-      logger.info({ owner: owner.email, manager: manager.email, cashier: cashier.email, waiter: waiter.email }, 'Seeded default staff accounts.');
+      logger.info({ owner: owner.username, manager: manager.username, cashier: cashier.username, waiter: waiter.username }, 'Seeded default staff accounts.');
     }
 
     // Intentionally no password backfill here — never auto-set password123 on existing accounts.
