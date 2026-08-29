@@ -53,14 +53,14 @@ export async function getUsersByRole(req: Request, res: Response) {
  * Uses standard lockout logic if brute forced.
  */
 export async function login(req: Request, res: Response) {
-  const { email, password } = req.body;
+  const { username, password } = req.body;
 
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { username },
   });
 
   if (!user || !user.isActive) {
-    logger.info({ email, found: !!user, isActive: user?.isActive, role: user?.role, outcome: 'failure' }, 'auth.login.failure');
+    logger.info({ username, found: !!user, isActive: user?.isActive, role: user?.role, outcome: 'failure' }, 'auth.login.failure');
     
     // Record failure if user exists but is inactive (or not found)
     if (user) {
@@ -74,7 +74,7 @@ export async function login(req: Request, res: Response) {
       });
     }
 
-    return res.status(401).json({ error: 'Invalid email or password.' });
+    return res.status(401).json({ error: 'Invalid username or password.' });
   }
 
   // Check lockout state
@@ -135,7 +135,7 @@ export async function login(req: Request, res: Response) {
     });
 
     if (attempts >= 5) {
-      logger.info({ email, attempts, outcome: 'locked' }, 'auth.login.locked');
+      logger.info({ username, attempts, outcome: 'locked' }, 'auth.login.locked');
       return res.status(429).json({
         error: 'Account locked due to too many failed attempts. Try again in 15 minutes.',
         lockedUntil,
@@ -143,8 +143,8 @@ export async function login(req: Request, res: Response) {
       });
     }
 
-    logger.info({ email, attempts, outcome: 'failure' }, 'auth.login.failure');
-    return res.status(401).json({ error: 'Invalid email or password.' });
+    logger.info({ username, attempts, outcome: 'failure' }, 'auth.login.failure');
+    return res.status(401).json({ error: 'Invalid username or password.' });
   }
 
   // Clear lockout on success
@@ -170,7 +170,7 @@ export async function login(req: Request, res: Response) {
     const isEnabled = managerDashboardSetting ? managerDashboardSetting.value === 'true' : true;
     
     if (!isEnabled) {
-      logger.info({ email, role: user.role, outcome: 'feature_disabled' }, 'auth.login.feature_disabled');
+      logger.info({ username, role: user.role, outcome: 'feature_disabled' }, 'auth.login.feature_disabled');
       return res.status(403).json({ 
         error: 'Manager Dashboard is currently disabled. Please contact the system administrator for access.' 
       });
@@ -181,7 +181,7 @@ export async function login(req: Request, res: Response) {
     userId: user.id,
     role: user.role,
     name: user.name,
-    email: user.email,
+    username: user.username,
   };
 
   const accessToken = generateAccessToken(tokenPayload);
@@ -233,7 +233,7 @@ export async function login(req: Request, res: Response) {
       id: user.id,
       name: user.name,
       role: user.role,
-      email: user.email,
+      username: user.username,
       phone: user.phone,
     },
   });
@@ -292,7 +292,7 @@ export async function refreshToken(req: Request, res: Response) {
       userId: user.id,
       role: user.role,
       name: user.name,
-      email: user.email,
+      username: user.username,
     };
 
     const newAccessToken = generateAccessToken(tokenPayload);
@@ -320,7 +320,7 @@ export async function refreshToken(req: Request, res: Response) {
         id: user.id,
         name: user.name,
         role: user.role,
-        email: user.email,
+        username: user.username,
         phone: user.phone,
       },
     });
