@@ -4,6 +4,8 @@ import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { Switch } from '../ui/Switch';
+import { SettingsRow } from '../ui/SettingsRow';
+import { CalendarCheck } from 'lucide-react';
 
 export const OwnerAttendanceToggle: React.FC = () => {
   const { addToast } = useToastStore();
@@ -41,20 +43,20 @@ export const OwnerAttendanceToggle: React.FC = () => {
   };
 
   return (
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm font-medium text-foreground">Allow me to edit attendance records</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          When on, you can correct historical attendance for any date. Every edit is audit-logged
-          and requires a written reason. Off by default.
-        </p>
-      </div>
-      <Switch
-        checked={enabled}
-        onCheckedChange={handleToggle}
-        disabled={isSaving || settingQuery.isLoading}
-        aria-label="Allow owner to edit attendance records"
-      />
-    </div>
+    <SettingsRow
+      icon={CalendarCheck}
+      iconClassName="text-primary"
+      iconBgClassName="bg-primary/10"
+      title="Allow me to edit attendance records"
+      description="When on, you can correct historical attendance for any date. Every edit is audit-logged and requires a written reason. Off by default."
+      control={
+        <Switch
+          checked={enabled}
+          onCheckedChange={handleToggle}
+          disabled={isSaving || settingQuery.isLoading}
+          aria-label="Allow owner to edit attendance records"
+        />
+      }
+    />
   );
 };
