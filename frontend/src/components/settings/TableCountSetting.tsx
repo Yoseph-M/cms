@@ -1,4 +1,4 @@
-import { extractErrorMessage } from "../../utils/errorHandler";
+import { extractErrorMessage } from '../../utils/errorHandler';
 import React, { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
@@ -6,13 +6,17 @@ import { useToastStore } from '../../store/toastStore';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { useSocketStore } from '../../store/socketStore';
 import { LoadingState } from '../common/LoadingState';
+import { SettingsRow } from '../ui/SettingsRow';
+import { Input } from '../ui/Input';
+import { Button } from '../ui/Button';
+import { LayoutGrid, Save } from 'lucide-react';
 
 export const TableCountSetting: React.FC = () => {
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const { socket } = useSocketStore();
   const settingQuery = useSystemSettingQuery('tableCount');
-  
+
   const [isSaving, setIsSaving] = useState(false);
   const [tableCount, setTableCount] = useState('12');
   const [localValue, setLocalValue] = useState('12');
@@ -30,7 +34,7 @@ export const TableCountSetting: React.FC = () => {
       setTableCount(payload.value || '12');
       setLocalValue(payload.value || '12');
       queryClient.setQueryData(['systemSetting', 'tableCount'], (old: any) =>
-        old ? { ...old, value: payload.value } : old
+        old ? { ...old, value: payload.value } : old,
       );
     };
     socket.on('settings:tableCountChanged', handler);
@@ -78,33 +82,38 @@ export const TableCountSetting: React.FC = () => {
   const isDirty = localValue !== tableCount;
 
   return (
-    <div className="flex items-start justify-between gap-4 mt-6 pt-6 border-t border-border">
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">Number of Tables</p>
-        <p className="text-xs text-muted-foreground max-w-lg">
-          Configure how many tables are available in the Cashier table map.
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="number"
-          min="1"
-          max="100"
-          value={localValue}
-          onChange={(e) => setLocalValue(e.target.value)}
-          disabled={isSaving}
-          className="h-9 w-20 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-        />
-        {isDirty && (
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="h-9 px-3 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            Save
-          </button>
-        )}
-      </div>
-    </div>
+    <SettingsRow
+      icon={LayoutGrid}
+      iconClassName="text-primary"
+      iconBgClassName="bg-primary/10"
+      title="Number of tables"
+      description="Configure how many tables are available in the Cashier table map (1–100)."
+      divider
+      control={
+        <div className="flex items-center gap-2">
+          <div className="w-24">
+            <Input
+              type="number"
+              min="1"
+              max="100"
+              value={localValue}
+              onChange={(e) => setLocalValue(e.target.value)}
+              disabled={isSaving}
+              aria-label="Number of tables"
+            />
+          </div>
+          {isDirty && (
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={isSaving}
+              leftIcon={<Save className="h-4 w-4" />}
+            >
+              Save
+            </Button>
+          )}
+        </div>
+      }
+    />
   );
 };
