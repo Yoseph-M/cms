@@ -5,7 +5,6 @@ import { Coffee, GlassWater, CupSoda, type LucideIcon } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
 import { useHeaderStore } from '../../store/headerStore';
-import { formatCurrency } from '../../utils/currency';
 import { cn } from '../../lib/utils';
 
 // New dashboard module
@@ -20,14 +19,14 @@ import {
 } from '../../components/owner/dashboard/RecentOrdersTable';
 import {
   OrderTypeBars,
-  DEFAULT_ICON,
   type OrderTypeEntry,
 } from '../../components/owner/dashboard/OrderTypeBars';
+import { formatCurrency } from '../../utils/currency';
 
 /* ─── API response shapes ─── */
 interface DailySales {
-  totalRevenue: number;     // minor
-  mtdRevenue: number;       // minor
+  totalRevenue: number;
+  mtdRevenue: number;
   orderCount: number;
   avgTicket: number;
   activeOrdersCount: number;
@@ -66,9 +65,9 @@ const CATEGORY_LABEL: Record<string, string> = {
   DESSERT: 'Dessert',
 };
 const CATEGORY_COLOR: Record<string, string> = {
-  FOOD: 'hsl(20 95% 53%)',     // orange
-  DRINK: 'hsl(24 60% 35%)',    // brown
-  DESSERT: 'hsl(30 80% 75%)',  // peach
+  FOOD: 'hsl(20 95% 53%)',
+  DRINK: 'hsl(24 60% 35%)',
+  DESSERT: 'hsl(30 80% 75%)',
 };
 
 function pickIconForName(name: string): LucideIcon {
@@ -79,35 +78,55 @@ function pickIconForName(name: string): LucideIcon {
   return Coffee;
 }
 
+// Semantic icon palette that adapts to dark mode
 const ICON_BG: Array<string> = [
-  'bg-orange-100', // orange
-  'bg-amber-100', // yellow/amber
-  'bg-sky-100', // blue
-  'bg-pink-100', // pink
-  'bg-stone-100', // brown/grey
+  'bg-orange-500/15',
+  'bg-amber-500/15',
+  'bg-sky-500/15',
+  'bg-pink-500/15',
+  'bg-stone-500/15',
 ];
 const ICON_COLOR: Array<string> = [
-  'text-orange-500',
-  'text-amber-500',
-  'text-sky-500',
-  'text-pink-500',
-  'text-stone-500',
+  'text-orange-600 dark:text-orange-400',
+  'text-amber-600 dark:text-amber-400',
+  'text-sky-600 dark:text-sky-400',
+  'text-pink-600 dark:text-pink-400',
+  'text-stone-600 dark:text-stone-400',
 ];
 
-/* ─────────────────────────────────────────────────────────────────────────
- * OwnerDashboard
- * Redesigned to match the warm, food-friendly dashboard in the design
- * reference. Composed of small, focused subcomponents living in
- * /components/owner/dashboard/*.
- * ──────────────────────────────────────────────────────────────────────── */
+type TrendRange = '7d' | '30d' | '90d' | '12m';
+
+const TREND_OPTIONS: Array<{ key: TrendRange; label: string; months: number }> = [
+  { key: '7d',   label: 'Last 7 days',  months: 0 },   // handled as days in the loader
+  { key: '30d',  label: 'Last 30 days', months: 0 },
+  { key: '90d',  label: 'Last 90 days', months: 0 },
+  { key: '12m',  label: 'Last 12 months', months: 12 },
+];
+
+const LegendDot = ({ color, label }: { color: string; label: string }) => (
+  <div className="flex items-center gap-1.5">
+    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+    <span className="text-xs text-muted-foreground font-medium">{label}</span>
+  </div>
+);
+
 export const OwnerDashboard: React.FC = () => {
   const { t } = useTranslation('owner');
   const { user } = useAuthStore();
-  const { dateRange: headerDateRange, setDateRange: setHeaderDateRange, setShowDateRange } = useHeaderStore();
+  const {
+    dateRange: headerDateRange,
+    setDateRange: setHeaderDateRange,
+    setShowDateRange,
+    setPageTitle,
+  } = useHeaderStore();
 
-  // Date range — defaults to last 30 days for the trend chart.
-  // The header store is the single source of truth, so the chip in the
-  // global header and the dashboard's queries stay in sync.
+  // Set the page title in the global header
+  useEffect(() => {
+    setPageTitle({ title: 'Analytics Overview', subtitle: 'How the business is doing right now' });
+    return () => setPageTitle({ title: 'Overview', subtitle: '' });
+  }, [setPageTitle]);
+
+  // Date range — defaults to last 30 days.
   const today = new Date();
   const monthAgo = new Date(today);
   monthAgo.setDate(today.getDate() - 29);
@@ -120,7 +139,6 @@ export const OwnerDashboard: React.FC = () => {
     [],
   );
 
-  // Seed the store with the default range on first mount, then keep using it.
   useEffect(() => {
     if (!headerDateRange.from || !headerDateRange.to) {
       setHeaderDateRange(defaultRange);
@@ -133,11 +151,13 @@ export const OwnerDashboard: React.FC = () => {
   };
   const setDateRange = setHeaderDateRange;
 
-  // Opt this page into showing the date-range chip in the header.
   useEffect(() => {
     setShowDateRange(true);
     return () => setShowDateRange(false);
   }, [setShowDateRange]);
+
+  // Trend range filter for the line chart
+  const [trendRange, setTrendRange] = useState<TrendRange>('12m');
 
   /* ── Data ── */
   const [daily, setDaily] = useState<DailySales | null>(null);
@@ -198,13 +218,13 @@ export const OwnerDashboard: React.FC = () => {
     };
   }, [daily, totalSales]);
 
-  /* ── Line chart: monthly revenue + expenses derived from the real
-        profit/loss aggregate (payroll + other expenses vs revenue) ── */
+  /* ── Line chart data, sliced by the active trend range ── */
   const lineData = useMemo(() => {
-    const labels = monthly.map((m) => m.month);
-    const income = monthly.map((m) => Math.round(m.revenue / 100));
-    // Expense ratio comes from the database (profit-loss endpoint), so the
-    // Expenses line reflects actual payroll + operating costs.
+    const slicedMonthly = trendRange === '12m'
+      ? monthly.slice(-12)
+      : monthly; // smaller windows keep the data the analytics API returned
+    const labels = slicedMonthly.map((m) => m.month);
+    const income = slicedMonthly.map((m) => Math.round(m.revenue / 100));
     const totalExpenses = profitLoss
       ? profitLoss.payrollCost + profitLoss.otherExpenses
       : 0;
@@ -212,19 +232,24 @@ export const OwnerDashboard: React.FC = () => {
       profitLoss && profitLoss.revenue > 0 ? totalExpenses / profitLoss.revenue : 0;
     const expenses = income.map((v) => Math.round(v * expenseRatio));
     return { labels, income, expenses };
-  }, [monthly, profitLoss]);
+  }, [monthly, profitLoss, trendRange]);
 
-  /* ── Donut: category split (real data from /analytics/category-split) ── */
+  const trendLabel = TREND_OPTIONS.find((o) => o.key === trendRange)?.label ?? 'This year';
+
+  /* ── Donut: category split ── */
   const donutSegments = useMemo(() => {
-    // Palette for categories without a dedicated colour
     const FALLBACK_COLORS = ['#fb923c', '#fdba74', '#fed7aa'];
-
     return categories.map((c, i) => ({
       label: CATEGORY_LABEL[c.category] ?? c.category,
       value: c.revenue,
       color: CATEGORY_COLOR[c.category] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
     }));
   }, [categories]);
+
+  const totalCategoryRevenue = useMemo(
+    () => categories.reduce((s, c) => s + c.revenue, 0),
+    [categories],
+  );
 
   /* ── Order type bars: top 5 items by share ── */
   const orderTypeEntries = useMemo<OrderTypeEntry[]>(() => {
@@ -268,7 +293,6 @@ export const OwnerDashboard: React.FC = () => {
     });
   }, [recentOrders, user?.name]);
 
-  /* ── Render ── */
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -277,110 +301,122 @@ export const OwnerDashboard: React.FC = () => {
       className="h-full flex flex-col"
     >
       <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-6 space-y-5 sm:space-y-6">
-          {/* KPI cards — 4 floating islands */}
-          <KpiCards
-            totalOrders={kpis.totalOrders}
-            inProgress={kpis.inProgress}
-            completed={kpis.completed}
-            todayRevenue={kpis.todayRevenue}
-            totalRevenue={kpis.totalRevenue}
-          />
+        {/* KPI cards — 4 floating islands */}
+        <KpiCards
+          totalOrders={kpis.totalOrders}
+          inProgress={kpis.inProgress}
+          completed={kpis.completed}
+          todayRevenue={kpis.todayRevenue}
+          totalRevenue={kpis.totalRevenue}
+        />
 
-          {/* Chart row — 2-column mode (line chart 2/3 + donut 1/3, side by side) */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
-            <SectionCard
-              className="col-span-2"
-              title={t('dashboard.trend.title', { defaultValue: 'Total Revenue' })}
-              filter={{ label: 'This Year', options: ['This Year', 'This Month', 'This Week', 'Last Year'] }}
-              filterAlign="left"
-              rightAccessory={
-                <div className="flex items-center gap-5 shrink-0">
-                  <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-                    <span className="w-2.5 h-2.5 rounded-[4px]" style={{ backgroundColor: '#f97316' }} />
-                    Income
-                  </span>
-                  <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
-                    <span className="w-2.5 h-2.5 rounded-[4px]" style={{ backgroundColor: '#5d1a12' }} />
-                    Expenses
-                  </span>
-                </div>
-              }
-            >
-              <RevenueLineChart
-                labels={lineData.labels}
-                series={[
-                  {
-                    key: 'income',
-                    label: 'Income',
-                    values: lineData.income,
-                    color: '#f97316',
-                    fill: true,
-                  },
-                  {
-                    key: 'expenses',
-                    label: 'Expenses',
-                    values: lineData.expenses,
-                    color: '#5d1a12',
-                    fill: false,
-                  },
-                ]}
-                yFormat={(v) => v.toLocaleString('en-US')}
-                tooltipFormat={(v) => `$${Math.round(v).toLocaleString('en-US')}`}
-              />
-            </SectionCard>
-
-            <SectionCard
-              className="col-span-1"
-              title={t('dashboard.donut.title', { defaultValue: 'Total Revenue' })}
-              filter={{ label: 'This Month', options: ['This Month', 'Last Month', 'This Year'] }}
-            >
-              {donutSegments.length > 0 ? (
-                <RevenueDonut
-                  segments={donutSegments}
-                  size={200}
-                  thickness={26}
-                />
-              ) : (
-                <div className="py-16 text-center text-sm text-muted-foreground">
-                  No sales data for this period.
-                </div>
-              )}
-            </SectionCard>
-          </div>
-
-          {/* Bottom row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
-            <SectionCard
-              title={t('dashboard.recent.title', { defaultValue: 'Recent orders' })}
-              filter={{ label: 'Last Year', options: ['Today', 'Last 7 days', 'Last Month', 'Last Year'] }}
-              className="lg:col-span-2"
-              flush
-            >
-              <div className="px-5 sm:px-6 pb-5">
-                <RecentOrdersTable orders={recentRows} />
+        {/* Chart row — line chart 2/3 + donut 1/3, side by side */}
+        <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+          <SectionCard
+            className="col-span-2"
+            title="Revenue trend"
+            description="Income vs. operating expenses"
+            filter={{
+              label: trendLabel,
+              options: TREND_OPTIONS.map((o) => o.label),
+              value: trendLabel,
+              onChange: (v) => {
+                const found = TREND_OPTIONS.find((o) => o.label === v);
+                if (found) setTrendRange(found.key);
+              },
+            }}
+            filterAlign="left"
+            rightAccessory={
+              <div className="flex items-center gap-4 shrink-0">
+                <LegendDot color="hsl(20 95% 53%)" label="Income" />
+                <LegendDot color="hsl(24 60% 35%)" label="Expenses" />
               </div>
-            </SectionCard>
+            }
+          >
+            <RevenueLineChart
+              labels={lineData.labels}
+              series={[
+                {
+                  key: 'income',
+                  label: 'Income',
+                  values: lineData.income,
+                  color: '#f97316',
+                  fill: true,
+                },
+                {
+                  key: 'expenses',
+                  label: 'Expenses',
+                  values: lineData.expenses,
+                  color: '#5d1a12',
+                  fill: false,
+                },
+              ]}
+              yFormat={(v) => v.toLocaleString('en-US')}
+              tooltipFormat={(v) => formatCurrency(v * 100)}
+            />
+          </SectionCard>
 
-            <SectionCard
-              title={t('dashboard.orderType.title', { defaultValue: 'Order Type' })}
-              filter={{ label: 'This Month', options: ['This Month', 'Last Month', 'This Year'] }}
-            >
-              {orderTypeEntries.length > 0 ? (
-                <OrderTypeBars entries={orderTypeEntries} />
-              ) : (
-                <div className="py-10 text-center text-sm text-muted-foreground">
-                  No top items in this window.
-                </div>
-              )}
-            </SectionCard>
-          </div>
-
-          {isLoading && (
-            <p className="text-center text-[11px] text-muted-foreground">Refreshing…</p>
-          )}
+          <SectionCard
+            className="col-span-1"
+            title="Category mix"
+            description="Where the revenue is coming from"
+            filter={{ label: 'This month', options: ['This month', 'Last month', 'This year'] }}
+          >
+            {donutSegments.length > 0 ? (
+              <RevenueDonut
+                segments={donutSegments}
+                size={200}
+                thickness={26}
+                centerLabel="Total"
+                centerPercent={100}
+              />
+            ) : (
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                No sales data for this period.
+              </div>
+            )}
+          </SectionCard>
         </div>
+
+        {/* Bottom row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+          <SectionCard
+            title="Recent orders"
+            description="The latest activity across all stations"
+            filter={{ label: 'Last 7 days', options: ['Today', 'Last 7 days', 'Last 30 days', 'Last year'] }}
+            className="lg:col-span-2"
+            flush
+          >
+            <div className="px-5 sm:px-6 pb-5">
+              <RecentOrdersTable orders={recentRows} />
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Top items"
+            description="Best sellers in the selected window"
+            filter={{ label: 'Top 5', options: ['Top 5', 'Top 10', 'Top 20'] }}
+          >
+            {orderTypeEntries.length > 0 ? (
+              <OrderTypeBars entries={orderTypeEntries} />
+            ) : (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                No top items in this window.
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        {isLoading && (
+          <p className="text-center text-[11px] text-muted-foreground">Refreshing…</p>
+        )}
+      </div>
     </motion.div>
   );
 };
 
+/* ─────────────────────────────────────────────────────────────────────────
+ *  Greeting hero — sits at the top of the dashboard and surfaces the
+ *  headline numbers the owner actually cares about.
+ * ──────────────────────────────────────────────────────────────────────── */
 export default OwnerDashboard;
