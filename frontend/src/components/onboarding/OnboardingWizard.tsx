@@ -413,15 +413,15 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
 // --- Step 5: Team ---
 const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNext, onSkip }) => {
   const { addToast } = useToastStore();
-  const [form, setForm] = useState({ name: '', email: '', role: 'MANAGER', password: '' });
+  const [form, setForm] = useState({ name: '', username: '', role: 'MANAGER', password: '' });
   const [saving, setSaving] = useState(false);
-  const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
+  const [created, setCreated] = useState<{ username: string; password: string } | null>(null);
 
   const handleSave = async () => {
     setSaving(true);
     try {
       await axiosClient.post('/users', form);
-      setCreated({ email: form.email, password: form.password });
+      setCreated({ username: form.username, password: form.password });
     } catch (e: any) {
       addToast({ type: 'error', title: 'Failed to add user', message: extractErrorMessage(e, 'Failed to add user.') });
     } finally {
@@ -452,8 +452,8 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Email</label>
-              <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="alex@example.com" />
+              <label className="text-sm font-medium mb-1 block">Username</label>
+              <Input type="text" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="alex_manager" />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Temporary Password</label>
@@ -466,7 +466,7 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
           <h3 className="font-bold text-[hsl(var(--success))] text-lg mb-2">Account Created!</h3>
           <p className="text-sm text-foreground mb-4">Share these credentials securely. They will not be shown again.</p>
           <div className="inline-block text-left bg-background p-4 rounded-lg border border-border">
-            <p className="text-sm"><span className="text-muted-foreground w-20 inline-block">Email:</span> <strong>{created.email}</strong></p>
+            <p className="text-sm"><span className="text-muted-foreground w-20 inline-block">Username:</span> <strong>{created.username}</strong></p>
             <p className="text-sm mt-1"><span className="text-muted-foreground w-20 inline-block">Password:</span> <strong>{created.password}</strong></p>
           </div>
         </div>
@@ -476,7 +476,7 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
         {!created ? (
           <>
             <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">Skip for now</Button>
-            <Button onClick={handleSave} disabled={saving || !form.name || !form.email || !form.password}>Add User</Button>
+            <Button onClick={handleSave} disabled={saving || !form.name || !form.username || !form.password}>Add User</Button>
           </>
         ) : (
           <div className="w-full flex justify-end">
