@@ -4,6 +4,8 @@ import { cn } from '../../../lib/utils';
 
 export interface SectionCardProps {
   title: string;
+  /** Optional short subtitle rendered under the title in the header. */
+  description?: string;
   /** Optional dropdown filter rendered in the top-right */
   filter?: { label: string; options?: string[]; value?: string; onChange?: (v: string) => void };
   /** Render a custom right-hand control (overrides `filter`) */
@@ -17,12 +19,13 @@ export interface SectionCardProps {
 }
 
 /**
- * A white card with a header strip (title + optional dropdown) and a
- * content area. Used as the container for every section in the redesigned
- * owner dashboard so the visual rhythm stays consistent.
+ * A floating card with a header strip (title + optional description + optional
+ * dropdown) and a content area. Used as the container for every section in
+ * the owner dashboard so the visual rhythm stays consistent.
  */
 export const SectionCard: React.FC<SectionCardProps> = ({
   title,
+  description,
   filter,
   rightAccessory,
   filterAlign = 'right',
@@ -34,28 +37,27 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   return (
     <section
       className={cn(
-        // Floating card / island look:
-        //  - rounded-2xl corners
-        //  - layered shadow (subtle base + soft brand-tinted lift)
-        //  - hover lifts the card a touch more
-        //  - no harsh border; the shadow alone defines the edge
-        'rounded-2xl bg-white overflow-hidden',
-        'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-12px_rgba(15,23,42,0.12),0_4px_12px_-8px_rgba(249,115,22,0.10)]',
-        'transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_18px_40px_-14px_rgba(15,23,42,0.16),0_6px_16px_-10px_rgba(249,115,22,0.18)]',
+        'overflow-hidden rounded-2xl border border-border/40 bg-card text-card-foreground',
+        'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-18px_rgba(15,23,42,0.18)]',
         className,
       )}
     >
-      <header className="px-6 pt-5 pb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-4 min-w-0">
-          <h2 className="font-display text-[17px] font-bold text-slate-800 leading-tight">
-            {title}
-          </h2>
+      <header className="flex flex-col gap-3 border-b border-border/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5">
+        <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-[15px] font-semibold text-foreground sm:text-base">
+              {title}
+            </h2>
+            {description && (
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{description}</p>
+            )}
+          </div>
           {filterAlign === 'left' ? filterEl : null}
         </div>
         {rightAccessory ?? (filterAlign === 'right' ? filterEl : null)}
       </header>
 
-      <div className={cn(flush ? '' : 'px-6 pb-6')}>{children}</div>
+      <div className={cn(flush ? '' : 'px-5 py-5 sm:px-6')}>{children}</div>
     </section>
   );
 };
@@ -83,14 +85,20 @@ export const FilterDropdown: React.FC<{
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#e5e0d8] text-[13px] font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+        className={cn(
+          'inline-flex h-8 items-center gap-1.5 rounded-lg border border-input bg-card px-2.5 text-xs font-medium text-muted-foreground transition-all',
+          'hover:border-primary/40 hover:text-foreground',
+          open && 'border-primary/50 text-foreground shadow-[0_0_0_3px_hsl(var(--primary)/0.10)]',
+        )}
       >
         {displayLabel}
-        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+        <ChevronDown
+          className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', open && 'rotate-180')}
+        />
       </button>
 
       {open && options && options.length > 0 && (
-        <div className="absolute top-full right-0 mt-1 w-36 bg-white border border-[#e5e0d8] rounded-xl shadow-lg p-1 z-20">
+        <div className="absolute top-full right-0 z-20 mt-1 w-40 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-xl">
           {options.map((opt) => (
             <button
               key={opt}
@@ -99,10 +107,10 @@ export const FilterDropdown: React.FC<{
                 setOpen(false);
               }}
               className={cn(
-                'block w-full text-left px-3 py-1.5 rounded-lg text-[13px] transition-colors',
+                'block w-full rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors',
                 displayLabel === opt
-                  ? 'bg-[#fff5eb] text-orange-600 font-medium'
-                  : 'text-slate-600 hover:bg-slate-50'
+                  ? 'bg-primary/10 font-medium text-primary'
+                  : 'text-foreground hover:bg-secondary',
               )}
             >
               {opt}
