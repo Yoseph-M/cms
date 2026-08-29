@@ -7,18 +7,18 @@ export type OrderStatusKey = 'paid' | 'cancelled' | 'pending' | 'feedback';
 export interface RecentOrder {
   id: string;
   shortId: string;
-  type: string;     // "Takeaways" / "Dine-in" / "Feedback" / etc.
-  attendant: string; // "Laura Olivia-228"
-  time: string;      // ISO
+  type: string;
+  attendant: string;
+  time: string;
   status: OrderStatusKey;
-  price: number;     // minor units
+  price: number;
 }
 
 const STATUS_STYLES: Record<OrderStatusKey, { label: string; className: string }> = {
-  paid:       { label: 'Paid',       className: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30' },
-  pending:    { label: 'Pending',    className: 'bg-amber-500/15 text-amber-700 border-amber-500/30' },
-  cancelled:  { label: 'Cancelled',  className: 'bg-rose-500/15 text-rose-700 border-rose-500/30' },
-  feedback:   { label: 'Feedback',   className: 'bg-orange-500/15 text-orange-700 border-orange-500/30' },
+  paid:       { label: 'Paid',       className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' },
+  pending:    { label: 'Pending',    className: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30' },
+  cancelled:  { label: 'Cancelled',  className: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30' },
+  feedback:   { label: 'Feedback',   className: 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/30' },
 };
 
 export interface RecentOrdersTableProps {
@@ -36,9 +36,9 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
     <div className={cn('overflow-x-auto', className)}>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            <th className="py-2.5 pr-3 font-semibold">Order ID</th>
-            <th className="py-2.5 px-3 font-semibold">Order Type</th>
+          <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <th className="py-2.5 pr-3 font-semibold">Order</th>
+            <th className="py-2.5 px-3 font-semibold">Type</th>
             <th className="py-2.5 px-3 font-semibold">Attendant</th>
             <th className="py-2.5 px-3 font-semibold">Time</th>
             <th className="py-2.5 px-3 font-semibold">Status</th>
@@ -51,10 +51,10 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
             return (
               <tr
                 key={o.id}
-                className="border-t border-border/40 hover:bg-secondary/30 transition-colors"
+                className="border-t border-border/40 transition-colors hover:bg-secondary/40"
               >
                 <td className="py-3 pr-3 font-mono text-xs text-muted-foreground tabular-nums">
-                  {o.shortId}
+                  #{o.shortId}
                 </td>
                 <td className="py-3 px-3 font-semibold text-foreground">
                   {o.type}
@@ -68,7 +68,7 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
                 <td className="py-3 px-3">
                   <span
                     className={cn(
-                      'inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border',
+                      'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
                       status.className,
                     )}
                   >
@@ -101,5 +101,5 @@ function formatTime(iso: string): string {
   const hh = d.getHours().toString().padStart(2, '0');
   const mm = d.getMinutes().toString().padStart(2, '0');
   const ss = d.getSeconds().toString().padStart(2, '0');
-  return `${month} ${day}, ${year}. ${hh}:${mm}:${ss}`;
+  return `${month} ${day}, ${year} · ${hh}:${mm}:${ss}`;
 }
