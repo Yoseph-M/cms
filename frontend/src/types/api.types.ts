@@ -18,7 +18,7 @@ export interface AuthUser {
   id: string;
   name: string;
   role: Role;
-  email: string | null;
+  username: string | null;
   phone: string | null;
 }
 
@@ -96,7 +96,7 @@ export interface StaffUser {
   id: string;
   name: string;
   role: Role;
-  email: string | null;
+  username: string | null;
   phone: string;
   /** Minor units */
   salaryAmount: number;
