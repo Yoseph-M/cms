@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Activity, ChevronRight, FileText, Printer, ShieldCheck, Users, XCircle } from 'lucide-react';
+import { ChevronRight, FileText, Printer, ShieldCheck, Users, XCircle } from 'lucide-react';
 import { OwnerStaff } from './OwnerStaff';
 import { OwnerAudit } from './OwnerAudit';
 import { OwnerLoginHistory } from './OwnerLoginHistory';
 import { OwnerPrinters } from './OwnerPrinters';
 import { OwnerPrintAgents } from './OwnerPrintAgents';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { cn } from '../../lib/utils';
 
 type TabId = 'staff' | 'audit' | 'logins' | 'printers';
@@ -17,6 +18,7 @@ const TAB_IDS: readonly TabId[] = ['staff', 'audit', 'logins', 'printers'] as co
 export const SystemAdminPage: React.FC = () => {
   const { t } = useTranslation('owner');
   const { settings } = useSettingsStore();
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as TabId | null;
   const [activeTab, setActiveTab] = useState<TabId>(
@@ -24,6 +26,18 @@ export const SystemAdminPage: React.FC = () => {
   );
 
   const systemAdminEnabled = settings['systemAdministrationEnabled'] !== 'false';
+
+  useEffect(() => {
+    setPageTitle({
+      title: t('nav.systemAdmin', { defaultValue: 'System Admin' }),
+      subtitle: 'Manage access, review accountability, and configure devices',
+    });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange, t]);
 
   useEffect(() => {
     if (searchParams.get('tab') !== activeTab) {
@@ -42,6 +56,15 @@ export const SystemAdminPage: React.FC = () => {
   ] as const;
 
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab)!;
+
+  // Update the header subtitle to match the active tab so it changes as the
+  // user moves between Staff, Audit, Logins, and Printing.
+  useEffect(() => {
+    setPageTitle({
+      title: t('nav.systemAdmin', { defaultValue: 'System Admin' }),
+      subtitle: activeTabMeta.label,
+    });
+  }, [activeTabMeta.label, setPageTitle, t]);
 
   // Show access denied message if feature is disabled
   if (!systemAdminEnabled) {
@@ -62,31 +85,15 @@ export const SystemAdminPage: React.FC = () => {
 
   return (
     /*
-     * Island architecture — three discrete cards with visible gaps:
-     *  1. Header island  (title + subtitle)
-     *  2. Tab bar island (the tab strip itself)
-     *  3. Content island (the active tab's panel)
-     * No more single monolithic box.
+     * Single-tab strip + content panel.
+     * The previous dark "System administration" hero header has been removed —
+     * the page title is now rendered by the global header (see useHeaderStore).
+     * The tab strip is forced to a single row × four columns so all sections
+     * are always reachable at a glance.
      */
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
-      <header className="relative overflow-hidden rounded-2xl bg-slate-950 px-6 py-6 text-white shadow-[0_16px_40px_-22px_rgba(15,23,42,0.75)] sm:px-7 sm:py-7">
-        <div className="absolute -right-16 -top-16 h-52 w-52 rounded-full bg-primary/25 blur-3xl" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-              <ShieldCheck className="w-5 h-5 text-amber-300" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">System administration</h1>
-            <p className="mt-1.5 max-w-2xl text-sm text-slate-300">Manage access, review accountability, and keep the restaurant’s connected hardware dependable.</p>
-          </div>
-          <div className="inline-flex items-center gap-2 self-start rounded-full bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-300/20 sm:self-auto">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" /> Administration enabled
-          </div>
-        </div>
-      </header>
-
       <section aria-label="Administration sections" className="rounded-2xl border border-border/50 bg-card p-2 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.22)]">
-        <div role="tablist" aria-label="Administration sections" className="grid gap-1 sm:grid-cols-2 lg:grid-cols-4">
+        <div role="tablist" aria-label="Administration sections" className="grid grid-cols-4 gap-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -119,13 +126,6 @@ export const SystemAdminPage: React.FC = () => {
       </section>
 
       <section id={`admin-panel-${activeTab}`} role="tabpanel" aria-label={activeTabMeta.label} className="rounded-2xl border border-border/50 bg-card p-4 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.26)] sm:p-6">
-        <div className="mb-5 flex items-center gap-3 border-b border-border/60 pb-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><Activity className="h-4 w-4" /></span>
-          <div>
-            <h2 className="font-semibold text-foreground">{activeTabMeta.label}</h2>
-            <p className="text-xs text-muted-foreground">{activeTabMeta.description}</p>
-          </div>
-        </div>
         {activeTab === 'staff' && <OwnerStaff />}
         {activeTab === 'audit' && <OwnerAudit />}
         {activeTab === 'logins' && <OwnerLoginHistory />}
