@@ -22,6 +22,7 @@ import {
   type OrderTypeEntry,
 } from '../../components/owner/dashboard/OrderTypeBars';
 import { formatCurrency } from '../../utils/currency';
+import { Users } from 'lucide-react';
 
 /* ─── API response shapes ─── */
 interface DailySales {
@@ -38,7 +39,7 @@ interface DailySales {
   };
 }
 interface MonthlyRow { month: string; revenue: number; orderCount: number; }
-interface TopItem { name: string; totalQty: number; totalRevenue: number; }
+interface TopItem { name: string; totalQty: number; totalRevenue: number; imageUrl?: string; }
 interface CategoryRow { category: string; revenue: number; count: number; }
 interface RecentOrderRow {
   id: string;
@@ -56,6 +57,14 @@ interface ProfitLossRow {
   payrollCost: number;
   otherExpenses: number;
   netProfit: number;
+}
+
+interface WaiterPerfRow {
+  waiterId: string;
+  name: string;
+  role: string;
+  orderCount: number;
+  totalSales: number;
 }
 
 /* ─── Helpers ─── */
@@ -167,6 +176,7 @@ export const OwnerDashboard: React.FC = () => {
   const [recentOrders, setRecentOrders] = useState<RecentOrderRow[]>([]);
   const [totalSales, setTotalSales] = useState<{ totalRevenue: number, orderCount: number } | null>(null);
   const [profitLoss, setProfitLoss] = useState<ProfitLossRow | null>(null);
+  const [waiterPerf, setWaiterPerf] = useState<WaiterPerfRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -176,7 +186,7 @@ export const OwnerDashboard: React.FC = () => {
       try {
         const fromIso = new Date(dateRange.from).toISOString();
         const toIso = new Date(`${dateRange.to}T23:59:59.999`).toISOString();
-        const [d, m, ti, cat, ord, comp, pl] = await Promise.all([
+        const [d, m, ti, cat, ord, comp, pl, wp] = await Promise.all([
           axiosClient.get('/analytics/sales/daily'),
           axiosClient.get('/analytics/sales/monthly'),
           axiosClient.get('/analytics/top-items', { params: { from: fromIso, to: toIso, limit: 5 } }),
@@ -184,6 +194,7 @@ export const OwnerDashboard: React.FC = () => {
           axiosClient.get('/orders', { params: { limit: 8, sort: 'createdAt:desc' } }),
           axiosClient.get('/analytics/sales/total'),
           axiosClient.get('/analytics/profit-loss'),
+          axiosClient.get('/analytics/staff-performance', { params: { from: fromIso, to: toIso, role: 'WAITER' } }),
         ]);
         if (!alive) return;
         setDaily(d.data);
@@ -194,6 +205,7 @@ export const OwnerDashboard: React.FC = () => {
         setRecentOrders(Array.isArray(orderList) ? orderList : []);
         setTotalSales(comp.data || null);
         setProfitLoss(pl.data || null);
+        setWaiterPerf(Array.isArray(wp.data) ? wp.data : []);
       } catch (err) {
         console.error('owner dashboard load error', err);
       } finally {
@@ -259,6 +271,7 @@ export const OwnerDashboard: React.FC = () => {
       name: it.name,
       percent: Math.round((it.totalRevenue / total) * 100),
       total: it.totalRevenue,
+      imageUrl: it.imageUrl,
       icon: pickIconForName(it.name),
       iconBg: ICON_BG[i % ICON_BG.length],
       iconColor: ICON_COLOR[i % ICON_COLOR.length],
@@ -325,7 +338,6 @@ export const OwnerDashboard: React.FC = () => {
                 if (found) setTrendRange(found.key);
               },
             }}
-            filterAlign="left"
             rightAccessory={
               <div className="flex items-center gap-4 shrink-0">
                 <LegendDot color="hsl(20 95% 53%)" label="Income" />
@@ -406,6 +418,58 @@ export const OwnerDashboard: React.FC = () => {
             )}
           </SectionCard>
         </div>
+
+        {/* Waiter Performance */}
+        <SectionCard
+          title="Waiter performance"
+          description="Orders and revenue attributed per waiter in the selected period"
+        >
+          {waiterPerf.length === 0 ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              No waiter data for this period.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-border/50 text-muted-foreground">
+                    <th className="font-medium px-5 py-3">Waiter</th>
+                    <th className="font-medium px-5 py-3 text-right">Orders</th>
+                    <th className="font-medium px-5 py-3 text-right">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {waiterPerf.map((w) => {
+                    const initials = w.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+                    const maxOrders = waiterPerf[0]?.orderCount || 1;
+                    return (
+                      <tr key={w.waiterId} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">
+                              {initials}
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground">{w.name}</p>
+                              <div className="mt-1 h-1 rounded-full bg-muted overflow-hidden" style={{ width: 80 }}>
+                                <div
+                                  className="h-full rounded-full bg-primary"
+                                  style={{ width: `${Math.round((w.orderCount / maxOrders) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums">{w.orderCount}</td>
+                        <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums text-primary">{formatCurrency(w.totalSales)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
 
         {isLoading && (
           <p className="text-center text-[11px] text-muted-foreground">Refreshing…</p>
