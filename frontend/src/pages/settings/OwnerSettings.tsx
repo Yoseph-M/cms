@@ -19,6 +19,7 @@ import { Button } from '../../components/ui/Button';
 import { SettingsGroup } from '../../components/ui/SettingsGroup';
 import { cn } from '../../lib/utils';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { useHeaderStore } from '../../store/headerStore';
 
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { BusinessProfileSection } from '../../components/settings/BusinessProfileSection';
@@ -57,7 +58,23 @@ const GROUP_META: Record<
 export const OwnerSettings: React.FC = () => {
   const { t } = useTranslation('owner');
   const { openWizard } = useOnboardingStore();
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
   const [activeId, setActiveId] = useState<string>(NAV_ITEMS[0].id);
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({
+      title: t('settings.title', { defaultValue: 'System Settings' }),
+      subtitle: t('settings.subtitle', {
+        defaultValue: 'Manage your business profile, preferences, and what each role can do across the system.',
+      }),
+    });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange, t]);
 
   // Scroll-spy: track which section is currently in view.
   useEffect(() => {
