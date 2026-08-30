@@ -1,7 +1,7 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, Minus, Trash2, X, ShoppingCart, UtensilsCrossed, CheckCircle2, ImageIcon } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, X, ShoppingCart, UtensilsCrossed, CheckCircle2, ImageIcon, UserRound } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useMenuQuery } from '../../hooks/useCachedQueries';
@@ -70,6 +70,17 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
 
+  // Waiter selection
+  const [waiters, setWaiters] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedWaiterId, setSelectedWaiterId] = useState('');
+
+  useEffect(() => {
+    axiosClient
+      .get('/users', { params: { role: 'WAITER', isActive: 'true' } })
+      .then((res) => setWaiters(res.data || []))
+      .catch(() => {/* silent — cashier can still try to submit */});
+  }, []);
+
   const filtered = useMemo(() => {
     return items.filter((i) => {
       if (!i.isAvailable) return false;
@@ -125,6 +136,10 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       addToast({ type: 'error', title: t('ordering.toasts.tableRequired'), message: t('ordering.toasts.tableRequiredMsg') });
       return;
     }
+    if (!selectedWaiterId) {
+      addToast({ type: 'error', title: 'Waiter required', message: 'Please select the waiter serving this table.' });
+      return;
+    }
     if (cart.length === 0) {
       addToast({ type: 'error', title: t('ordering.toasts.emptyCart'), message: t('ordering.toasts.emptyCartMsg') });
       return;
@@ -136,6 +151,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       const res = await axiosClient.post('/orders', {
         clientOrderId,
         tableNumber: tableNumber.trim(),
+        waiterId: selectedWaiterId || undefined,
         items: cart.map((l) => ({
           menuItemId: l.menuItemId,
           name: l.name,
@@ -154,6 +170,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       });
       setCart([]);
       setTableNumber('');
+      setSelectedWaiterId('');
       setJustSubmitted(true);
       onOrderCreated?.(res.data?.order ?? res.data);
       setTimeout(() => setJustSubmitted(false), 1800);
@@ -274,6 +291,35 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
               {t('ordering.cart.line', { count: cart.length })}
             </span>
           </div>
+
+          {/* Waiter selector */}
+          <label htmlFor="order-waiter" className="text-xs text-muted-foreground mb-1 block">
+            <UserRound className="inline w-3 h-3 mr-1" />
+            Waiter serving this table
+          </label>
+          <div className="relative mb-3">
+            <select
+              id="order-waiter"
+              value={selectedWaiterId}
+              onChange={(e) => setSelectedWaiterId(e.target.value)}
+              className={`w-full h-9 pl-3 pr-8 rounded-md border text-sm appearance-none bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 ${
+                selectedWaiterId
+                  ? 'border-border text-foreground'
+                  : 'border-destructive/60 text-muted-foreground'
+              }`}
+            >
+              <option value="">— Select a waiter —</option>
+              {waiters.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+          </div>
+
           <label htmlFor="order-table" className="text-xs text-muted-foreground mb-1 block">
             {t('ordering.cart.tableNumber')}
           </label>
@@ -365,7 +411,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           </div>
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || justSubmitted || cart.length === 0 || !tableNumber.trim()}
+            disabled={isSubmitting || justSubmitted || cart.length === 0 || !tableNumber.trim() || !selectedWaiterId}
             className="w-full h-12"
             size="lg"
           >
