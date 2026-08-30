@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bell, Globe, Settings, ShoppingCart, Sun } from 'lucide-react';
 import { SettingsGroup } from '../../components/ui/SettingsGroup';
@@ -7,6 +7,7 @@ import { CashierOrderingToggle } from '../../components/settings/CashierOrdering
 import { TableCountSetting } from '../../components/settings/TableCountSetting';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
+import { useHeaderStore } from '../../store/headerStore';
 
 /**
  * Manager Settings page — Phase 14, §3.3.
@@ -16,6 +17,16 @@ import { ThemePreferenceSection } from '../../components/settings/ThemePreferenc
  */
 export const ManagerSettings: React.FC = () => {
   const { t } = useTranslation('owner');
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  useEffect(() => {
+    setPageTitle({ title: 'Settings', subtitle: 'Manage notifications and the system behavior shared with Owners.' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
