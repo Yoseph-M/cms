@@ -164,7 +164,7 @@ export const LoginPage: React.FC = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 onFocus={() => setFocusedField('username')}
                 onBlur={() => setFocusedField(null)}
-                placeholder={t('fields.username') || 'Username'}
+                placeholder={t('fields.username') || 'username'}
                 autoComplete="off"
                 required
                 className="login-input flex-1 min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
