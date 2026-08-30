@@ -5,6 +5,7 @@ import { extractErrorMessage } from '../../utils/errorHandler';
 import { fileToCompressedDataUrl } from '../../utils/imageResize';
 import { useToastStore } from '../../store/toastStore';
 import { useSocketStore } from '../../store/socketStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { Card, CardContent } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -673,6 +674,65 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       </div>
 
       <Card className="p-4 sm:p-5 space-y-4">
+        {!canEdit ? (
+          /* Read-only (owner/manager with menu config disabled) — search + filters in one row */
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <Input
+              type="text"
+              defaultValue={search}
+              onChange={handleSearchChange}
+              placeholder="Search menu items…"
+              leftIcon={<Search className="w-4 h-4" />}
+              className="flex-1 min-w-[200px]"
+              aria-label="Search menu items"
+            />
+
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap ml-auto justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0 h-11">
+                  {categoryFilter === 'All'
+                    ? <LayoutGrid className="w-4 h-4 text-muted-foreground" />
+                    : React.createElement(CATEGORY_META[categoryFilter as MenuCategory].icon, { className: 'w-4 h-4 text-muted-foreground' })}
+                  <span>{categoryFilter === 'All' ? 'All' : CATEGORY_META[categoryFilter as MenuCategory].label}</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {CATEGORIES.map((cat) => {
+                    const Icon = cat === 'All' ? LayoutGrid : CATEGORY_META[cat].icon;
+                    return (
+                      <DropdownMenuItem
+                        key={cat}
+                        selected={categoryFilter === cat}
+                        onSelect={() => setCategoryFilter(cat)}
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span>{cat === 'All' ? 'All' : CATEGORY_META[cat].label}</span>
+                        <span className="ml-auto text-xs text-muted-foreground font-mono">{categoryCounts[cat] ?? 0}</span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger aria-label="View mode" className="shrink-0 w-[104px] h-11">
+                  {view === 'grid' ? <LayoutGrid className="w-4 h-4 text-muted-foreground" /> : <List className="w-4 h-4 text-muted-foreground" />}
+                  <span>{view === 'grid' ? 'Grid' : 'List'}</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-36">
+                  <DropdownMenuItem selected={view === 'grid'} onSelect={() => setView('grid')}>
+                    <LayoutGrid className="w-4 h-4 shrink-0" />
+                    Grid view
+                  </DropdownMenuItem>
+                  <DropdownMenuItem selected={view === 'list'} onSelect={() => setView('list')}>
+                    <List className="w-4 h-4 shrink-0" />
+                    List view
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Row 1 — search, primary actions */}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap">
           <Input
@@ -835,6 +895,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             )}
           </div>
         </div>
+          </>
+        )}
       </Card>
 
       <input
