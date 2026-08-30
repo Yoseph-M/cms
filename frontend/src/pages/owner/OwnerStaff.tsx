@@ -44,6 +44,7 @@ const EMPTY_FORM = { name: '', role: 'CASHIER', username: '', phone: '', salaryA
 
 export const OwnerStaff: React.FC = () => {
   const { addToast } = useToastStore();
+  const { user: currentUser } = useAuthStore();
 
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -207,28 +208,6 @@ export const OwnerStaff: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
-      {/* Controls */}
-      <div className="flex flex-wrap gap-3 items-center justify-between">
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <Input id="staff-search" placeholder="Search staff..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 w-48" />
-          </div>
-          <Select id="role-filter" value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="w-32">
-            <option value="All">All Roles</option>
-            {STAFF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </Select>
-          <Select id="status-filter" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-32">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="all">All</option>
-          </Select>
-        </div>
-        <Button id="add-staff-btn" onClick={openAdd}>
-          <Plus className="w-4 h-4 mr-2" />Add Staff
-        </Button>
-      </div>
-
       {/* Table */}
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-secondary/40 animate-pulse" />)}</div>
@@ -250,6 +229,43 @@ export const OwnerStaff: React.FC = () => {
         />
       ) : (
         <div className="rounded-xl border border-border overflow-hidden">
+          {/* Card top bar — Add Staff on the left, filters on the right */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/30 px-4 py-3">
+            <Button id="add-staff-btn" onClick={openAdd} size="sm" className="shadow-sm">
+              <Plus className="w-4 h-4 mr-2" />Add Staff
+            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="staff-search"
+                  placeholder="Search staff..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-9 w-44 sm:w-52 h-9"
+                />
+              </div>
+              <Select
+                id="role-filter"
+                value={roleFilter}
+                onChange={e => setRoleFilter(e.target.value)}
+                className="w-32 h-9"
+              >
+                <option value="All">All Roles</option>
+                {STAFF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              </Select>
+              <Select
+                id="status-filter"
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="w-32 h-9"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="all">All</option>
+              </Select>
+            </div>
+          </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/50 border-b border-border">
@@ -296,11 +312,13 @@ export const OwnerStaff: React.FC = () => {
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                       </Tooltip>
-                      <Tooltip label="Reset Password">
-                        <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-                          <KeyRound className="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
+                      {user.id !== currentUser?.id && (
+                        <Tooltip label="Reset Password">
+                          <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                            <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
+                      )}
                       {user.isActive ? (
                         <Tooltip label="Deactivate">
                           <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
