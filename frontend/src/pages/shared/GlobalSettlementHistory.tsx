@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { axiosClient } from '../../api/axiosClient';
+import { useHeaderStore } from '../../store/headerStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { ArrowLeft, ArrowRight, RefreshCw, CreditCard, Banknote, Smartphone, Filter } from 'lucide-react';
@@ -56,6 +57,17 @@ export const GlobalSettlementHistory: React.FC = () => {
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 25, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
   const [methodFilter, setMethodFilter] = useState<string>('');
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({ title: 'Settlements', subtitle: 'All payment settlements across orders' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   const fetchSettlements = useCallback(async (page = 1) => {
     setLoading(true);
