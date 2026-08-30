@@ -7,6 +7,7 @@ import { useToastStore } from '../../store/toastStore';
 import { useHeaderStore } from '../../store/headerStore';
 import { User, Role } from '../../types';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { formatCurrency } from '../../utils/currency';
 
 // Use the owner dashboard components to match the UI perfectly
 import { KpiCards, KpiCard } from '../../components/owner/dashboard/KpiCards';
@@ -26,6 +27,14 @@ const ROLE_TONE: Record<Role, 'default' | 'secondary' | 'success' | 'outline'> =
   COOKER: 'outline',
   BARISTA: 'outline',
 };
+
+interface WaiterPerfRow {
+  waiterId: string;
+  name: string;
+  role: string;
+  orderCount: number;
+  totalSales: number;
+}
 
 export const ManagerDashboard: React.FC = () => {
   const { addToast } = useToastStore();
@@ -68,9 +77,13 @@ export const ManagerDashboard: React.FC = () => {
 
   const [staffList, setStaffList] = useState<User[]>([]);
   const [isLoadingStaff, setIsLoadingStaff] = useState(true);
+  const [waiterPerf, setWaiterPerf] = useState<WaiterPerfRow[]>([]);
+  const [isLoadingWaiterPerf, setIsLoadingWaiterPerf] = useState(true);
 
   useEffect(() => {
     fetchStaff();
+    fetchWaiterPerf(dateRange.from, dateRange.to);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchStaff = async () => {
@@ -82,6 +95,22 @@ export const ManagerDashboard: React.FC = () => {
       console.error(err);
     } finally {
       setIsLoadingStaff(false);
+    }
+  };
+
+  const fetchWaiterPerf = async (from: string, to: string) => {
+    setIsLoadingWaiterPerf(true);
+    try {
+      const fromIso = new Date(from).toISOString();
+      const toIso = new Date(`${to}T23:59:59.999`).toISOString();
+      const res = await axiosClient.get('/analytics/staff-performance', {
+        params: { from: fromIso, to: toIso, role: 'WAITER' },
+      });
+      setWaiterPerf(Array.isArray(res.data) ? res.data : []);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsLoadingWaiterPerf(false);
     }
   };
 
@@ -241,6 +270,62 @@ export const ManagerDashboard: React.FC = () => {
               </table>
             </div>
             {isLoadingStaff && <p className="text-center text-[11px] text-muted-foreground py-4">Refreshing…</p>}
+          </SectionCard>
+
+          {/* Waiter Performance */}
+          <SectionCard
+            title="Waiter performance"
+            description="Orders and revenue per waiter in the selected period"
+          >
+            {isLoadingWaiterPerf ? (
+              <p className="text-center text-[11px] text-muted-foreground py-4">Loading…</p>
+            ) : waiterPerf.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                No waiter data for this period.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50 text-muted-foreground">
+                      <th className="font-medium px-5 py-3">#</th>
+                      <th className="font-medium px-5 py-3">Waiter</th>
+                      <th className="font-medium px-5 py-3 text-right">Orders</th>
+                      <th className="font-medium px-5 py-3 text-right">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/30">
+                    {waiterPerf.map((w, i) => {
+                      const initials = w.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+                      const maxOrders = waiterPerf[0]?.orderCount || 1;
+                      return (
+                        <tr key={w.waiterId} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{i + 1}</td>
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">
+                                {initials}
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground">{w.name}</p>
+                                <div className="mt-1 h-1 rounded-full bg-muted overflow-hidden" style={{ width: 80 }}>
+                                  <div
+                                    className="h-full rounded-full bg-primary"
+                                    style={{ width: `${Math.round((w.orderCount / maxOrders) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums">{w.orderCount}</td>
+                          <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums text-primary">{formatCurrency(w.totalSales)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </SectionCard>
         </div>
       </div>
