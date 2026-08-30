@@ -10,7 +10,7 @@ export interface SectionCardProps {
   filter?: { label: string; options?: string[]; value?: string; onChange?: (v: string) => void };
   /** Render a custom right-hand control (overrides `filter`) */
   rightAccessory?: React.ReactNode;
-  /** Where the filter dropdown sits: next to the title (left) or far right */
+  /** Where the filter dropdown sits: next to the title (left) or far right. Default is 'right'. */
   filterAlign?: 'left' | 'right';
   className?: string;
   /** Removes default padding from the content area */
