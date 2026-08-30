@@ -12,10 +12,12 @@ export async function getUsers(req: AuthenticatedRequest, res: Response) {
   const whereClause: any = {};
   if (role) whereClause.role = role as Role;
   
-  if (isActive !== undefined) {
+  const isPrivileged = req.user!.role === Role.OWNER || req.user!.role === Role.MANAGER;
+
+  if (isActive !== undefined && isPrivileged) {
     whereClause.isActive = isActive === 'true';
-  } else if (req.user!.role !== Role.OWNER && req.user!.role !== Role.MANAGER) {
-    // Spec §5: soft-delete query discipline - exclude inactive by default for non-admin callers
+  } else if (!isPrivileged) {
+    // Non-admins can only see active users
     whereClause.isActive = true;
   }
 
@@ -27,7 +29,7 @@ export async function getUsers(req: AuthenticatedRequest, res: Response) {
       role: true,
       username: true,
       phone: true,
-      salaryAmount: true,
+      salaryAmount: isPrivileged,
       isActive: true,
       createdAt: true,
       updatedAt: true,
