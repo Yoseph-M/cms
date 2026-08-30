@@ -3,6 +3,7 @@ import { exportRowsCSV } from "../../utils/csvExport";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -43,6 +44,21 @@ interface AttendanceCalendarProps {
 
 export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner = false }) => {
   const { addToast } = useToastStore();
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({
+      title: 'Attendance',
+      subtitle: isOwner ? 'All staff attendance' : 'Team attendance and shift log',
+    });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange, isOwner]);
+
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth() + 1); // 1-indexed
