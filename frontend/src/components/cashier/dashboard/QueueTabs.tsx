@@ -1,15 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Clock3, ClockArrowDown, Search, X } from 'lucide-react';
+import { ChevronDown, Clock3, ClockArrowDown, Search, X, LayoutGrid, CircleDollarSign, ChefHat, Utensils } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { useTranslation } from 'react-i18next';
 
 export type SortKey = 'newest' | 'longer';
+export type StatusFilter = 'all' | 'served' | 'in_kitchen' | 'submitted';
 
 export interface QueueTabsProps {
   active: SortKey;
   onChange: (key: SortKey) => void;
   search: string;
   onSearchChange: (value: string) => void;
+  statusFilter?: StatusFilter;
+  onStatusFilterChange?: (filter: StatusFilter) => void;
 }
 
 /** Queue controls designed as a calm command bar instead of a row of tabs. */
