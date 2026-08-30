@@ -27,9 +27,10 @@ router.patch('/me/language', UsersController.changeLanguage);
 router.patch('/me', validate(updateOwnProfileSchema), UsersController.updateOwnProfile);
 
 // Admin staff management — Owner and Manager only
-router.use(requireRole([Role.OWNER, Role.MANAGER]));
+// Cashiers also need to fetch waiters for order creation
+router.get('/', requireRole([Role.OWNER, Role.MANAGER, Role.CASHIER]), UsersController.getUsers);
 
-router.get('/', UsersController.getUsers);
+router.use(requireRole([Role.OWNER, Role.MANAGER]));
 router.post('/', validate(createUserSchema), UsersController.createUser);
 router.patch('/:id', validate(updateUserSchema), UsersController.updateUser);
 router.patch('/:id/deactivate', UsersController.deactivateUser);
