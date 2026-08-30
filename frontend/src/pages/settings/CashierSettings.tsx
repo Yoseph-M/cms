@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bell, Globe, Settings, Sun } from 'lucide-react';
 import { SettingsGroup } from '../../components/ui/SettingsGroup';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
+import { useHeaderStore } from '../../store/headerStore';
 
 /**
  * Cashier Settings page — mirrors Manager/Owner structure but scoped to
@@ -12,6 +13,16 @@ import { ThemePreferenceSection } from '../../components/settings/ThemePreferenc
  */
 export const CashierSettings: React.FC = () => {
   const { t } = useTranslation('owner');
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  useEffect(() => {
+    setPageTitle({ title: 'Settings', subtitle: 'Personalize notifications and language for this device.' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
