@@ -60,36 +60,36 @@ const LoginRow = React.memo<{
     style={{ height: ROW_HEIGHT }}
     onClick={() => onSelect(record)}
   >
-    <div className="w-[18%] text-xs font-mono text-muted-foreground truncate pr-2">
+    <div className="w-[20%] text-xs font-mono text-muted-foreground truncate pr-2">
       <div className="flex items-center gap-1.5">
         <Clock className="w-3 h-3" />
         {new Date(record.createdAt).toLocaleString()}
       </div>
     </div>
-    <div className="w-[20%] pr-2">
+    <div className="w-[22%] pr-2">
       <div className="text-xs font-medium truncate">{record.user?.name || record.userId.slice(0, 8)}</div>
       <div className="text-[10px] text-muted-foreground">{record.user?.username || 'No username'}</div>
     </div>
-    <div className="w-[12%]">
+    <div className="w-[12%] pr-2">
       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
         {record.user?.role || 'N/A'}
       </span>
     </div>
-    <div className="w-[12%]">
+    <div className="w-[12%] pr-2">
       <Badge variant={OUTCOME_COLORS[record.outcome] || 'outline'} className="text-[10px]">
         {record.outcome}
       </Badge>
     </div>
-    <div className="w-[15%] hidden md:block text-xs text-muted-foreground truncate font-mono">
+    <div className="w-[16%] hidden md:block text-xs text-muted-foreground truncate font-mono pr-2">
       {record.ip || '—'}
     </div>
-    <div className="w-[13%] hidden md:block text-xs text-muted-foreground">
+    <div className="w-[14%] hidden md:block text-xs text-muted-foreground pr-2">
       <div className="flex items-center gap-1.5">
         <Monitor className="w-3 h-3" />
         {getBrowserFromUserAgent(record.userAgent)}
       </div>
     </div>
-    <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
+    <div className="w-4 shrink-0" />
   </div>
 ));
 LoginRow.displayName = 'LoginRow';
@@ -314,12 +314,12 @@ export const OwnerLoginHistory: React.FC = () => {
           ) : (
             <>
               <div className="flex items-center border-b border-border bg-secondary/30 px-4 py-2.5 text-xs font-semibold text-muted-foreground">
-                <div className="w-[18%]">Timestamp</div>
-                <div className="w-[20%]">User</div>
+                <div className="w-[20%]">Timestamp</div>
+                <div className="w-[22%]">User</div>
                 <div className="w-[12%]">Role</div>
                 <div className="w-[12%]">Outcome</div>
-                <div className="w-[15%] hidden md:block">IP Address</div>
-                <div className="w-[13%] hidden md:block">Browser</div>
+                <div className="w-[16%] hidden md:block">IP Address</div>
+                <div className="w-[14%] hidden md:block">Browser</div>
                 <div className="w-4" />
               </div>
               <FixedSizeList
