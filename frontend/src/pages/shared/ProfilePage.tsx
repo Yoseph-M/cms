@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { useToastStore } from '../../store/toastStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { axiosClient } from '../../api/axiosClient';
 import { useMeQuery } from '../../hooks/useCachedQueries';
 import { Card } from '../../components/ui/Card';
@@ -241,6 +242,17 @@ export const ProfilePage: React.FC = () => {
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const meQuery = useMeQuery();
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({ title: 'Profile', subtitle: 'Your account, security, and personal details' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
