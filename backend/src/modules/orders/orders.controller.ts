@@ -21,9 +21,23 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     }
   }
 
-  const waiterId = req.user!.userId;
+  // If the caller is a CASHIER they may nominate a waiter; otherwise the caller IS the waiter.
+  let waiterId = req.user!.userId;
+  const { clientOrderId, tableNumber, items, waiterId: bodyWaiterId } = req.body;
+
+  if (callerRole === Role.CASHIER && bodyWaiterId) {
+    // Validate that the supplied waiter ID is a real, active WAITER
+    const waiterUser = await prisma.user.findUnique({
+      where: { id: bodyWaiterId },
+      select: { id: true, name: true, role: true, isActive: true },
+    });
+    if (!waiterUser || !waiterUser.isActive || waiterUser.role !== 'WAITER') {
+      return res.status(400).json({ error: 'Invalid waiter selected. Please choose a valid active waiter.' });
+    }
+    waiterId = waiterUser.id;
+  }
+
   const waiterName = req.user!.name;
-  const { clientOrderId, tableNumber, items } = req.body;
 
   // Server-side pricing: NEVER trust the client for unitPrice or totalAmount
   const requestedItemIds = items.map((i: any) => i.menuItemId);
