@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { shiftApi, varianceApi, dailyCloseApi, integrityApi } from '../../api/phase9Api';
 import { useToastStore } from '../../store/toastStore';
 import { useSocketStore } from '../../store/socketStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -17,7 +18,18 @@ export const OperationalReconciliation: React.FC = () => {
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const { socket } = useSocketStore();
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
   const [reviewNotes, setReviewNotes] = useState('');
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({ title: 'End of Day', subtitle: 'Shifts, variances, and integrity checks' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   // 1. Fetch Open Shifts
   const { data: openShifts, isLoading: isLoadingShifts, refetch: refetchShifts } = useQuery({
