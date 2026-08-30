@@ -13,6 +13,7 @@ import {
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { useHeaderStore } from '../../store/headerStore';
 
 function exportPDF(title: string, rows: string[][]) {
   const body = rows.map((r) => r.join('\t')).join('\n');
@@ -121,6 +122,17 @@ const Delta: React.FC<{ value: number | null | undefined }> = ({ value }) => {
 
 export const OwnerFinance: React.FC = () => {
   const [range, setRange] = useState<DateRange>(() => computeRange('30d'));
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({ title: 'Finance', subtitle: 'Analytics & revenue intelligence' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   // Send full ISO boundary strings so the backend query is anchored to the
   // user's local day (start-of-day and end-of-day in local tz), not UTC midnight.
