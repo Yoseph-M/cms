@@ -6,6 +6,7 @@ import { axiosClient } from '../../api/axiosClient';
 import { useSocketStore } from '../../store/socketStore';
 import { useToastStore } from '../../store/toastStore';
 import { useAuthStore } from '../../store/authStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { Order, PaymentMethod } from '../../types';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { formatCurrency } from '../../utils/currency';
@@ -225,6 +226,17 @@ export const CashierTicketsPage: React.FC = () => {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { t } = useTranslation('cashier');
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({ title: 'Tickets', subtitle: 'Live order queue and payment collection' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   /* ── Settings ── */
   const settingQuery = useSystemSettingQuery('cashierOrderingEnabled');
