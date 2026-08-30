@@ -5,11 +5,22 @@ import { ArrowRight, CircleDollarSign, Clock3, ListTodo, ReceiptText, Sparkles, 
 import { axiosClient } from '../../api/axiosClient';
 import type { Order } from '../../types';
 import { formatCurrency } from '../../utils/currency';
+import { useHeaderStore } from '../../store/headerStore';
 
 /** A calm starting point for a cashier shift. Ticket processing lives in /tickets. */
 export const CashierDashboard: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  useEffect(() => {
+    setPageTitle({ title: 'Cashier dashboard', subtitle: 'Live shift overview' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   useEffect(() => {
     axiosClient.get('/orders')
