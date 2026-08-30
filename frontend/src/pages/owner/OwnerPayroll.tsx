@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
+import { useHeaderStore } from '../../store/headerStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -50,6 +51,17 @@ type LedgerDisplayRow =
 
 export const OwnerPayroll: React.FC = () => {
   const { addToast } = useToastStore();
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({ title: 'Payroll', subtitle: 'Salary records and adjustments' });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange]);
 
   const [ledger, setLedger] = useState<PayrollRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
