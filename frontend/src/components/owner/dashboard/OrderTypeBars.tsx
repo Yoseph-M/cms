@@ -10,6 +10,8 @@ export interface OrderTypeEntry {
   percent: number;
   /** Total value in minor units (e.g. cents), displayed on the right. */
   total: number;
+  /** Optional image URL to display instead of icon */
+  imageUrl?: string;
   icon?: LucideIcon;
   iconBg?: string;
   iconColor?: string;
@@ -26,15 +28,41 @@ export const OrderTypeBars: React.FC<OrderTypeBarsProps> = ({ entries, className
       {entries.map((e) => (
         <li key={e.id} className="group">
           <div className="flex items-center gap-3">
-            <div
-              className={cn(
-                'flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl',
-                e.iconBg ?? 'bg-orange-500/15',
-                e.iconColor ?? 'text-orange-600 dark:text-orange-400',
-              )}
-            >
-              {e.icon ? <e.icon className="h-5 w-5" /> : <Coffee className="h-5 w-5" />}
-            </div>
+            {e.imageUrl ? (
+              <div className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl overflow-hidden bg-secondary/50 ring-1 ring-border/50">
+                <img
+                  src={e.imageUrl}
+                  alt={e.name}
+                  className="h-full w-full object-cover"
+                  onError={(event) => {
+                    // Fallback to icon if image fails to load
+                    const target = event.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    const parent = target.parentElement;
+                    if (parent) {
+                      parent.className = cn(
+                        'flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl',
+                        e.iconBg ?? 'bg-orange-500/15',
+                        e.iconColor ?? 'text-orange-600 dark:text-orange-400',
+                      );
+                      const Icon = e.icon ?? Coffee;
+                      const iconEl = document.createElement('div');
+                      parent.appendChild(iconEl);
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  'flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl',
+                  e.iconBg ?? 'bg-orange-500/15',
+                  e.iconColor ?? 'text-orange-600 dark:text-orange-400',
+                )}
+              >
+                {e.icon ? <e.icon className="h-5 w-5" /> : <Coffee className="h-5 w-5" />}
+              </div>
+            )}
 
             <div className="min-w-0 flex-1">
               <div className="mb-1.5 flex items-baseline justify-between">
