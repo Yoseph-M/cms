@@ -10,7 +10,7 @@ import { Select } from '../../components/ui/Select';
 import { Sheet } from '../../components/ui/Sheet';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  DollarSign, Plus, Download, RotateCcw, ChevronRight
+  DollarSign, Plus, Download, RotateCcw, ChevronRight, User, TrendingUp, TrendingDown, Minus, Info
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { exportRowsCSV } from '../../utils/csvExport';
@@ -22,6 +22,7 @@ interface StaffUser {
   name: string;
   role: string;
   isActive: boolean;
+  salaryAmount: number; // in cents
 }
 
 interface PayrollRecord {
@@ -43,7 +44,8 @@ interface PayrollRecord {
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const LEDGER_ROW_HEIGHT = 48;
 const LEDGER_LIST_HEIGHT = 420;
-const YEARS = [2024, 2025, 2026, 2027];
+const currentYear = new Date().getFullYear();
+const YEARS = Array.from({ length: 5 }, (_, i) => currentYear + i);
 
 type LedgerDisplayRow =
   | { kind: 'payment'; data: PayrollRecord }
@@ -64,18 +66,20 @@ export const OwnerPayroll: React.FC = () => {
   }, [setPageTitle, setShowDateRange]);
 
   const [ledger, setLedger] = useState<PayrollRecord[]>([]);
+  const [staff, setStaff] = useState<StaffUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [staff, setStaff] = useState<StaffUser[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [userId, setUserId] = useState('');
   const [periodMonth, setPeriodMonth] = useState(() => new Date().getMonth() + 1);
   const [periodYear, setPeriodYear] = useState(() => new Date().getFullYear());
-  const [paidAmount, setPaidAmount] = useState('');
+  
+  // Form specific state for bonus/deduction logic
+  const [adjustmentType, setAdjustmentType] = useState<'none' | 'bonus' | 'deduction'>('none');
+  const [adjustmentAmount, setAdjustmentAmount] = useState(''); // user types here
+  const [editableBaseSalary, setEditableBaseSalary] = useState<string>('');
   const [note, setNote] = useState('');
-  const [refSalary, setRefSalary] = useState<number | null>(null);
-  const [isLoadingRef, setIsLoadingRef] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [detailRow, setDetailRow] = useState<PayrollRecord | null>(null);
@@ -85,15 +89,11 @@ export const OwnerPayroll: React.FC = () => {
   const [isAdjusting, setIsAdjusting] = useState(false);
 
   const fetchLedger = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
     try {
       const res = await axiosClient.get('/payroll');
       setLedger(res.data);
     } catch (err: any) {
       setError(extractErrorMessage(err, 'Failed to load payroll ledger.'));
-    } finally {
-      setIsLoading(false);
     }
   }, []);
 
@@ -104,63 +104,72 @@ export const OwnerPayroll: React.FC = () => {
         res.data.filter((u: StaffUser) => u.isActive && u.role !== 'OWNER')
       );
     } catch {
-      // silent — form will show empty select
+      // silent
     }
   }, []);
 
-  useEffect(() => { fetchLedger(); }, [fetchLedger]);
+  useEffect(() => {
+    setIsLoading(true);
+    Promise.all([fetchLedger(), fetchStaff()]).finally(() => {
+      setIsLoading(false);
+    });
+  }, [fetchLedger, fetchStaff]);
 
   const resetForm = () => {
     setUserId('');
     setPeriodMonth(new Date().getMonth() + 1);
     setPeriodYear(new Date().getFullYear());
-    setPaidAmount('');
+    setAdjustmentType('none');
+    setAdjustmentAmount('');
     setNote('');
-    setRefSalary(null);
   };
 
-  const openForm = () => {
+  const openFormForStaff = (staffId: string) => {
     resetForm();
-    fetchStaff();
+    setUserId(staffId);
     setFormOpen(true);
   };
 
-  const handleStaffChange = async (id: string) => {
-    setUserId(id);
-    setRefSalary(null);
-    setPaidAmount('');
-    if (!id) return;
-    setIsLoadingRef(true);
-    try {
-      const res = await axiosClient.get(`/payroll/staff-ref/${id}`);
-      const salary = Number(res.data.salaryAmount) || 0;
-      setRefSalary(salary);
-      setPaidAmount(String(salary));
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Could not load salary reference', message: extractErrorMessage(err) });
-    } finally {
-      setIsLoadingRef(false);
-    }
-  };
+  const selectedStaff = useMemo(() => staff.find(s => s.id === userId), [staff, userId]);
+  
+  useEffect(() => {
+    setEditableBaseSalary(String(selectedStaff?.salaryAmount || ''));
+  }, [selectedStaff]);
+
+  const calculatedPaidAmount = useMemo(() => {
+    const base = Number(editableBaseSalary) || 0;
+    const adj = Number(adjustmentAmount) || 0;
+    if (adjustmentType === 'bonus') return base + adj;
+    if (adjustmentType === 'deduction') return Math.max(0, base - adj);
+    return base;
+  }, [editableBaseSalary, adjustmentType, adjustmentAmount]);
 
   const handleRecordEntry = async () => {
-    if (!userId || !paidAmount) {
-      addToast({ type: 'error', title: 'Staff and paid amount are required.' });
+    if (!userId) {
+      addToast({ type: 'error', title: 'Staff is required.' });
       return;
     }
-    const amount = parseFloat(paidAmount);
-    if (!Number.isFinite(amount) || amount < 0) {
-      addToast({ type: 'error', title: 'Paid amount must be a non-negative number.' });
+    
+    if (calculatedPaidAmount < 0) {
+      addToast({ type: 'error', title: 'Calculated paid amount cannot be negative.' });
       return;
     }
+
+    let finalNote = note.trim();
+    if (adjustmentType === 'bonus' && Number(adjustmentAmount) > 0) {
+      finalNote = finalNote ? `[Bonus: +${adjustmentAmount}] ${finalNote}` : `[Bonus: +${adjustmentAmount}]`;
+    } else if (adjustmentType === 'deduction' && Number(adjustmentAmount) > 0) {
+      finalNote = finalNote ? `[Deduction: -${adjustmentAmount}] ${finalNote}` : `[Deduction: -${adjustmentAmount}]`;
+    }
+
     setIsSubmitting(true);
     try {
       await axiosClient.post('/payroll/entries', {
         userId,
         periodMonth,
         periodYear,
-        paidAmount: amount,
-        note: note.trim() || undefined,
+        paidAmount: calculatedPaidAmount,
+        note: finalNote || undefined,
       });
       addToast({ type: 'success', title: 'Payroll entry recorded' });
       setFormOpen(false);
@@ -203,7 +212,6 @@ export const OwnerPayroll: React.FC = () => {
     }
   };
 
-  const MONTHS_LOCAL = MONTHS;
   const paymentRows = useMemo(
     () => ledger.filter((r) => r.recordType !== 'adjustment'),
     [ledger]
@@ -213,12 +221,18 @@ export const OwnerPayroll: React.FC = () => {
     const rows: LedgerDisplayRow[] = [];
     paymentRows.forEach((payment) => {
       rows.push({ kind: 'payment', data: payment });
-      ledger
-        .filter((a) => a.recordType === 'adjustment' && a.originalPaymentId === payment.id)
-        .forEach((adj) => rows.push({ kind: 'adjustment', data: adj }));
     });
     return rows;
-  }, [paymentRows, ledger]);
+  }, [paymentRows]);
+
+  const totalPaid = useMemo(() => {
+    return ledger.reduce((sum, r) => {
+      if (r.recordType === 'adjustment') {
+        return sum + r.paidAmount;
+      }
+      return sum + r.paidAmount;
+    }, 0);
+  }, [ledger]);
 
   const exportCSV = useCallback(() => {
     exportRowsCSV(
@@ -254,7 +268,7 @@ export const OwnerPayroll: React.FC = () => {
           >
             <div className="flex-[2] font-medium truncate">{p.user.name}</div>
             <div className="flex-1 text-center hidden sm:block text-muted-foreground">
-              {MONTHS_LOCAL[p.periodMonth - 1]} {p.periodYear}
+              {MONTHS[p.periodMonth - 1]} {p.periodYear}
             </div>
             <div className="flex-1 text-right hidden md:block font-mono text-muted-foreground">
               {formatCurrency(p.baseSalary)}
@@ -272,54 +286,79 @@ export const OwnerPayroll: React.FC = () => {
           </div>
         );
       }
-
-      const adj = row.data;
-      return (
-        <div
-          style={style}
-          className="flex items-center border-b border-border/30 bg-[hsl(var(--warning))]/5 text-sm px-4 pl-8"
-        >
-          <div className="flex-[2] text-xs text-muted-foreground italic">↳ Correction</div>
-          <div className="flex-1 hidden sm:block" />
-          <div className="flex-1 hidden md:block" />
-          <div className="flex-1 text-right font-mono text-xs text-[hsl(var(--warning))]">
-            {formatCurrency(adj.paidAmount)}
-          </div>
-          <div className="flex-[2] hidden lg:block text-xs text-muted-foreground truncate">
-            {adj.reason}
-          </div>
-        </div>
-      );
+      return null;
     },
     [displayRows]
   );
 
+  const staffWithRecords = useMemo(() => {
+    const recordedIds = new Set(ledger.map(l => l.userId));
+    return staff.filter(s => recordedIds.has(s.id));
+  }, [staff, ledger]);
+
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-primary" />Record Payroll Entry
-            </CardTitle>
-            <Button id="record-payroll-btn" onClick={openForm}>
-              <Plus className="w-4 h-4 mr-2" />New Entry
-            </Button>
+      
+      {/* Staff Grid for quick payroll insertion */}
+      <div>
+        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Active Staff</h2>
+        
+        {isLoading ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-secondary/40 rounded-xl animate-pulse" />)}
           </div>
-        </CardHeader>
-      </Card>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <motion.div 
+              whileHover={{ y: -2, scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => { resetForm(); setFormOpen(true); }}
+              className="bg-primary/5 border border-primary/20 hover:border-primary/40 rounded-xl p-4 shadow-sm cursor-pointer transition-colors flex flex-col items-center justify-center text-primary min-h-[6rem]"
+            >
+              <Plus className="w-8 h-8 mb-2" />
+              <div className="font-semibold text-sm">Add Record</div>
+            </motion.div>
+            {staffWithRecords.map(s => (
+              <motion.div 
+                whileHover={{ y: -2, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                key={s.id} 
+                onClick={() => openFormForStaff(s.id)}
+                className="bg-card border border-border hover:border-primary/40 rounded-xl p-4 shadow-sm cursor-pointer transition-colors"
+              >
+                <div className="font-semibold text-foreground truncate">{s.name}</div>
+                <div className="text-xs text-muted-foreground mb-3">{s.role}</div>
+                <div className="text-sm font-mono font-medium text-primary">
+                  {formatCurrency(s.salaryAmount)} <span className="text-[10px] text-muted-foreground ml-1">/ mo</span>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-bold">Payroll Ledger</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-sm font-bold text-foreground flex items-center gap-3">
+            Historical Ledger
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-normal text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full">
+                {paymentRows.length} records
+              </span>
+              <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                {formatCurrency(totalPaid)} total paid
+              </span>
+            </div>
+          </CardTitle>
+          <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={exportCSV}>
-              <Download className="w-3.5 h-3.5 mr-2" />Export CSV
+              <Download className="w-3.5 h-3.5 mr-1" />
+              CSV
             </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {isLoading ? (
+          {isLoading && paymentRows.length === 0 ? (
             <div className="p-6 space-y-2">{Array.from({length: 5}).map((_,i)=><div key={i} className="h-12 rounded-lg bg-secondary/40 animate-pulse" />)}</div>
           ) : error ? (
             <div className="p-8 text-center">
@@ -329,13 +368,8 @@ export const OwnerPayroll: React.FC = () => {
           ) : paymentRows.length === 0 ? (
             <EmptyState
               title="No payroll entries yet"
-              message="Record your first payroll entry to build the ledger. You can log what was actually paid per staff member and period."
+              message="Click on a staff card above to record your first payroll entry."
               icon={<DollarSign className="w-7 h-7" />}
-              action={{
-                label: 'Record your first payroll entry',
-                onClick: openForm,
-                icon: <Plus className="w-4 h-4 mr-1.5" />,
-              }}
             />
           ) : (
             <div>
@@ -365,35 +399,38 @@ export const OwnerPayroll: React.FC = () => {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title="Record Payroll Entry"
-        description="Log what was actually paid for a staff member and period."
+        description={selectedStaff ? `Log payment for ${selectedStaff.name}` : ''}
         footer={
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setFormOpen(false)} className="flex-1">Cancel</Button>
             <Button
               onClick={handleRecordEntry}
-              disabled={isSubmitting || !userId || !paidAmount}
+              disabled={isSubmitting || !userId || calculatedPaidAmount < 0}
               className="flex-1"
             >
-              {isSubmitting ? 'Saving...' : 'Record Entry'}
+              {isSubmitting ? 'Saving...' : 'Record Payment'}
             </Button>
           </div>
         }
       >
-        <div className="space-y-5">
-          <div>
-            <label htmlFor="payroll-staff" className="text-sm font-medium text-foreground block mb-1.5">
-              Staff <span className="text-destructive">*</span>
-            </label>
-            <Select
-              id="payroll-staff"
-              value={userId}
-              onChange={(e) => handleStaffChange(e.target.value)}
-            >
-              <option value="">Select staff member</option>
-              {staff.map((s) => (
-                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
-              ))}
+        <div className="space-y-6">
+          
+          <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">Staff Member</label>
+            <Select value={userId} onChange={e => setUserId(e.target.value)} className="mb-4">
+              <option value="">Select Staff</option>
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
             </Select>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">Base Salary</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold font-mono text-foreground text-base">ETB</span>
+              <Input
+                type="number"
+                value={editableBaseSalary}
+                onChange={e => setEditableBaseSalary(e.target.value)}
+                className="font-bold font-mono text-foreground text-lg pl-12 bg-background border-border"
+              />
+            </div>
           </div>
 
           <div className="flex gap-3">
@@ -428,29 +465,56 @@ export const OwnerPayroll: React.FC = () => {
           </div>
 
           <div>
-            <label htmlFor="payroll-amount" className="text-sm font-medium text-foreground block mb-1.5">
-              Paid Amount (ETB) <span className="text-destructive">*</span>
-            </label>
-            {userId && (
-              <p className="text-xs text-muted-foreground mb-1.5">
-                {isLoadingRef
-                  ? 'Loading reference salary…'
-                  : refSalary !== null
-                    ? `Suggested reference salary — edit to what you actually paid (${formatCurrency(refSalary)})`
-                    : 'Suggested reference salary — edit to what you actually paid'}
-              </p>
-            )}
-            <Input
-              id="payroll-amount"
-              type="number"
-              step="0.01"
-              min="0"
-              value={paidAmount}
-              onChange={(e) => setPaidAmount(e.target.value)}
-              placeholder="0.00"
-              className="font-mono"
-              disabled={isLoadingRef}
-            />
+            <label className="text-sm font-medium text-foreground block mb-2">Adjustments (Optional)</label>
+            <div className="flex gap-2 mb-3">
+              <button 
+                onClick={() => setAdjustmentType('none')}
+                className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'none' ? 'bg-secondary border-border text-foreground' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
+              >
+                <Minus className="w-4 h-4 mx-auto mb-1" />
+                None
+              </button>
+              <button 
+                onClick={() => setAdjustmentType('bonus')}
+                className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'bonus' ? 'bg-[hsl(var(--success))]/10 border-[hsl(var(--success))]/30 text-[hsl(var(--success))]' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
+              >
+                <TrendingUp className="w-4 h-4 mx-auto mb-1" />
+                Bonus
+              </button>
+              <button 
+                onClick={() => setAdjustmentType('deduction')}
+                className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'deduction' ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
+              >
+                <TrendingDown className="w-4 h-4 mx-auto mb-1" />
+                Deduct
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {adjustmentType !== 'none' && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <Input
+                    type="number"
+                    placeholder={`Enter ${adjustmentType} amount in ETB`}
+                    value={adjustmentAmount}
+                    onChange={(e) => setAdjustmentAmount(e.target.value)}
+                    className="font-mono mt-1"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          
+          <div className="bg-primary/5 rounded-lg p-4 border border-primary/20 flex justify-between items-center">
+            <span className="font-semibold text-primary text-sm">Total to Pay:</span>
+            <span className="font-bold font-mono text-primary text-xl">
+              {formatCurrency(calculatedPaidAmount)}
+            </span>
           </div>
 
           <div>
@@ -489,35 +553,9 @@ export const OwnerPayroll: React.FC = () => {
                     </div>
                   ))}
                 </div>
-                {!adjOpen ? (
-                  <div className="flex gap-3">
-                    <Button variant="outline" onClick={() => setDetailRow(null)} className="flex-1">Close</Button>
-                    <Button onClick={() => { setAdjOpen(true); setAdjReason(''); setAdjAmount(''); }} className="flex-1">
-                      <RotateCcw className="w-3.5 h-3.5 mr-2" />Issue Correction
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <p className="text-xs text-[hsl(var(--warning))] font-medium">
-                      A correction creates a new linked record — the original is never modified.
-                    </p>
-                    <div>
-                      <label className="text-sm font-medium block mb-1.5">Adjustment Amount (ETB)</label>
-                      <Input id="adj-amount" value={adjAmount} onChange={e => setAdjAmount(e.target.value)}
-                        placeholder="-100 (deduction) or +200 (bonus)" type="number" step="0.01" />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium block mb-1.5">Reason <span className="text-destructive">*</span></label>
-                      <Input id="adj-reason" value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g. Advance repayment deduction" />
-                    </div>
-                    <div className="flex gap-3">
-                      <Button variant="outline" onClick={() => setAdjOpen(false)} className="flex-1">Back</Button>
-                      <Button onClick={handleAdjustment} disabled={isAdjusting} className="flex-1">
-                        {isAdjusting ? 'Saving...' : 'Confirm Correction'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                <div className="flex gap-3 mt-6">
+                  <Button variant="outline" onClick={() => setDetailRow(null)} className="w-full">Close</Button>
+                </div>
               </div>
             </motion.div>
           </>
