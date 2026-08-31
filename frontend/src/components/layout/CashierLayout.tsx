@@ -24,7 +24,7 @@ const GROUP_ORDER: string[] = ['core', 'ops'];
  *    "island" cards still pop, matching the Owner's dashboard rhythm.
  */
 const CashierLayoutInner: React.FC = () => {
-  const { collapsed, toggle } = useSidebar();
+  const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebar();
   const { settings } = useSettingsStore();
   const { t } = useTranslation('cashier');
   const location = useLocation();
@@ -75,13 +75,23 @@ const CashierLayoutInner: React.FC = () => {
         )}
       />
 
+      {/* Mobile sidebar backdrop */}
+      {mobileOpen && (
+        <div 
+          className="hidden max-[767px]:block fixed inset-0 z-40 bg-black/50 transition-opacity" 
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
       <motion.aside
         initial={false}
         animate={{ width: collapsed ? 80 : 260 }}
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
         className={cn(
-          'shrink-0 sticky top-0 h-screen flex flex-col z-20',
+          'shrink-0 h-screen flex flex-col z-50 transition-transform duration-300',
           'bg-[hsl(var(--sidebar))] border-r border-[hsl(var(--shell-border))]',
+          'sticky top-0 max-[767px]:fixed max-[767px]:inset-y-0 max-[767px]:left-0',
+          mobileOpen ? 'max-[767px]:translate-x-0' : 'max-[767px]:-translate-x-full'
         )}
       >
         <div
