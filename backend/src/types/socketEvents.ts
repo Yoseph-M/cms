@@ -194,7 +194,8 @@ export type SocketEventName =
   | 'variance:reviewed'
   | 'shift:opened'
   | 'shift:closed'
-  | 'daily-close:completed';
+  | 'daily-close:completed'
+  | 'finance:updated';
 
 // Room names
 export type SocketRoom = 
