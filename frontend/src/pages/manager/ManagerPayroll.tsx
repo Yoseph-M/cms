@@ -205,36 +205,38 @@ export const ManagerPayroll: React.FC = () => {
               }}
             />
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
-                  <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.staff', { defaultValue: 'Staff' })}</th>
-                  <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.period', { defaultValue: 'Period' })}</th>
-                  <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.paid', { defaultValue: 'Paid' })}</th>
-                  <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.date', { defaultValue: 'Date' })}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledger.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors"
-                  >
-                    <td className="px-4 py-3 font-medium">{row.user?.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">
-                      {/* TODO: translate month names if desired, for now use standard abbreviation mapping or keep English fallback */}
-                      {MONTHS[row.periodMonth - 1]} {row.periodYear}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-primary">
-                      {formatCurrency(row.paidAmount)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs text-muted-foreground">
-                      {new Date(row.createdAt).toLocaleDateString()}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
+                    <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.staff', { defaultValue: 'Staff' })}</th>
+                    <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.period', { defaultValue: 'Period' })}</th>
+                    <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.paid', { defaultValue: 'Paid' })}</th>
+                    <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.date', { defaultValue: 'Date' })}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {ledger.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-medium">{row.user?.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {/* TODO: translate month names if desired, for now use standard abbreviation mapping or keep English fallback */}
+                        {MONTHS[row.periodMonth - 1]} {row.periodYear}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-primary">
+                        {formatCurrency(row.paidAmount)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                        {new Date(row.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
