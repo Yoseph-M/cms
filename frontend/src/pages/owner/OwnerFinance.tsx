@@ -14,6 +14,7 @@ import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
+import { useSocketStore } from '../../store/socketStore';
 
 function exportPDF(title: string, rows: string[][]) {
   const body = rows.map((r) => r.join('\t')).join('\n');
@@ -212,6 +213,27 @@ export const OwnerFinance: React.FC = () => {
     netProfit: number;
   }>('/analytics/profit-loss', rangeDeps);
 
+  // ── Real-time: re-fetch finance widgets when backend signals a change ──
+  const socket = useSocketStore((s) => s.socket);
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => {
+      // Silently refetch – skip loading spinners so the UX stays smooth
+      daily.refetch();
+      trend.refetch();
+      pnl.refetch();
+      topItm.refetch();
+      catSpl.refetch();
+      payMth.refetch();
+      staffP.refetch();
+      cancels.refetch();
+    };
+    socket.on('finance:updated', handler);
+    return () => { socket.off('finance:updated', handler); };
+    // We deliberately use a stable list – the refetch callbacks are memoized.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket]);
+
   const trendLabels = useMemo(() => (trend.data || []).map((d) => d.date.slice(5)), [trend.data]);
   const trendValues = useMemo(() => (trend.data || []).map((d) => d.revenue), [trend.data]);
 
@@ -220,11 +242,31 @@ export const OwnerFinance: React.FC = () => {
 
   const heatmap = useMemo(() => {
     const grid: Record<number, Record<number, number>> = {};
-    (peak.data || []).forEach((d) => {
-      const dow = d.dayOfWeek ?? 1;
-      const h = d.hour ?? 0;
+    // Normalize the payload: Prisma's `aggregateRaw` can return numbers as BigInts
+    // (and occasionally wrap the array in `{ data: [...] }` on certain server
+    // configurations). Coerce everything to plain numbers so the grid lookup
+    // works regardless of the wire format.
+    const raw = peak.data as unknown;
+    const rows: Array<{ dayOfWeek: number; hour: number; count: number }> = Array.isArray(raw)
+      ? (raw as Array<Record<string, unknown>>).map((d) => ({
+          dayOfWeek: Number(d.dayOfWeek ?? d.day ?? 0),
+          hour: Number(d.hour ?? 0),
+          count: Number(d.count ?? 0),
+        }))
+      : Array.isArray((raw as { data?: unknown[] })?.data)
+        ? ((raw as { data: Array<Record<string, unknown>> }).data).map((d) => ({
+            dayOfWeek: Number(d.dayOfWeek ?? d.day ?? 0),
+            hour: Number(d.hour ?? 0),
+            count: Number(d.count ?? 0),
+          }))
+        : [];
+
+    rows.forEach(({ dayOfWeek, hour, count }) => {
+      // MongoDB $dayOfWeek is 1-7 (Sun=1..Sat=7); keep within that range.
+      const dow = Math.min(7, Math.max(1, dayOfWeek || 0));
+      const h = Math.min(23, Math.max(0, hour));
       if (!grid[dow]) grid[dow] = {};
-      grid[dow][h] = (grid[dow][h] || 0) + (d.count || 0);
+      grid[dow][h] = (grid[dow][h] || 0) + count;
     });
     return grid;
   }, [peak.data]);
@@ -463,29 +505,53 @@ export const OwnerFinance: React.FC = () => {
         loading={peak.loading}
         error={peak.error}
         onRetry={peak.refetch}
-        empty={!peak.data?.length}
+        empty={!peak.data || (Array.isArray(peak.data) && peak.data.length === 0)}
+        emptyTitle="No peak-hour data yet"
+        emptyMsg="Orders placed during the selected window will populate this heatmap."
       >
-        <div className="overflow-x-auto">
-          <div style={{ minWidth: 600 }}>
-            <div className="flex mb-1 pl-10">
-              {HOURS.map((h) => <div key={h} className="flex-1 text-center text-[8px] text-muted-foreground">{h}</div>)}
-            </div>
-            {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
-              <div key={dow} className="flex items-center mb-0.5">
-                <div className="w-10 text-[10px] text-muted-foreground text-right pr-2 shrink-0">{DAYS[dow - 1]}</div>
-                {HOURS.map((h) => {
-                  const v = heatmap[dow]?.[h] || 0;
-                  const intensity = maxHeat > 0 ? v / maxHeat : 0;
-                  return (
-                    <div key={h} className="flex-1 mx-px">
-                      <Tooltip label={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`} side="top">
-                        <div className="h-5 w-full rounded-sm cursor-default" style={{ background: `hsla(24,80%,55%,${0.08 + intensity * 0.87})` }} />
-                      </Tooltip>
-                    </div>
-                  );
-                })}
+        <div className="space-y-3">
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: 600 }}>
+              <div className="flex mb-1 pl-10">
+                {HOURS.map((h) => <div key={h} className="flex-1 text-center text-[8px] text-muted-foreground">{h}</div>)}
               </div>
-            ))}
+              {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
+                <div key={dow} className="flex items-center mb-0.5">
+                  <div className="w-10 text-[10px] text-muted-foreground text-right pr-2 shrink-0">{DAYS[dow - 1]}</div>
+                  {HOURS.map((h) => {
+                    const v = heatmap[dow]?.[h] || 0;
+                    const intensity = maxHeat > 0 ? v / maxHeat : 0;
+                    return (
+                      <div key={h} className="flex-1 mx-px">
+                        <Tooltip label={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`} side="top">
+                          <div
+                            className="h-5 w-full rounded-sm cursor-default ring-1 ring-inset ring-black/[0.04]"
+                            style={{ background: `hsla(24,80%,55%,${0.12 + intensity * 0.88})` }}
+                          />
+                        </Tooltip>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Legend — anchors the colour scale so the grid is always interpretable. */}
+          <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground">
+            <span>Less</span>
+            <div className="flex gap-0.5">
+              {[0, 0.25, 0.5, 0.75, 1].map((step) => (
+                <span
+                  key={step}
+                  className="h-3 w-4 rounded-sm ring-1 ring-inset ring-black/[0.04]"
+                  style={{ background: `hsla(24,80%,55%,${0.12 + step * 0.88})` }}
+                />
+              ))}
+            </div>
+            <span>More</span>
+            {maxHeat > 0 && (
+              <span className="ml-2 font-mono text-muted-foreground">peak: {maxHeat}</span>
+            )}
           </div>
         </div>
       </Widget>
