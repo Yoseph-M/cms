@@ -197,12 +197,46 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
   const pipeline = [
     { $match: match },
     { $unwind: '$items' },
+    // Look up the menu item so we can surface the image in the dashboard.
+    {
+      $lookup: {
+        from: 'menuitems',
+        let: { menuId: '$items.menuItemId' },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: [{ $toString: '$_id' }, '$$menuId'] },
+            },
+          },
+          { $project: { _id: 0, imageUrl: 1 } },
+        ],
+        as: 'menuItem',
+      },
+    },
     {
       $group: {
         _id: '$items.name',
         totalQty: { $sum: '$items.quantity' },
         totalRevenue: {
           $sum: { $multiply: ['$items.unitPrice', '$items.quantity'] },
+        },
+        // Keep the first non-null imageUrl we encounter for this item name.
+        imageUrl: {
+          $first: {
+            $first: {
+              $map: {
+                input: {
+                  $filter: {
+                    input: '$menuItem',
+                    as: 'm',
+                    cond: { $ne: ['$$m.imageUrl', null] },
+                  },
+                },
+                as: 'm',
+                in: '$$m.imageUrl',
+              },
+            },
+          },
         },
       },
     },
@@ -214,6 +248,7 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
         name: '$_id',
         totalQty: 1,
         totalRevenue: 1,
+        imageUrl: 1,
       },
     },
   ];
