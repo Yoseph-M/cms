@@ -11,7 +11,7 @@ import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle } from 'lucide-react';
+import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle, BarChart3, Info } from 'lucide-react';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
 
@@ -67,6 +67,8 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
     (today.getFullYear() === year && today.getMonth() + 1 === month) ? today.getDate() : 1
   );
   const [markingAll, setMarkingAll] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
+  const [workOnSundays, setWorkOnSundays] = useState(false);
   
   const todayLocal = today.toISOString().split('T')[0];
 
@@ -233,6 +235,25 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
     );
   };
 
+  // ── Analytics summary for the current month ──
+  const analyticsSummary = React.useMemo(() => {
+    const counts: Record<AttendanceStatus, number> = {
+      PRESENT: 0, ABSENT: 0, HALF_DAY: 0, LEAVE: 0, HOLIDAY: 0,
+    };
+    const staffIds = new Set(filteredStaff.map(s => s.id));
+    for (const rec of attendance) {
+      if (staffIds.has(rec.userId) && counts[rec.status] !== undefined) {
+        counts[rec.status]++;
+      }
+    }
+    const totalPossible = filteredStaff.length * daysInMonth;
+    const totalRecorded = Object.values(counts).reduce((a, b) => a + b, 0);
+    const attendanceRate = totalPossible > 0 ? Math.round((counts.PRESENT / totalPossible) * 1000) / 10 : 0;
+    return { counts, totalPossible, totalRecorded, attendanceRate };
+  }, [attendance, filteredStaff, daysInMonth]);
+
+  const isReadOnlyOwner = isOwner && !ownerCanEdit;
+
   return (
     <div className="space-y-4">
       {/* Controls */}
@@ -253,45 +274,25 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/30 rounded-lg px-2.5 py-1">
-            <span className="text-[11px] font-bold text-primary">For:</span>
-            <Select
-              value={String(selectedDay)}
-              onChange={(e) => setSelectedDay(Math.min(parseInt(e.target.value, 10), daysInMonth) || 1)}
-              className="!border-0 !bg-transparent !py-0 !h-auto text-xs font-bold text-primary w-24 focus:!ring-0"
+          {!isReadOnlyOwner && (
+            <Button 
+              size="sm" 
+              onClick={handleMarkAllPresent} 
+              disabled={markingAll || staff.length === 0 || (isOwner && !ownerCanEdit) || (!isOwner && selectedDateStr !== todayLocal)}
             >
-              {dayNumbers.map(d => (
-                <option key={d} value={d}>Day {d}</option>
-              ))}
-            </Select>
-          </div>
-          <Button 
-            size="sm" 
-            onClick={handleMarkAllPresent} 
-            disabled={markingAll || filteredStaff.length === 0 || (isOwner && !ownerCanEdit) || (!isOwner && selectedDateStr !== todayLocal)}
-          >
-            <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
-            {markingAll ? 'Marking...' : 'Mark all Present'}
-          </Button>
-          <Input
-            id="staff-filter"
-            placeholder="Filter staff..."
-            value={staffFilter}
-            onChange={e => setStaffFilter(e.target.value)}
-            className="w-40"
-          />
+              <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
+              {markingAll ? 'Marking...' : 'Mark all Present'}
+            </Button>
+          )}
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+            <input type="checkbox" checked={workOnSundays} onChange={e => setWorkOnSundays(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
+            Work on Sundays
+          </label>
           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-2">
-        {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][]).map(([key, cfg]) => (
-          <span key={key} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-semibold ${cfg.bg} ${cfg.color}`}>
-            {cfg.label}
-          </span>
-        ))}
-      </div>
+
 
       {isLoading ? (
         <div className="h-64 rounded-xl bg-secondary/40 animate-pulse" />
@@ -304,16 +305,73 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
       ) : filteredStaff.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">No staff to display.</div>
       ) : (
+        <>
+        {/* Analytics Summary (always shown, but prominent when read-only) */}
+        {isReadOnlyOwner && (
+          <Card className="mb-4">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-primary" />
+                {monthName} {year} — Attendance Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][]).map(([key, cfg]) => (
+                  <div key={key} className={`rounded-lg border p-3 ${cfg.bg}`}>
+                    <div className={`text-[11px] font-semibold ${cfg.color}`}>{cfg.label}</div>
+                    <div className={`text-2xl font-bold font-mono mt-1 ${cfg.color}`}>
+                      {analyticsSummary.counts[key]}
+                    </div>
+                  </div>
+                ))}
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <div className="text-[11px] font-semibold text-primary">Attendance Rate</div>
+                  <div className="text-2xl font-bold font-mono mt-1 text-primary">
+                    {analyticsSummary.attendanceRate}%
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    {analyticsSummary.totalRecorded}/{analyticsSummary.totalPossible} logged
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* Legend Popover Toggle - Moved Below KPI */}
+        <div className="relative mb-4">
+          <Button variant="outline" size="sm" onClick={() => setShowLegend(!showLegend)}>
+            <Info className="w-3.5 h-3.5 mr-1.5" />
+            Status Legend
+          </Button>
+          <AnimatePresence>
+            {showLegend && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+                className="absolute left-0 top-full mt-2 z-30 bg-card border border-border p-3 rounded-xl shadow-lg w-64 flex flex-col gap-1.5"
+              >
+                {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][]).map(([key, cfg]) => (
+                  <div key={key} className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+                    <div className="w-5 text-center bg-background/50 rounded">{cfg.short}</div>
+                    {cfg.label}
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-secondary/50">
-                <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground sticky left-0 bg-secondary/50 z-10 min-w-[160px] border-r border-border">
+                <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground sticky left-0 bg-background z-20 min-w-[160px] border-r border-b border-border shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                   Staff
                 </th>
                 {dayNumbers.map(d => {
                   const date = new Date(year, month - 1, d);
-                  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                  const isWeekend = date.getDay() === 0 && !workOnSundays;
                   const isSelected = d === selectedDay;
                   return (
                     <th
@@ -337,7 +395,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
             <tbody>
               {filteredStaff.map((s, idx) => (
                 <tr key={s.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-secondary/20'}>
-                  <td className={`px-4 py-2 sticky left-0 z-10 border-r border-border font-medium ${idx % 2 === 0 ? 'bg-background' : 'bg-secondary/20'}`}>
+                  <td className={`px-4 py-2 sticky left-0 z-10 border-r border-border font-medium bg-card shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>
                     <div className="truncate max-w-[140px]">{s.name}</div>
                     <div className="text-[10px] text-muted-foreground">{s.role}</div>
                   </td>
@@ -365,7 +423,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                             isSelected ? 'ring-1 ring-primary/50 ring-offset-1' : ''
                           } ${
                             cfg ? `${cfg.bg} ${cfg.color}` : 'border-transparent text-muted-foreground/40 hover:border-border hover:text-muted-foreground hover:bg-secondary/50'
-                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          } ${!canEdit ? 'cursor-default' : ''}`}
                         >
                           {cfg?.short || '·'}
                         </button>
@@ -374,9 +432,10 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                   })}
                 </tr>
               ))}
-            </tbody>
+              </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Cell Popover */}
