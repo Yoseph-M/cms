@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { recordAudit } from '../../services/audit.service';
 import { createNotification } from '../../services/notification.service';
+import { emitToRoom } from '../../services/socket.service';
 import { Role } from '@prisma/client';
 
 const MANAGER_SCOPED_ROLES: Role[] = [Role.CASHIER, Role.WAITER, Role.COOKER, Role.BARISTA];
@@ -145,6 +146,8 @@ export async function recordPayrollEntry(req: AuthenticatedRequest, res: Respons
       },
     });
 
+    emitToRoom('managers', 'finance:updated', {});
+
     return res.status(201).json(payment);
   } catch {
     return res.status(409).json({
@@ -206,6 +209,8 @@ export async function createAdjustment(req: AuthenticatedRequest, res: Response)
     message: `Payroll adjustment of ${adjustment.adjustmentAmount} recorded for period ${payment.periodMonth}/${payment.periodYear}: ${reason}`,
     relatedId: adjustment.id,
   });
+
+  emitToRoom('managers', 'finance:updated', {});
 
   return res.status(201).json(adjustment);
 }
