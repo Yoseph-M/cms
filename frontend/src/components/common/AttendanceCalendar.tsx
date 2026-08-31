@@ -75,6 +75,9 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
   const ownerCanEditSetting = useSystemSettingQuery('ownerCanEditAttendance');
   const ownerCanEdit = ownerCanEditSetting.data?.value === 'true';
 
+  const workOnSundaysSetting = useSystemSettingQuery('workOnSundays');
+  const workOnSundays = workOnSundaysSetting.data?.value === 'true';
+
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -275,20 +278,22 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {!isReadOnlyOwner && (
-            <Button 
-              size="sm" 
-              onClick={handleMarkAllPresent} 
-              disabled={markingAll || staff.length === 0 || (isOwner && !ownerCanEdit) || (!isOwner && selectedDateStr !== todayLocal)}
-            >
-              <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
-              {markingAll ? 'Marking...' : 'Mark all Present'}
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button 
+                size="sm" 
+                onClick={handleMarkAllPresent} 
+                disabled={markingAll || staff.length === 0 || (isOwner && !ownerCanEdit) || (!isOwner && selectedDateStr !== todayLocal)}
+              >
+                <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
+                {markingAll ? 'Marking...' : 'Mark all Present'}
+              </Button>
+              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                <input type="checkbox" checked={workOnSundays} onChange={e => setWorkOnSundays(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
+                Work on Sundays
+              </label>
+              <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
+            </div>
           )}
-          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-            <input type="checkbox" checked={workOnSundays} onChange={e => setWorkOnSundays(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
-            Work on Sundays
-          </label>
-          <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
         </div>
       </div>
 
