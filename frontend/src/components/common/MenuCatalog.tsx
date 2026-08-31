@@ -118,6 +118,20 @@ interface MenuCatalogProps {
 export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAvailability = true, allowCsvImport = true }) => {
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
+  const { setPageTitle, setShowDateRange } = useHeaderStore();
+
+  // Reflect the current section in the global header.
+  useEffect(() => {
+    setPageTitle({
+      title: 'Menu catalog',
+      subtitle: canEdit ? 'Manage items, categories, and availability' : 'Browse the menu catalog',
+    });
+    setShowDateRange(false);
+    return () => {
+      setPageTitle({ title: 'Overview', subtitle: '' });
+      setShowDateRange(false);
+    };
+  }, [setPageTitle, setShowDateRange, canEdit]);
 
   const menuQuery = useMenuQuery();
   const items: MenuItem[] = menuQuery.data ?? [];
@@ -652,7 +666,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
   return (
     <div className="space-y-5">
-      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-4' : 'grid-cols-2')}>
+      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-4 max-[767px]:grid-cols-2' : 'grid-cols-2 max-[767px]:grid-cols-1')}>
         <StatCard icon={Layers} iconClass="bg-primary/10 text-primary" value={stats.total} label="Total Items" />
         {showAvailability ? (
           <>
@@ -908,7 +922,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       />
 
       {isLoading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <Card key={i} className="overflow-hidden animate-pulse">
               <div className="h-36 bg-secondary/50" />
@@ -964,7 +978,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
             className={cn(
               view === 'grid'
-                ? 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4'
+                ? 'grid grid-cols-4 max-[767px]:grid-cols-2 gap-4'
                 : 'flex flex-col gap-2.5'
             )}
           >
