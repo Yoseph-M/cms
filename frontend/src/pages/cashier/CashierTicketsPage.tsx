@@ -261,6 +261,7 @@ export const CashierTicketsPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>('newest');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'served' | 'in_kitchen' | 'submitted'>('all');
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +282,14 @@ export const CashierTicketsPage: React.FC = () => {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellationState, setCancellationState] = useState<'idle' | 'processing' | 'complete'>('idle');
   const [cancelledOrderLabel, setCancelledOrderLabel] = useState('');
+
+  /* ── Responsive ── */
+  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   /* ── Printer failures ── */
   const [printerFailures, setPrinterFailures] = useState<PrinterFailureEvent[]>([]);
@@ -714,11 +723,14 @@ export const CashierTicketsPage: React.FC = () => {
         <AnimatePresence initial={false}>
           {selectedOrder && (
             <motion.aside
-              initial={{ width: 0, opacity: 0, x: 24 }}
-              animate={{ width: 'min(430px, 42vw)', opacity: 1, x: 0 }}
-              exit={{ width: 0, opacity: 0, x: 24 }}
+              initial={isDesktop ? { width: 0, opacity: 0, x: 24 } : { opacity: 0, y: '100%' }}
+              animate={isDesktop ? { width: 'min(430px, 42vw)', opacity: 1, x: 0 } : { opacity: 1, y: 0 }}
+              exit={isDesktop ? { width: 0, opacity: 0, x: 24 } : { opacity: 0, y: '100%' }}
               transition={{ type: 'spring', stiffness: 360, damping: 34 }}
-              className="h-full min-h-0 self-stretch shrink-0 overflow-hidden border-l border-slate-200 bg-white"
+              className={cn(
+                "h-full min-h-0 self-stretch shrink-0 overflow-hidden border-l border-slate-200 bg-white",
+                !isDesktop && "absolute inset-0 z-50 w-full shadow-2xl"
+              )}
             >
               <OrderDetailPanel
                 order={selectedOrder}
