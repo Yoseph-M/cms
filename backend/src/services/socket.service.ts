@@ -75,6 +75,12 @@ export function initSocketService(httpServer: HttpServer): Server {
       logger.info({ socketId: socket.id, role: user.role }, 'Socket joined room: orders');
     }
 
+    // Owner & Manager get the managers room for finance/analytics events
+    if (user.role === Role.OWNER || user.role === Role.MANAGER) {
+      socket.join('managers');
+      logger.info({ socketId: socket.id, role: user.role }, 'Socket joined room: managers');
+    }
+
     // Removed arbitrary 'join_room' to prevent unauthorized access
 
     socket.on('disconnect', () => {
