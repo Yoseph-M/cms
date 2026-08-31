@@ -324,9 +324,9 @@ export const OwnerDashboard: React.FC = () => {
         />
 
         {/* Chart row — line chart 2/3 + donut 1/3, side by side */}
-        <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+        <div className="grid grid-cols-3 gap-5 max-[767px]:gap-3 max-[1023px]:gap-4">
           <SectionCard
-            className="col-span-2"
+            className="col-span-2 max-[767px]:col-span-3"
             title="Revenue trend"
             description="Income vs. operating expenses"
             filter={{
@@ -369,7 +369,7 @@ export const OwnerDashboard: React.FC = () => {
           </SectionCard>
 
           <SectionCard
-            className="col-span-1"
+            className="col-span-1 max-[767px]:col-span-3"
             title="Category mix"
             description="Where the revenue is coming from"
             filter={{ label: 'This month', options: ['This month', 'Last month', 'This year'] }}
