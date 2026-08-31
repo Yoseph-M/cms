@@ -70,15 +70,18 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ user });
     },
 
-    logout: () => {
+    logout: async () => {
       // Broadcast logout to other tabs BEFORE clearing local
       if (authChannel) {
         authChannel.postMessage({ type: 'SESSION_LOGGED_OUT' });
       }
 
-      void axiosClient.post('/auth/logout', {}, { withCredentials: true }).catch(() => {
-        /* still clear local session */
-      });
+      try {
+        await axiosClient.post('/auth/logout', {}, { withCredentials: true });
+      } catch (err) {
+        // even if it fails, we still want to clear local auth below
+        console.warn('Logout API call failed', err);
+      }
       clearLocalAuth(set);
     },
 
