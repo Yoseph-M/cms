@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useSocketStore } from '../../store/socketStore';
 import { useOfflineSyncStore } from '../../store/offlineSyncStore';
 import { useHeaderStore } from '../../store/headerStore';
+import { useSidebar } from '../../store/SidebarContext';
 import {
   WifiOff,
   RefreshCw,
@@ -14,9 +15,10 @@ import {
   User,
   Search,
   Calendar,
-  Sparkles,
   Settings as SettingsIcon,
   HelpCircle,
+  Menu,
+  Sparkles,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { CommandPalette } from './CommandPalette';
@@ -33,6 +35,7 @@ export const Header: React.FC = () => {
   const { isConnected } = useSocketStore();
   const { isOnline, pendingCount, processSyncQueue, isSyncing } = useOfflineSyncStore();
   const { dateRange, showDateRange, setDateRange, pageTitle } = useHeaderStore();
+  const { toggleMobile } = useSidebar();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [calendar, setCalendar] = React.useState<CalendarSystem>(() => getCalendarPreference());
   const [dateOpen, setDateOpen] = React.useState(false);
@@ -116,11 +119,18 @@ export const Header: React.FC = () => {
 
       {/* Left: page title (set by each route) + status pills + date-range chip */}
       <div className="flex items-center gap-3 sm:gap-5 min-w-0 flex-1">
+        <button
+          onClick={toggleMobile}
+          className="hidden max-[767px]:block p-2 -ml-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
+          aria-label="Open sidebar"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
         <div className="min-w-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <span
               aria-hidden
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-inset ring-primary/15"
+              className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-inset ring-primary/15"
             >
               <Sparkles className="h-4 w-4" />
             </span>
@@ -262,6 +272,7 @@ export const Header: React.FC = () => {
             className={cn(
               'h-9 w-44 sm:w-64 lg:w-80 rounded-lg border border-input bg-card pl-9 pr-14 text-sm text-foreground placeholder:text-muted-foreground shadow-sm outline-none transition-all',
               'focus:border-primary/50 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.10)]',
+              'max-[767px]:w-28 max-[767px]:pr-2 max-[767px]:focus:w-40'
             )}
           />
           <kbd
