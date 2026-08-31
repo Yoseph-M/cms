@@ -38,7 +38,7 @@ export const ThemePreferenceSection: React.FC = () => {
   ];
 
   return (
-    <div className="grid gap-2 sm:grid-cols-3">
+    <div className="grid grid-cols-3 gap-2">
       {modes.map(({ mode, label, description, icon: Icon }) => {
         const isActive = theme === mode;
         return (
