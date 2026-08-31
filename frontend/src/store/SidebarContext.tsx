@@ -3,6 +3,9 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 interface SidebarContextType {
   collapsed: boolean;
   toggle: () => void;
+  mobileOpen: boolean;
+  toggleMobile: () => void;
+  setMobileOpen: (open: boolean) => void;
 }
 
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
@@ -16,15 +19,18 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return false;
     }
   });
+  
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const toggle = () => setCollapsed((prev) => !prev);
+  const toggleMobile = () => setMobileOpen((prev) => !prev);
 
   useEffect(() => {
     localStorage.setItem('cafeflow:sidebar-collapsed', String(collapsed));
   }, [collapsed]);
 
   return (
-    <SidebarContext.Provider value={{ collapsed, toggle }}>
+    <SidebarContext.Provider value={{ collapsed, toggle, mobileOpen, toggleMobile, setMobileOpen }}>
       {children}
     </SidebarContext.Provider>
   );
