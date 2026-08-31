@@ -429,7 +429,7 @@ export const ProfilePage: React.FC = () => {
                 }}
                 aria-label={avatarSrc ? 'Change photo' : 'Add photo'}
                 title={avatarSrc ? 'Change photo' : 'Add photo'}
-                className="group relative shrink-0 rounded-2xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                className="group relative shrink-0 rounded-2xl cursor-pointer focus:outline-none"
               >
                 <div className={cn(
                   'w-28 h-28 rounded-2xl bg-gradient-to-br text-white flex items-center justify-center',
