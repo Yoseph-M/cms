@@ -207,7 +207,7 @@ export const OwnerStaff: React.FC = () => {
   const initials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
   return (
-    <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6 max-[767px]:space-y-5">
       {/* Table */}
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-secondary/40 animate-pulse" />)}</div>
@@ -242,7 +242,7 @@ export const OwnerStaff: React.FC = () => {
                   placeholder="Search staff..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="pl-9 w-44 sm:w-52 h-9"
+                  className="pl-9 w-52 max-[767px]:w-44 h-9"
                 />
               </div>
               <Select
@@ -266,78 +266,80 @@ export const OwnerStaff: React.FC = () => {
               </Select>
             </div>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-secondary/50 border-b border-border">
-                <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Staff</th>
-                <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden sm:table-cell">Role</th>
-                <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Contact</th>
-                <th className="text-right px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Salary</th>
-                <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Status</th>
-                <th className="text-right px-4 py-3 font-semibold text-muted-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((user, idx) => (
-                <tr key={user.id} className={`border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors ${!user.isActive ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                          {initials(user.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium truncate max-w-[120px]">{user.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 hidden sm:table-cell">
-                    <Badge variant={ROLE_COLORS[user.role]}>{user.role}</Badge>
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground text-xs">
-                    <div>{user.username || '—'}</div>
-                    <div>{user.phone}</div>
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell text-right font-mono text-sm">
-                    {formatCurrency(user.salaryAmount)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${user.isActive ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] border-[hsl(var(--success))]/40' : 'bg-secondary text-muted-foreground border-border'}`}>
-                      {user.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <Tooltip label="Edit">
-                        <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                      {user.id !== currentUser?.id && (
-                        <Tooltip label="Reset Password">
-                          <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-                            <KeyRound className="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
-                      )}
-                      {user.isActive ? (
-                        <Tooltip label="Deactivate">
-                          <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-                            <ShieldOff className="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip label="Reactivate">
-                          <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-secondary/50 border-b border-border">
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Staff</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden sm:table-cell">Role</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Contact</th>
+                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Salary</th>
+                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Status</th>
+                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredUsers.map((user, idx) => (
+                  <tr key={user.id} className={`border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors ${!user.isActive ? 'opacity-50' : ''}`}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar>
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                            {initials(user.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium truncate max-w-[120px]">{user.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      <Badge variant={ROLE_COLORS[user.role]}>{user.role}</Badge>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell text-muted-foreground text-xs">
+                      <div>{user.username || '—'}</div>
+                      <div>{user.phone}</div>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell text-right font-mono text-sm">
+                      {formatCurrency(user.salaryAmount)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${user.isActive ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] border-[hsl(var(--success))]/40' : 'bg-secondary text-muted-foreground border-border'}`}>
+                        {user.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Tooltip label="Edit">
+                          <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
+                        {user.id !== currentUser?.id && (
+                          <Tooltip label="Reset Password">
+                            <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                              <KeyRound className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        )}
+                        {user.isActive ? (
+                          <Tooltip label="Deactivate">
+                            <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                              <ShieldOff className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip label="Reactivate">
+                            <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
