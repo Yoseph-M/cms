@@ -69,6 +69,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
   const [cart, setCart] = useState<CartLine[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [showMobileCart, setShowMobileCart] = useState(false);
 
   // Waiter selection
   const [waiters, setWaiters] = useState<Array<{ id: string; name: string }>>([]);
@@ -172,6 +173,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       setTableNumber('');
       setSelectedWaiterId('');
       setJustSubmitted(true);
+      setShowMobileCart(false);
       onOrderCreated?.(res.data?.order ?? res.data);
       setTimeout(() => setJustSubmitted(false), 1800);
     } catch (err: any) {
@@ -186,9 +188,9 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
   };
 
   return (
-    <div className="h-full min-h-0 flex-1 flex bg-background text-foreground overflow-hidden">
+    <div className="h-full min-h-0 flex-1 flex bg-background text-foreground overflow-hidden relative">
       {/* Menu column */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-r border-border">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-r border-border max-[767px]:pb-16 relative">
         <div className="px-6 py-4 border-b border-border bg-card/40 space-y-3 shrink-0">
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
@@ -271,7 +273,23 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
             </motion.div>
           )}
         </div>
+
+        {/* Floating action bar on mobile */}
+        <div className="hidden max-[767px]:block absolute bottom-0 inset-x-0 p-3 bg-card border-t border-border shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] z-10">
+          <Button onClick={() => setShowMobileCart(true)} className="w-full h-12 text-base font-bold shadow-lg bg-brand-gradient text-white">
+             <ShoppingCart className="w-5 h-5 mr-2" />
+             {t('ordering.cart.title')} ({totalQty}) <span className="ml-2 font-mono text-white/90">{formatCurrency(total)}</span>
+          </Button>
+        </div>
       </div>
+
+      {/* Backdrop for cart on mobile */}
+      {showMobileCart && (
+        <div 
+           className="hidden max-[767px]:block fixed inset-0 z-40 bg-black/60 transition-opacity"
+           onClick={() => setShowMobileCart(false)} 
+        />
+      )}
 
       {/* Cart column — pinned footer pattern:
        *  - h-full + min-h-0 lock the column to the panel's height
@@ -280,8 +298,14 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
        *    shrink kick in so the footer never gets pushed down)
        *  - the "Place Order" footer is fixed at the bottom regardless of
        *    how many items the cashier adds */}
-      <div className="w-96 shrink-0 h-full min-h-0 bg-card flex flex-col">
-        <div className="px-5 py-4 border-b border-border shrink-0">
+      <div className={`w-96 shrink-0 h-full min-h-0 bg-card flex flex-col max-[767px]:w-[85vw] max-[767px]:max-w-sm max-[767px]:absolute max-[767px]:right-0 max-[767px]:top-0 max-[767px]:bottom-0 max-[767px]:z-50 max-[767px]:shadow-2xl max-[767px]:transition-transform max-[767px]:duration-300 ${showMobileCart ? 'max-[767px]:translate-x-0' : 'max-[767px]:translate-x-full'}`}>
+        <div className="px-5 py-4 border-b border-border shrink-0 relative">
+          <button 
+            onClick={() => setShowMobileCart(false)} 
+            className="hidden max-[767px]:block absolute top-4 right-4 p-1.5 rounded-full bg-secondary/80 text-muted-foreground hover:bg-secondary transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display text-lg font-semibold flex items-center gap-2">
               <ShoppingCart className="w-4 h-4 text-primary" />
