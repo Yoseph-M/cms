@@ -2,6 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Clock3, ClockArrowDown, Search, X, LayoutGrid, CircleDollarSign, ChefHat, Utensils } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { useTranslation } from 'react-i18next';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../../ui/Dropdown';
 
 export type SortKey = 'newest' | 'longer';
 export type StatusFilter = 'all' | 'served' | 'in_kitchen' | 'submitted';
@@ -16,27 +22,44 @@ export interface QueueTabsProps {
 }
 
 /** Queue controls designed as a calm command bar instead of a row of tabs. */
-export const QueueTabs: React.FC<QueueTabsProps> = ({ active, onChange, search, onSearchChange }) => {
+export const QueueTabs: React.FC<QueueTabsProps> = ({
+  active,
+  onChange,
+  search,
+  onSearchChange,
+  statusFilter = 'all',
+  onStatusFilterChange,
+}) => {
   const { t } = useTranslation('cashier');
-  const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const choices: Array<{ key: SortKey; label: string; icon: typeof Clock3 }> = [
     { key: 'newest', label: t('queue.filter.newest', { defaultValue: 'Newest' }), icon: ClockArrowDown },
     { key: 'longer', label: t('queue.filter.longer', { defaultValue: 'Longer' }), icon: Clock3 },
   ];
+
+  const statusFilters: Array<{ key: StatusFilter; label: string; icon: typeof LayoutGrid }> = [
+    { key: 'all', label: 'All', icon: LayoutGrid },
+    { key: 'served', label: 'Ready to Pay', icon: CircleDollarSign },
+    { key: 'in_kitchen', label: 'In Kitchen', icon: ChefHat },
+    { key: 'submitted', label: 'Submitted', icon: Utensils },
+  ];
+
   const current = choices.find((c) => c.key === active) ?? choices[0];
+  const currentFilter = statusFilters.find((f) => f.key === statusFilter) ?? statusFilters[0];
   const CurrentIcon = current.icon;
+  const CurrentFilterIcon = currentFilter.icon;
 
   useEffect(() => {
-    if (!open) return;
+    if (!sortOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setOpen(false);
+      if (sortWrapperRef.current && !sortWrapperRef.current.contains(event.target as Node)) {
+        setSortOpen(false);
       }
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') setSortOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
@@ -44,7 +67,7 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({ active, onChange, search, 
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [open]);
+  }, [sortOpen]);
 
   return (
     <div className="relative z-30 shrink-0 px-4 sm:px-6 pt-5 pb-4 border-b border-slate-200/80 bg-white/70 backdrop-blur-xl">
@@ -69,28 +92,52 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({ active, onChange, search, 
             )}
           </div>
 
-          <div ref={wrapperRef} className="relative shrink-0 ml-auto">
+          {onStatusFilterChange && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="Filter by status"
+                className="shrink-0 h-11"
+              >
+                <CurrentFilterIcon className="w-4 h-4 text-muted-foreground" />
+                <span>{currentFilter.label}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {statusFilters.map(({ key, label, icon: Icon }) => (
+                  <DropdownMenuItem
+                    key={key}
+                    selected={statusFilter === key}
+                    onSelect={() => onStatusFilterChange(key)}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span>{label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          <div ref={sortWrapperRef} className="relative shrink-0 ml-auto">
             <button
               type="button"
-              onClick={() => setOpen((prev) => !prev)}
+              onClick={() => setSortOpen((prev) => !prev)}
               aria-haspopup="listbox"
-              aria-expanded={open}
+              aria-expanded={sortOpen}
               aria-label={t('queue.sortBy', { defaultValue: 'Sort by' })}
               className={cn(
                 'inline-flex h-11 items-center gap-2 rounded-xl border bg-slate-50 px-3 text-sm font-semibold shadow-sm transition',
                 'border-slate-200 text-slate-900 hover:border-slate-300 hover:bg-white',
                 'focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10',
-                open && 'border-primary bg-white ring-4 ring-primary/10'
+                sortOpen && 'border-primary bg-white ring-4 ring-primary/10'
               )}
             >
               <CurrentIcon className="h-4 w-4 text-slate-500" />
               <span className="whitespace-nowrap">{current.label}</span>
               <ChevronDown
-                className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')}
+                className={cn('h-4 w-4 text-slate-400 transition-transform', sortOpen && 'rotate-180')}
               />
             </button>
 
-            {open && (
+            {sortOpen && (
               <ul
                 role="listbox"
                 aria-label={t('queue.sortBy', { defaultValue: 'Sort by' })}
@@ -106,7 +153,7 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({ active, onChange, search, 
                         aria-selected={selected}
                         onClick={() => {
                           onChange(key);
-                          setOpen(false);
+                          setSortOpen(false);
                         }}
                         className={cn(
                           'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition',
