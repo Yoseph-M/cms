@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { ExpenseCategory } from '@prisma/client';
 import { recordAudit } from '../../services/audit.service';
+import { emitToRoom } from '../../services/socket.service';
 
 export async function listExpenses(req: AuthenticatedRequest, res: Response) {
   const { from, to, category } = req.query;
@@ -68,6 +69,8 @@ export async function createExpense(req: AuthenticatedRequest, res: Response) {
     details: { category, amount, description, date },
   });
 
+  emitToRoom('managers', 'finance:updated', {});
+
   return res.status(201).json(expense);
 }
 
@@ -112,6 +115,8 @@ export async function updateExpense(req: AuthenticatedRequest, res: Response) {
     details: { before: existing, after: updated },
   });
 
+  emitToRoom('managers', 'finance:updated', {});
+
   return res.json(updated);
 }
 
@@ -133,6 +138,8 @@ export async function deleteExpense(req: AuthenticatedRequest, res: Response) {
     targetId: id,
     details: { category: existing.category, amount: existing.amount, description: existing.description },
   });
+
+  emitToRoom('managers', 'finance:updated', {});
 
   return res.json({ message: 'Expense deleted.' });
 }
