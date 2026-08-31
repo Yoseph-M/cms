@@ -54,7 +54,10 @@ export const SectionCard: React.FC<SectionCardProps> = ({
           </div>
           {filterAlign === 'left' ? filterEl : null}
         </div>
-        {rightAccessory ?? (filterAlign === 'right' ? filterEl : null)}
+        <div className="flex items-center gap-3 shrink-0">
+          {filterAlign === 'right' ? filterEl : null}
+          {rightAccessory}
+        </div>
       </header>
 
       <div className={cn(flush ? '' : 'px-5 py-5 sm:px-6')}>{children}</div>
