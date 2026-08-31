@@ -43,7 +43,7 @@ export const LanguagePreferenceSection: React.FC = () => {
   };
 
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid grid-cols-3 gap-2">
       {LANGUAGES.map((lang) => {
         const isActive = i18n.language === lang.code;
         return (
