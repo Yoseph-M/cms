@@ -11,7 +11,7 @@ const DropdownMenuTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger> & {
     showChevron?: boolean
   }
->(({ className, children, showChevron = true, ...props }, ref) => (
+>(({ className, children, showChevron = true, asChild, ...props }, ref) => (
   <DropdownMenuPrimitive.Trigger
     ref={ref}
     className={cn(
@@ -22,11 +22,16 @@ const DropdownMenuTrigger = React.forwardRef<
       "data-[state=open]:border-primary/60 data-[state=open]:bg-background data-[state=open]:shadow-[0_0_0_4px_hsl(217_91%_60%/0.14)]",
       className
     )}
+    asChild={asChild}
     {...props}
   >
-    {children}
-    {showChevron && (
-      <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+    {asChild ? children : (
+      <>
+        {children}
+        {showChevron && (
+          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+        )}
+      </>
     )}
   </DropdownMenuPrimitive.Trigger>
 ))
