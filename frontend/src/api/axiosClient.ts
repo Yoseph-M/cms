@@ -66,11 +66,10 @@ axiosClient.interceptors.response.use(
         // Local-only clear — do NOT call logout() here: logout() revokes the
         // server-side token family, which would sign the same user out on every
         // other tab/device. A failed refresh (expired cookie, network blip)
-        // should only end the session in this tab.
+        // should only end the session in this tab. RoleGuard reacts to the
+        // cleared state and redirects to /login via React Router — no forced
+        // full page reload, so a mid-restore failure can't flash a login page.
         useAuthStore.getState().clearSession();
-        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-          window.location.assign('/login');
-        }
         return Promise.reject(refreshErr instanceof Error ? refreshErr : error);
       }
     }
