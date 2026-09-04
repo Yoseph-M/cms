@@ -329,6 +329,7 @@ export const OwnerDashboard: React.FC = () => {
             className="col-span-2 max-[767px]:col-span-3"
             title="Revenue trend"
             description="Income vs. operating expenses"
+            filterAlign="right"
             filter={{
               label: trendLabel,
               options: TREND_OPTIONS.map((o) => o.label),
@@ -372,15 +373,12 @@ export const OwnerDashboard: React.FC = () => {
             className="col-span-1 max-[767px]:col-span-3"
             title="Category mix"
             description="Where the revenue is coming from"
+            filterAlign="right"
             filter={{ label: 'This month', options: ['This month', 'Last month', 'This year'] }}
           >
             {donutSegments.length > 0 ? (
               <RevenueDonut
                 segments={donutSegments}
-                size={200}
-                thickness={26}
-                centerLabel="Total"
-                centerPercent={100}
               />
             ) : (
               <div className="py-16 text-center text-sm text-muted-foreground">
@@ -395,6 +393,7 @@ export const OwnerDashboard: React.FC = () => {
           <SectionCard
             title="Recent orders"
             description="The latest activity across all stations"
+            filterAlign="right"
             filter={{ label: 'Last 7 days', options: ['Today', 'Last 7 days', 'Last 30 days', 'Last year'] }}
             className="lg:col-span-2"
             flush
@@ -429,45 +428,40 @@ export const OwnerDashboard: React.FC = () => {
               No waiter data for this period.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-border/50 text-muted-foreground">
-                    <th className="font-medium px-5 py-3">Waiter</th>
-                    <th className="font-medium px-5 py-3 text-right">Orders</th>
-                    <th className="font-medium px-5 py-3 text-right">Revenue</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/30">
-                  {waiterPerf.map((w) => {
-                    const initials = w.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
-                    const maxOrders = waiterPerf[0]?.orderCount || 1;
-                    return (
-                      <tr key={w.waiterId} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">
-                              {initials}
-                            </div>
-                            <div>
-                              <p className="font-medium text-foreground">{w.name}</p>
-                              <div className="mt-1 h-1 rounded-full bg-muted overflow-hidden" style={{ width: 80 }}>
-                                <div
-                                  className="h-full rounded-full bg-primary"
-                                  style={{ width: `${Math.round((w.orderCount / maxOrders) * 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums">{w.orderCount}</td>
-                        <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums text-primary">{formatCurrency(w.totalSales)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ul className="space-y-4" aria-label="Waiter performance by sales">
+              {waiterPerf.map((w) => {
+                const maxRevenue = waiterPerf[0]?.totalSales || 1;
+                const revenueWidth = Math.min(100, Math.max(2, Math.round((w.totalSales / maxRevenue) * 100)));
+                return (
+                  <li key={w.waiterId} className="group">
+                    <div className="min-w-0">
+                      <div className="mb-1.5 flex items-baseline justify-between">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-[14px] font-semibold text-foreground">{w.name}</span>
+                          <span className="text-[12px] font-medium text-muted-foreground tabular-nums">
+                            {w.role}
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-[14px] font-semibold text-foreground tabular-nums">
+                          {formatCurrency(w.totalSales)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-primary to-primary/60 transition-[width] duration-700"
+                            style={{ width: `${revenueWidth}%` }}
+                          />
+                        </div>
+                        <span className="shrink-0 text-[12px] font-medium text-muted-foreground tabular-nums">
+                          {w.orderCount} orders
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </SectionCard>
 
