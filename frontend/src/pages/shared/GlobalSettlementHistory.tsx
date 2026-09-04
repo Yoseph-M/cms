@@ -35,6 +35,11 @@ interface SettlementRecord {
     tableNumber: string;
     totalAmount: number;
     status: string;
+    waiter?: {
+      id: string;
+      name: string;
+      role: string;
+    };
   };
   recordedBy: {
     id: string;
@@ -240,7 +245,7 @@ export const GlobalSettlementHistory: React.FC = () => {
           comparison = (a.order?.totalAmount || 0) - (b.order?.totalAmount || 0);
           break;
         case 'recordedBy':
-          comparison = (a.recordedBy?.name || '').localeCompare(b.recordedBy?.name || '');
+          comparison = (a.order?.waiter?.name || '').localeCompare(b.order?.waiter?.name || '');
           break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;
@@ -491,15 +496,15 @@ export const GlobalSettlementHistory: React.FC = () => {
               type="text"
               value={recordedByFilter}
               onChange={(e) => setRecordedByFilter(e.target.value)}
-              placeholder="Recorded by"
-              aria-label="Filter by recorded by"
+              placeholder="Waiter"
+              aria-label="Filter by waiter"
               className="h-11 w-36 pl-9 pr-7"
             />
             {recordedByFilter && (
               <button
                 type="button"
                 onClick={() => setRecordedByFilter('')}
-                aria-label="Clear recorded by filter"
+                aria-label="Clear waiter filter"
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
               >
                 <X className="w-3.5 h-3.5" />
@@ -586,13 +591,12 @@ export const GlobalSettlementHistory: React.FC = () => {
                         onClick={() => handleSort('recordedBy')}
                         className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        Recorded By
+                        Waiter
                         {sortColumn === 'recordedBy' && (
                           <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                         )}
                       </button>
                     </th>
-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Reference</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -617,10 +621,7 @@ export const GlobalSettlementHistory: React.FC = () => {
                         {s.order ? formatAmount(s.order.totalAmount) : '—'}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {s.recordedBy?.name || 'Unknown'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground font-mono truncate max-w-[120px]">
-                        {s.reference || '—'}
+                        {s.order?.waiter?.name || 'Unknown'}
                       </td>
                     </tr>
                   ))}
