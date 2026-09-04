@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, Globe, Settings, ShoppingCart, Sun } from 'lucide-react';
+import { Bell, CalendarCheck, Globe, Settings, ShoppingCart, Sun } from 'lucide-react';
 import { SettingsGroup } from '../../components/ui/SettingsGroup';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { CashierOrderingToggle } from '../../components/settings/CashierOrderingToggle';
 import { TableCountSetting } from '../../components/settings/TableCountSetting';
+import { WorkOnSundaysToggle } from '../../components/settings/WorkOnSundaysToggle';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
 import { useHeaderStore } from '../../store/headerStore';
@@ -96,6 +97,16 @@ export const ManagerSettings: React.FC = () => {
             <CashierOrderingToggle />
             <TableCountSetting />
           </div>
+        </SettingsGroup>
+
+        <SettingsGroup
+          icon={CalendarCheck}
+          iconClassName="text-emerald-700 dark:text-emerald-300"
+          iconBgClassName="bg-emerald-500/15"
+          title="Attendance"
+          description="Whether Sundays are treated as working days."
+        >
+          <WorkOnSundaysToggle />
         </SettingsGroup>
       </div>
     </div>
