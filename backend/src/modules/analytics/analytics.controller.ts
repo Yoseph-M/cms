@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { OrderStatus } from '@prisma/client';
+import { config } from '../../config';
 
 function pctDelta(current: number, prior: number): number | null {
   if (prior === 0) return current > 0 ? 100 : null;
@@ -369,8 +370,31 @@ export async function getCategorySplit(req: AuthenticatedRequest, res: Response)
     { $project: { _id: 0, category: '$_id', revenue: 1, count: 1 } },
   ];
 
-  const rawResult = await prisma.order.aggregateRaw({ pipeline: pipeline as never });
-  return res.json(rawResult);
+  const rawResult = (await prisma.order.aggregateRaw({ pipeline: pipeline as never })) as unknown as Array<
+    Record<string, unknown>
+  >;
+  return res.json(
+    (Array.isArray(rawResult) ? rawResult : []).map((row) => ({
+      category: row.category,
+      revenue: unwrapMongoNumber(row.revenue),
+      count: unwrapMongoNumber(row.count),
+    })),
+  );
+}
+
+/** Unwrap MongoDB BSON numeric wrappers that Prisma passes through verbatim.
+ *  e.g. { $numberLong: "5" } → 5, { $numberInt: "8" } → 8 */
+function unwrapMongoNumber(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'bigint') return Number(v);
+  if (v !== null && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    if ('$numberLong' in o) return Number(o.$numberLong);
+    if ('$numberInt' in o) return Number(o.$numberInt);
+    if ('$numberDouble' in o) return Number(o.$numberDouble);
+    if ('$numberDecimal' in o) return Number(o.$numberDecimal);
+  }
+  return Number(v ?? 0);
 }
 
 export async function getPeakHours(req: AuthenticatedRequest, res: Response) {
@@ -382,8 +406,8 @@ export async function getPeakHours(req: AuthenticatedRequest, res: Response) {
     { $match: match },
     {
       $project: {
-        hour: { $hour: '$createdAt' },
-        dayOfWeek: { $dayOfWeek: '$createdAt' },
+        hour: { $hour: { date: '$createdAt', timezone: config.businessTimezone } },
+        dayOfWeek: { $dayOfWeek: { date: '$createdAt', timezone: config.businessTimezone } },
       },
     },
     {
@@ -403,7 +427,18 @@ export async function getPeakHours(req: AuthenticatedRequest, res: Response) {
   ];
 
   const rawResult = await prisma.order.aggregateRaw({ pipeline: pipeline as never });
-  return res.json(rawResult);
+
+  // Prisma's aggregateRaw passes MongoDB BSON numbers as wrapper objects
+  // (e.g. { $numberLong: "5" }). Normalise them to plain JS numbers so the
+  // frontend receives a clean array instead of opaque objects.
+  const rows = (Array.isArray(rawResult) ? rawResult : []) as Array<Record<string, unknown>>;
+  const normalized = rows.map((d) => ({
+    hour: unwrapMongoNumber(d.hour),
+    dayOfWeek: unwrapMongoNumber(d.dayOfWeek),
+    count: unwrapMongoNumber(d.count),
+  }));
+
+  return res.json(normalized);
 }
 
 export async function getPaymentMethods(req: AuthenticatedRequest, res: Response) {
@@ -424,9 +459,18 @@ export async function getPaymentMethods(req: AuthenticatedRequest, res: Response
     { $project: { _id: 0, method: '$_id', revenue: 1, count: 1 } },
   ];
 
-  const rawResult = await prisma.settlement.aggregateRaw({ pipeline: pipeline as never });
-  return res.json(rawResult);
+  const rawResult = (await prisma.settlement.aggregateRaw({
+    pipeline: pipeline as never,
+  })) as unknown as Array<Record<string, unknown>>;
+  return res.json(
+    (Array.isArray(rawResult) ? rawResult : []).map((row) => ({
+      method: row.method,
+      revenue: unwrapMongoNumber(row.revenue),
+      count: unwrapMongoNumber(row.count),
+    })),
+  );
 }
+
 export async function getCancellations(req: AuthenticatedRequest, res: Response) {
   const { from, to } = req.query;
   const match: Record<string, unknown> = { status: 'CANCELLED' };
