@@ -25,7 +25,6 @@ export function useApiQuery<T>(queryKey: QueryKey, path: string, params?: ParamM
     placeholderData: keepPreviousData,
   });
 }
-
 /** Menu catalog — rarely changes; 5 min stale */
 export function useMenuQuery(params?: { category?: string; isAvailable?: string }) {
   const qs = new URLSearchParams();
@@ -101,6 +100,13 @@ export function useMeQuery() {
   });
 }
 
+/** ────────────────────────────────────────────────────────────────────────
+ *  Shared page-level query hooks — keep data cached across navigations.
+ *  Every hook below uses React Query so the cache survives component
+ *  unmounts when the user switches between tabs / routes.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** User list — shared by OwnerStaff, ManagerDashboard, payroll pages */
 export function useUsersQuery() {
   return useQuery({
     queryKey: ['users'],
@@ -108,7 +114,120 @@ export function useUsersQuery() {
       const res = await axiosClient.get('/users');
       return res.data as User[];
     },
+    staleTime: 2 * 60_000, // 2 minutes
+  });
+}
+
+/** Orders list — shared by CashierDashboard, OwnerDashboard, etc. */
+export function useOrdersQuery(params?: { limit?: number; sort?: string; status?: string }) {
+  const qs = new URLSearchParams();
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.sort) qs.set('sort', params.sort);
+  if (params?.status) qs.set('status', params.status);
+  const suffix = qs.toString() ? `?${qs}` : '';
+
+  return useQuery({
+    queryKey: ['orders', params?.limit ?? 'all', params?.sort ?? '', params?.status ?? ''],
+    queryFn: async () => {
+      const res = await axiosClient.get(`/orders${suffix}`);
+      return res.data;
+    },
+    staleTime: 30_000, // 30s — orders change frequently
+  });
+}
+
+/** Payroll list — shared by OwnerPayroll, ManagerPayroll */
+export function usePayrollQuery(scope?: string) {
+  return useQuery({
+    queryKey: ['payroll', scope ?? 'owner'],
+    queryFn: async () => {
+      const qs = scope ? `?scope=${scope}` : '';
+      const res = await axiosClient.get(`/payroll${qs}`);
+      return res.data;
+    },
+    staleTime: 2 * 60_000,
+  });
+}
+
+/** Staff performance analytics */
+export function useStaffPerformanceQuery(params: { from: string; to: string; role?: string }) {
+  const qs = new URLSearchParams();
+  qs.set('from', params.from);
+  qs.set('to', params.to);
+  if (params.role) qs.set('role', params.role);
+
+  return useQuery({
+    queryKey: ['analytics', 'staff-performance', params],
+    queryFn: async () => {
+      const res = await axiosClient.get(`/analytics/staff-performance?${qs}`);
+      return res.data;
+    },
+    staleTime: 90_000,
+  });
+}
+
+/** Daily sales analytics */
+export function useDailySalesQuery() {
+  return useQuery({
+    queryKey: ['analytics', 'sales', 'daily'],
+    queryFn: async () => {
+      const res = await axiosClient.get('/analytics/sales/daily');
+      return res.data;
+    },
     staleTime: 60_000,
+  });
+}
+
+/** Monthly sales analytics */
+export function useMonthlySalesQuery() {
+  return useQuery({
+    queryKey: ['analytics', 'sales', 'monthly'],
+    queryFn: async () => {
+      const res = await axiosClient.get('/analytics/sales/monthly');
+      return res.data;
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Total sales analytics */
+export function useTotalSalesQuery() {
+  return useQuery({
+    queryKey: ['analytics', 'sales', 'total'],
+    queryFn: async () => {
+      const res = await axiosClient.get('/analytics/sales/total');
+      return res.data;
+    },
+    staleTime: 60_000,
+  });
+}
+
+/** Profit & loss analytics */
+export function useProfitLossQuery() {
+  return useQuery({
+    queryKey: ['analytics', 'profit-loss'],
+    queryFn: async () => {
+      const res = await axiosClient.get('/analytics/profit-loss');
+      return res.data;
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Settlements list */
+export function useSettlementsQuery(params?: { page?: number; limit?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.page) qs.set('page', String(params.page));
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const suffix = qs.toString() ? `?${qs}` : '';
+
+  return useQuery({
+    queryKey: ['settlements', params?.page ?? 1, params?.limit ?? 20],
+    queryFn: async () => {
+      const res = await axiosClient.get(`/settlements${suffix}`);
+      return res.data;
+    },
+    staleTime: 2 * 60_000,
   });
 }
 

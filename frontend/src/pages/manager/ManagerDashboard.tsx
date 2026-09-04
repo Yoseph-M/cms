@@ -1,33 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Users, UserCheck, UserX, UserMinus } from 'lucide-react';
+import { Users, UserCheck, UserX, UserMinus, TrendingUp, DollarSign } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useHeaderStore } from '../../store/headerStore';
 import { User, Role } from '../../types';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { formatCurrency } from '../../utils/currency';
+import { useUsersQuery, useStaffPerformanceQuery, useApiQuery } from '../../hooks/useCachedQueries';
 
 // Use the owner dashboard components to match the UI perfectly
-import { KpiCards, KpiCard } from '../../components/owner/dashboard/KpiCards';
+import { KpiCard } from '../../components/owner/dashboard/KpiCards';
 import { SectionCard } from '../../components/owner/dashboard/SectionCard';
 import { RevenueLineChart } from '../../components/owner/dashboard/RevenueLineChart';
 import { RevenueDonut } from '../../components/owner/dashboard/RevenueDonut';
-import { ToggleGroup, ToggleGroupItem } from '../../components/ui/ToggleGroup';
-import { Avatar, AvatarFallback } from '../../components/ui/Avatar';
-import { Badge } from '../../components/ui/Badge';
-import { cn } from '../../lib/utils';
-import { AttendanceHistory } from '../../components/common/AttendanceHistory';
-
-const ROLE_TONE: Record<Role, 'default' | 'secondary' | 'success' | 'outline'> = {
-  OWNER: 'default',
-  MANAGER: 'secondary',
-  CASHIER: 'success',
-  WAITER: 'outline',
-  COOKER: 'outline',
-  BARISTA: 'outline',
-};
 
 interface WaiterPerfRow {
   waiterId: string;
@@ -37,13 +24,19 @@ interface WaiterPerfRow {
   totalSales: number;
 }
 
+interface DashboardStats {
+  totalOrders: number;
+  totalRevenue: number;
+  activeStaff: number;
+}
+
 export const ManagerDashboard: React.FC = () => {
   const { addToast } = useToastStore();
   const { t } = useTranslation('manager');
   const { dateRange: headerDateRange, setDateRange: setHeaderDateRange, setShowDateRange, setPageTitle } = useHeaderStore();
 
   useEffect(() => {
-    setPageTitle({ title: 'People & attendance', subtitle: 'Manage your team and the shift' });
+    setPageTitle({ title: 'Dashboard', subtitle: 'Overview of operations and team performance' });
     return () => setPageTitle({ title: 'Overview', subtitle: '' });
   }, [setPageTitle]);
 
@@ -76,81 +69,61 @@ export const ManagerDashboard: React.FC = () => {
     return () => setShowDateRange(false);
   }, [setShowDateRange]);
 
-  const [staffList, setStaffList] = useState<User[]>([]);
-  const [isLoadingStaff, setIsLoadingStaff] = useState(true);
-  const [waiterPerf, setWaiterPerf] = useState<WaiterPerfRow[]>([]);
-  const [isLoadingWaiterPerf, setIsLoadingWaiterPerf] = useState(true);
+  /* ── Data (React Query — cached across navigations) ── */
+  const fromIso = useMemo(() => new Date(dateRange.from).toISOString(), [dateRange.from]);
+  const toIso = useMemo(() => new Date(`${dateRange.to}T23:59:59.999`).toISOString(), [dateRange.to]);
 
-  useEffect(() => {
-    fetchStaff();
-    fetchWaiterPerf(dateRange.from, dateRange.to);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const usersQuery = useUsersQuery();
+  const waiterPerfQuery = useStaffPerformanceQuery({ from: fromIso, to: toIso, role: 'WAITER' });
+  const ordersQuery = useApiQuery<unknown[]>(
+    ['orders', 'range', fromIso, toIso],
+    '/orders',
+    { from: fromIso, to: toIso }
+  );
 
-  const fetchStaff = async () => {
-    setIsLoadingStaff(true);
-    try {
-      const res = await axiosClient.get('/users');
-      setStaffList(res.data);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setIsLoadingStaff(false);
-    }
+  const allUsers: User[] = Array.isArray(usersQuery.data) ? usersQuery.data : [];
+  // Filter out OWNER and MANAGER roles for manager view
+  const staffList: User[] = allUsers.filter((user: User) => user.role !== 'OWNER' && user.role !== 'MANAGER');
+  const isLoadingStaff = usersQuery.isLoading;
+  const waiterPerf: WaiterPerfRow[] = Array.isArray(waiterPerfQuery.data) ? waiterPerfQuery.data : [];
+  const isLoadingWaiterPerf = waiterPerfQuery.isLoading;
+
+  const orders = Array.isArray(ordersQuery.data) ? ordersQuery.data : [];
+  const dashboardStats = {
+    totalOrders: orders.length,
+    totalRevenue: orders.reduce((sum: number, order: any) => sum + (order.totalAmount || 0), 0),
+    activeStaff: allUsers.filter(
+      (u: User) => u.isActive && u.role !== 'OWNER' && u.role !== 'MANAGER'
+    ).length,
   };
 
-  const fetchWaiterPerf = async (from: string, to: string) => {
-    setIsLoadingWaiterPerf(true);
-    try {
-      const fromIso = new Date(from).toISOString();
-      const toIso = new Date(`${to}T23:59:59.999`).toISOString();
-      const res = await axiosClient.get('/analytics/staff-performance', {
-        params: { from: fromIso, to: toIso, role: 'WAITER' },
-      });
-      setWaiterPerf(Array.isArray(res.data) ? res.data : []);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setIsLoadingWaiterPerf(false);
-    }
-  };
-
-  const handleLogAttendance = async (userId: string, status: string) => {
-    if (!status) return;
-    try {
-      await axiosClient.post('/attendance/log', {
-        userId,
-        status,
-        date: dateRange.to, // Using the "to" date as the selected day for logging
-      });
-      addToast({ type: 'success', title: t('toasts.attendanceLogged', { defaultValue: 'Attendance logged' }) });
-    } catch (err: any) {
-      addToast({
-        type: 'error',
-        title: t('toasts.attendanceFailed', { defaultValue: 'Failed to log attendance' }),
-        message: extractErrorMessage(err),
-      });
-    }
-  };
-
-  // Derive KPIs (mocking the attendance counts since we don't have an endpoint for today's aggregated attendance yet)
+  // Derive KPIs from actual data
   const kpis = useMemo(() => {
+    const totalStaff = staffList.length;
+    // Mock attendance data - in production this would come from an attendance API
+    const present = Math.round(totalStaff * 0.75);
+    const absent = Math.round(totalStaff * 0.1);
+    const onLeave = totalStaff - present - absent;
+    
     return {
-      total: staffList.length,
-      present: Math.round(staffList.length * 0.75), // Mock for visual
-      absent: Math.round(staffList.length * 0.1),
-      onLeave: Math.round(staffList.length * 0.15),
+      totalStaff,
+      present,
+      absent,
+      onLeave,
     };
   }, [staffList]);
 
-  // Derive Donut Chart Data (Staff by Role)
+  // Derive Donut Chart Data (Staff by Role) - EXCLUDE OWNER from the chart
   const donutSegments = useMemo(() => {
-    const roles = staffList.reduce((acc, staff) => {
+    // Filter out OWNER role before aggregating
+    const filteredStaff = staffList.filter(staff => staff.role !== 'OWNER');
+    
+    const roles = filteredStaff.reduce((acc, staff) => {
       acc[staff.role] = (acc[staff.role] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    const colors = ['hsl(20 95% 53%)', 'hsl(24 60% 35%)', 'hsl(30 80% 75%)', 'hsl(32 100% 90%)', 'hsl(200 80% 60%)'];
+    const colors = ['hsl(24 60% 35%)', 'hsl(142 71% 45%)', 'hsl(30 80% 75%)', 'hsl(200 80% 60%)', 'hsl(280 65% 60%)'];
     return Object.entries(roles).map(([role, count], i) => ({
       label: role,
       value: count,
@@ -158,11 +131,12 @@ export const ManagerDashboard: React.FC = () => {
     }));
   }, [staffList]);
 
-  // Mock Line Chart Data (Attendance Trend)
+  // Mock Line Chart Data (Attendance Trend) - based on staff count
   const lineData = useMemo(() => {
-    const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
-    const present = labels.map(() => Math.round(staffList.length * (0.7 + Math.random() * 0.2)));
-    const absent = labels.map((_, i) => staffList.length - present[i]);
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const staffCount = staffList.length;
+    const present = labels.map(() => Math.round(staffCount * (0.7 + Math.random() * 0.2)));
+    const absent = labels.map((_, i) => Math.max(0, Math.round(staffCount * 0.1) + Math.floor(Math.random() * 3)));
     return { labels, present, absent };
   }, [staffList.length]);
 
@@ -174,19 +148,72 @@ export const ManagerDashboard: React.FC = () => {
       className="h-full flex flex-col"
     >
       <div className="flex-1 overflow-y-auto max-w-7xl mx-auto w-full space-y-5 sm:space-y-6">
-        {/* KPI cards - Matching the 4-card layout */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
-          <KpiCard label="Total Staff" value={kpis.total} kind="number" icon={Users} tone="cream" trendDots={{ active: 3, total: 3, tone: 'green' }} />
-          <KpiCard label="Present Today" value={kpis.present} kind="number" icon={UserCheck} tone="mint" trendDots={{ active: 3, total: 3, tone: 'green' }} />
-          <KpiCard label="Absent Today" value={kpis.absent} kind="number" icon={UserX} tone="blush" trendDots={{ active: 1, total: 3, tone: 'orange' }} />
-          <KpiCard label="On Leave" value={kpis.onLeave} kind="number" icon={UserMinus} tone="rose" trendDots={{ active: 2, total: 3, tone: 'orange' }} />
+        {/* KPI cards - Top row with 4 cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
+          <KpiCard 
+            label="Total Orders" 
+            value={dashboardStats.totalOrders} 
+            kind="number" 
+            icon={TrendingUp} 
+            tone="cream" 
+            trendDots={{ active: 3, total: 3, tone: 'green' }} 
+          />
+          <KpiCard 
+            label="Revenue" 
+            value={dashboardStats.totalRevenue} 
+            kind="currency" 
+            icon={DollarSign} 
+            tone="mint" 
+            trendDots={{ active: 3, total: 3, tone: 'green' }} 
+          />
+          <KpiCard 
+            label="Active Staff" 
+            value={dashboardStats.activeStaff} 
+            kind="number" 
+            icon={UserCheck} 
+            tone="blush" 
+            trendDots={{ active: 3, total: 3, tone: 'green' }} 
+          />
+          <KpiCard 
+            label="Present Today" 
+            value={kpis.present} 
+            kind="number" 
+            icon={Users} 
+            tone="rose" 
+            trendDots={{ active: 2, total: 3, tone: 'green' }} 
+          />
+        </div>
+
+        {/* Second row - Attendance metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+          <KpiCard 
+            label="Total Staff" 
+            value={kpis.totalStaff} 
+            kind="number" 
+            icon={Users} 
+            tone="cream"
+          />
+          <KpiCard 
+            label="Absent Today" 
+            value={kpis.absent} 
+            kind="number" 
+            icon={UserX} 
+            tone="blush"
+          />
+          <KpiCard 
+            label="On Leave" 
+            value={kpis.onLeave} 
+            kind="number" 
+            icon={UserMinus} 
+            tone="rose"
+          />
         </div>
 
         {/* Chart row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
           <SectionCard
             title="Attendance Trend"
-            filter={{ label: 'This Year', options: ['This Year', 'This Month'] }}
+            filter={{ label: 'This Week', options: ['This Week', 'This Month'] }}
             className="lg:col-span-2"
           >
             <RevenueLineChart
@@ -201,6 +228,7 @@ export const ManagerDashboard: React.FC = () => {
 
           <SectionCard
             title="Staff by Role"
+            description="Distribution of your team (excluding owners)"
             filter={{ label: 'All Roles', options: ['All Roles'] }}
           >
             <RevenueDonut
@@ -209,70 +237,12 @@ export const ManagerDashboard: React.FC = () => {
           </SectionCard>
         </div>
 
-        {/* Bottom row - Roster Table replacing Recent Orders */}
+        {/* Bottom row - Waiter Performance */}
         <div className="grid grid-cols-1 gap-5 sm:gap-6">
-          <SectionCard
-            title={t('dashboard.markAttendance', { defaultValue: 'Log Attendance' })}
-            filter={{ label: 'Today', options: ['Today', 'Yesterday'] }}
-            flush
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead>
-                  <tr className="border-b border-border/50 text-muted-foreground">
-                    <th className="font-medium px-5 py-3">Staff Member</th>
-                    <th className="font-medium px-5 py-3">Role</th>
-                    <th className="font-medium px-5 py-3">Contact</th>
-                    <th className="font-medium px-5 py-3 text-right">Log Attendance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {staffList.map((staff) => {
-                    const initials = staff.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase();
-                    return (
-                      <tr key={staff.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="w-8 h-8 ring-1 ring-border">
-                              <AvatarFallback className="bg-primary/15 text-primary text-xs font-bold">{initials}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium text-foreground">{staff.name}</p>
-                              <p className="text-[11px] text-muted-foreground">{staff.isActive ? 'Active' : 'Inactive'}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3">
-                          <Badge variant={ROLE_TONE[staff.role] || 'outline'}>{staff.role}</Badge>
-                        </td>
-                        <td className="px-5 py-3 text-muted-foreground text-xs">
-                          {staff.username || staff.phone || '—'}
-                        </td>
-                        <td className="px-5 py-3 text-right">
-                          <ToggleGroup
-                            type="single"
-                            onValueChange={(val) => handleLogAttendance(staff.id, val)}
-                            className="inline-flex h-8"
-                          >
-                            <ToggleGroupItem value="PRESENT" aria-label="Present" className="w-10 text-[10px] font-bold data-[state=on]:bg-emerald-500/15 data-[state=on]:text-emerald-600">P</ToggleGroupItem>
-                            <ToggleGroupItem value="ABSENT" aria-label="Absent" className="w-10 text-[10px] font-bold data-[state=on]:bg-rose-500/15 data-[state=on]:text-rose-600">A</ToggleGroupItem>
-                            <ToggleGroupItem value="HALF_DAY" aria-label="Half Day" className="w-10 text-[10px] font-bold data-[state=on]:bg-amber-500/15 data-[state=on]:text-amber-600">HD</ToggleGroupItem>
-                            <ToggleGroupItem value="LEAVE" aria-label="Leave" className="w-10 text-[10px] font-bold data-[state=on]:bg-cyan-500/15 data-[state=on]:text-cyan-600">L</ToggleGroupItem>
-                          </ToggleGroup>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {isLoadingStaff && <p className="text-center text-[11px] text-muted-foreground py-4">Refreshing…</p>}
-          </SectionCard>
-
-          {/* Waiter Performance */}
           <SectionCard
             title="Waiter performance"
             description="Orders and revenue per waiter in the selected period"
+            flush
           >
             {isLoadingWaiterPerf ? (
               <p className="text-center text-[11px] text-muted-foreground py-4">Loading…</p>
@@ -319,14 +289,6 @@ export const ManagerDashboard: React.FC = () => {
             )}
           </SectionCard>
         </div>
-
-        {/* Attendance history (90-day tracker per staff member) */}
-        <SectionCard
-          title="Attendance history"
-          description="Last 90 days of attendance per staff member"
-         >
-          <AttendanceHistory />
-        </SectionCard>
       </div>
     </motion.div>
   );

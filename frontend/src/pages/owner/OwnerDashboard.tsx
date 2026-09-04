@@ -2,10 +2,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Coffee, GlassWater, CupSoda, type LucideIcon } from 'lucide-react';
-import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
 import { useHeaderStore } from '../../store/headerStore';
 import { cn } from '../../lib/utils';
+import {
+  useDailySalesQuery,
+  useMonthlySalesQuery,
+  useTotalSalesQuery,
+  useProfitLossQuery,
+  useStaffPerformanceQuery,
+  useOrdersQuery,
+  useAnalyticsQuery,
+} from '../../hooks/useCachedQueries';
 
 // New dashboard module
 import { KpiCards } from '../../components/owner/dashboard/KpiCards';
@@ -168,55 +176,48 @@ export const OwnerDashboard: React.FC = () => {
   // Trend range filter for the line chart
   const [trendRange, setTrendRange] = useState<TrendRange>('12m');
 
-  /* ── Data ── */
-  const [daily, setDaily] = useState<DailySales | null>(null);
-  const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
-  const [topItems, setTopItems] = useState<TopItem[]>([]);
-  const [categories, setCategories] = useState<CategoryRow[]>([]);
-  const [recentOrders, setRecentOrders] = useState<RecentOrderRow[]>([]);
-  const [totalSales, setTotalSales] = useState<{ totalRevenue: number, orderCount: number } | null>(null);
-  const [profitLoss, setProfitLoss] = useState<ProfitLossRow | null>(null);
-  const [waiterPerf, setWaiterPerf] = useState<WaiterPerfRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  /* ── Data (React Query — cached across navigations) ── */
+  const fromIso = useMemo(() => new Date(dateRange.from).toISOString(), [dateRange.from]);
+  const toIso = useMemo(() => new Date(`${dateRange.to}T23:59:59.999`).toISOString(), [dateRange.to]);
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        const fromIso = new Date(dateRange.from).toISOString();
-        const toIso = new Date(`${dateRange.to}T23:59:59.999`).toISOString();
-        const [d, m, ti, cat, ord, comp, pl, wp] = await Promise.all([
-          axiosClient.get('/analytics/sales/daily'),
-          axiosClient.get('/analytics/sales/monthly'),
-          axiosClient.get('/analytics/top-items', { params: { from: fromIso, to: toIso, limit: 5 } }),
-          axiosClient.get('/analytics/category-split', { params: { from: fromIso, to: toIso } }),
-          axiosClient.get('/orders', { params: { limit: 8, sort: 'createdAt:desc' } }),
-          axiosClient.get('/analytics/sales/total'),
-          axiosClient.get('/analytics/profit-loss'),
-          axiosClient.get('/analytics/staff-performance', { params: { from: fromIso, to: toIso, role: 'WAITER' } }),
-        ]);
-        if (!alive) return;
-        setDaily(d.data);
-        setMonthly(m.data || []);
-        setTopItems(ti.data || []);
-        setCategories(cat.data || []);
-        const orderList = ord.data?.data || ord.data || [];
-        setRecentOrders(Array.isArray(orderList) ? orderList : []);
-        setTotalSales(comp.data || null);
-        setProfitLoss(pl.data || null);
-        setWaiterPerf(Array.isArray(wp.data) ? wp.data : []);
-      } catch (err) {
-        console.error('owner dashboard load error', err);
-      } finally {
-        if (alive) setIsLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      alive = false;
-    };
-  }, [dateRange.from, dateRange.to]);
+  const dailyQuery = useDailySalesQuery();
+  const monthlyQuery = useMonthlySalesQuery();
+  const topItemsQuery = useAnalyticsQuery<TopItem[]>(
+    '/analytics/top-items',
+    { from: fromIso, to: toIso, limit: '5' },
+  );
+  const categoriesQuery = useAnalyticsQuery<CategoryRow[]>(
+    '/analytics/category-split',
+    { from: fromIso, to: toIso },
+  );
+  const ordersQuery = useOrdersQuery({ limit: 8, sort: 'createdAt:desc' });
+  const totalSalesQuery = useTotalSalesQuery();
+  const profitLossQuery = useProfitLossQuery();
+  const waiterPerfQuery = useStaffPerformanceQuery({ from: fromIso, to: toIso, role: 'WAITER' });
+
+  const daily: DailySales | null = dailyQuery.data ?? null;
+  const monthly: MonthlyRow[] = monthlyQuery.data ?? [];
+  const topItems: TopItem[] = Array.isArray(topItemsQuery.data) ? topItemsQuery.data : [];
+  const categories: CategoryRow[] = Array.isArray(categoriesQuery.data) ? categoriesQuery.data : [];
+  const recentOrders: RecentOrderRow[] = (() => {
+    const raw = ordersQuery.data;
+    if (!raw) return [];
+    const list = raw?.data ?? raw;
+    return Array.isArray(list) ? list : [];
+  })();
+  const totalSales = totalSalesQuery.data ?? null;
+  const profitLoss: ProfitLossRow | null = profitLossQuery.data ?? null;
+  const waiterPerf: WaiterPerfRow[] = Array.isArray(waiterPerfQuery.data) ? waiterPerfQuery.data : [];
+
+  const isLoading =
+    dailyQuery.isLoading ||
+    monthlyQuery.isLoading ||
+    topItemsQuery.isLoading ||
+    categoriesQuery.isLoading ||
+    ordersQuery.isLoading ||
+    totalSalesQuery.isLoading ||
+    profitLossQuery.isLoading ||
+    waiterPerfQuery.isLoading;
 
   /* ── Derived KPIs ── */
   const kpis = useMemo(() => {

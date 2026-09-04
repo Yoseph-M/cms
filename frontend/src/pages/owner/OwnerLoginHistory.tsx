@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
+import { useQuery } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useToastStore } from '../../store/toastStore';
@@ -97,19 +98,16 @@ LoginRow.displayName = 'LoginRow';
 export const OwnerLoginHistory: React.FC = () => {
   const { addToast } = useToastStore();
 
-  const [logs, setLogs] = useState<LoginHistoryRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Rows appended by infinite-scroll past the cached first page.
+  const [appendedLogs, setAppendedLogs] = useState<LoginHistoryRecord[]>([]);
+  const [appendCursor, setAppendCursor] = useState<string | null>(null);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
 
   const [outcomeFilter, setOutcomeFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
   const [expandedLog, setExpandedLog] = useState<LoginHistoryRecord | null>(null);
-  const [stats, setStats] = useState<LoginStats | null>(null);
   const listRef = useRef<FixedSizeList>(null);
 
   const buildQuery = useCallback((cursor?: string) => {
@@ -121,53 +119,71 @@ export const OwnerLoginHistory: React.FC = () => {
     return params.toString();
   }, [outcomeFilter, dateFrom, dateTo]);
 
-  const fetchLogs = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    setLogs([]);
-    setNextCursor(null);
-    setExpandedLog(null);
-    try {
+  // First page is cached per filter set, so revisiting the tab renders instantly.
+  const {
+    data: firstPage,
+    isLoading,
+    error: queryError,
+    refetch,
+  } = useQuery<{ logs: LoginHistoryRecord[]; nextCursor: string | null }>({
+    queryKey: ['loginHistory', outcomeFilter, dateFrom, dateTo],
+    queryFn: async () => {
       const res = await axiosClient.get(`/audit/login-history?${buildQuery()}`);
       const data = res.data;
-      setLogs(data.logs || []);
-      setNextCursor(data.nextCursor || null);
-      setHasMore(!!data.nextCursor);
-    } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to load login history.'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [buildQuery]);
+      return { logs: data.logs || [], nextCursor: data.nextCursor || null };
+    },
+    staleTime: 2 * 60_000,
+  });
+  const error = queryError
+    ? extractErrorMessage(queryError, 'Failed to load login history.')
+    : null;
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
-
-  const fetchStats = useCallback(async () => {
-    try {
+  // Login stats are small and slow-moving — cached too.
+  const { data: stats = null, refetch: refetchStats } = useQuery<LoginStats | null>({
+    queryKey: ['loginHistoryStats'],
+    queryFn: async () => {
       const res = await axiosClient.get('/login-history/stats');
-      setStats(res.data);
-    } catch (error) {
-      console.error('Failed to fetch login stats:', error);
-    }
-  }, []);
+      return res.data;
+    },
+    staleTime: 60_000,
+  });
 
-  useEffect(() => { fetchStats(); }, [fetchStats]);
+  const cursor = appendCursor ?? firstPage?.nextCursor ?? null;
+  const hasMore = cursor !== null;
+  const logs = useMemo<LoginHistoryRecord[]>(
+    () => [...(firstPage?.logs ?? []), ...appendedLogs],
+    [firstPage, appendedLogs]
+  );
+
+  // Filter change → back to a fresh first page (drop appended rows).
+  useEffect(() => {
+    setAppendedLogs([]);
+    setAppendCursor(null);
+    setExpandedLog(null);
+  }, [outcomeFilter, dateFrom, dateTo]);
 
   const loadMore = useCallback(async () => {
-    if (!nextCursor || isFetchingMore) return;
+    if (!cursor || isFetchingMore) return;
     setIsFetchingMore(true);
     try {
-      const res = await axiosClient.get(`/audit/login-history?${buildQuery(nextCursor)}`);
+      const res = await axiosClient.get(`/audit/login-history?${buildQuery(cursor)}`);
       const data = res.data;
-      setLogs((prev) => [...prev, ...(data.logs || [])]);
-      setNextCursor(data.nextCursor || null);
-      setHasMore(!!data.nextCursor);
+      setAppendedLogs((prev) => [...prev, ...(data.logs || [])]);
+      setAppendCursor(data.nextCursor || null);
     } catch {
       addToast({ type: 'error', title: 'Failed to load more logs' });
     } finally {
       setIsFetchingMore(false);
     }
-  }, [nextCursor, isFetchingMore, buildQuery, addToast]);
+  }, [cursor, isFetchingMore, buildQuery, addToast]);
+
+  // "Apply" re-runs the current filter search from page 1.
+  const applyFilters = useCallback(() => {
+    setAppendedLogs([]);
+    setAppendCursor(null);
+    setExpandedLog(null);
+    void refetch();
+  }, [refetch]);
 
   const handleSelect = useCallback((record: LoginHistoryRecord) => {
     setExpandedLog((prev) => (prev?.id === record.id ? null : record));
@@ -281,7 +297,7 @@ export const OwnerLoginHistory: React.FC = () => {
               <label className="text-xs font-medium text-muted-foreground mb-1 block">To Date</label>
               <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
             </div>
-            <Button variant="outline" size="sm" onClick={() => { fetchLogs(); fetchStats(); }}>
+            <Button variant="outline" size="sm" onClick={() => { applyFilters(); void refetchStats(); }}>
               <Filter className="w-3.5 h-3.5 mr-1.5" />Apply
             </Button>
             <Button variant="outline" size="sm" onClick={exportCSV}>
@@ -303,7 +319,7 @@ export const OwnerLoginHistory: React.FC = () => {
             <div className="p-12 text-center">
               <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
               <p className="text-destructive">{error}</p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={fetchLogs}>Retry</Button>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>Retry</Button>
             </div>
           ) : logs.length === 0 ? (
             <EmptyState

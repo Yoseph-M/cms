@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
+import { useUsersQuery } from '../../hooks/useCachedQueries';
 import { useToastStore } from '../../store/toastStore';
 import { useAuthStore } from '../../store/authStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
@@ -46,9 +48,16 @@ export const OwnerStaff: React.FC = () => {
   const { addToast } = useToastStore();
   const { user: currentUser } = useAuthStore();
 
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // Optimistic active/inactive overrides applied on top of the cached list while
+  // the debounced (undo-able) API call is pending.
+  const [activeOverrides, setActiveOverrides] = useState<Record<string, boolean>>({});
+
+  // Shared cached user list — OwnerStaff, ManagerDashboard, and payroll pages all
+  // read the same cache, so switching tabs never fetches staff from scratch.
+  const { data: serverUsers = [], isLoading, error: queryError, refetch: refetchUsers } = useUsersQuery();
+  const error = queryError ? extractErrorMessage(queryError, 'Failed to load staff.') : null;
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
@@ -65,20 +74,25 @@ export const OwnerStaff: React.FC = () => {
   const [resetResult, setResetResult] = useState<{ name: string; credential: string } | null>(null);
   const [isResetting, setIsResetting] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await axiosClient.get('/users');
-      setUsers(res.data);
-    } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to load staff.'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const users: User[] = useMemo(() => {
+    const list = (serverUsers as User[]) || [];
+    return list.map((u) =>
+      activeOverrides[u.id] !== undefined ? { ...u, isActive: activeOverrides[u.id] } : u
+    );
+  }, [serverUsers, activeOverrides]);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  // Drop optimistic overrides once a background refetch confirms the server state.
+  useEffect(() => {
+    setActiveOverrides((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const [id, value] of Object.entries(prev)) {
+        const server = (serverUsers as User[]).find((u) => u.id === id);
+        if (server && server.isActive === value) continue;
+        next[id] = value;
+      }
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [serverUsers]);
 
   const filteredUsers = useMemo(
     () =>
@@ -131,11 +145,13 @@ export const OwnerStaff: React.FC = () => {
       }
       if (editingUser) {
         const res = await axiosClient.patch(`/users/${editingUser.id}`, payload);
-        setUsers(prev => prev.map(u => u.id === editingUser.id ? res.data : u));
+        queryClient.setQueryData<User[]>(['users'], (old) =>
+          (old ?? []).map((u) => (u.id === editingUser.id ? res.data : u))
+        );
         addToast({ type: 'success', title: 'Staff member updated' });
       } else {
         const res = await axiosClient.post('/users', payload);
-        setUsers(prev => [res.data, ...prev]);
+        queryClient.setQueryData<User[]>(['users'], (old) => [res.data, ...(old ?? [])]);
         addToast({ type: 'success', title: `${form.name} added` });
       }
       setSlideOverOpen(false);
@@ -150,7 +166,7 @@ export const OwnerStaff: React.FC = () => {
     const existingTimeout = pendingStatusTimeouts.current.get(user.id);
     if (existingTimeout) clearTimeout(existingTimeout);
 
-    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: nextActive } : u));
+    setActiveOverrides((prev) => ({ ...prev, [user.id]: nextActive }));
 
     const executeApi = async () => {
       try {
@@ -160,8 +176,13 @@ export const OwnerStaff: React.FC = () => {
           await axiosClient.patch(`/users/${user.id}/deactivate`);
         }
         pendingStatusTimeouts.current.delete(user.id);
+        void queryClient.invalidateQueries({ queryKey: ['users'] });
       } catch (err: any) {
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: !nextActive } : u));
+        setActiveOverrides((prev) => {
+          const next = { ...prev };
+          delete next[user.id];
+          return next;
+        });
         addToast({ type: 'error', title: 'Action failed', message: extractErrorMessage(err) });
         pendingStatusTimeouts.current.delete(user.id);
       }
@@ -174,7 +195,11 @@ export const OwnerStaff: React.FC = () => {
       const t = pendingStatusTimeouts.current.get(user.id);
       if (t) clearTimeout(t);
       pendingStatusTimeouts.current.delete(user.id);
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isActive: !nextActive } : u));
+      setActiveOverrides((prev) => {
+        const next = { ...prev };
+        delete next[user.id];
+        return next;
+      });
       addToast({
         type: 'info',
         title: nextActive ? `Reactivation undone — ${user.name} stays inactive` : `Deactivation undone — ${user.name} stays active`,
@@ -214,7 +239,7 @@ export const OwnerStaff: React.FC = () => {
       ) : error ? (
         <div className="py-16 text-center">
           <p className="text-destructive">{error}</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={fetchUsers}>Retry</Button>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetchUsers()}>Retry</Button>
         </div>
       ) : filteredUsers.length === 0 ? (
         <EmptyState

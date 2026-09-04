@@ -5,7 +5,8 @@
  * Accessible by all authenticated roles (OWNER, MANAGER, CASHIER, WAITER).
  */
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useHeaderStore } from '../../store/headerStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
@@ -125,9 +126,7 @@ const AMOUNT_PRESETS: Array<{ key: string; label: string; get: () => { min: stri
 ];
 
 export const GlobalSettlementHistory: React.FC = () => {
-  const [settlements, setSettlements] = useState<SettlementRecord[]>([]);
-  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 25, total: 0, totalPages: 0 });
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [methodFilter, setMethodFilter] = useState<string>('');
   const [datePreset, setDatePreset] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
@@ -153,9 +152,27 @@ export const GlobalSettlementHistory: React.FC = () => {
     };
   }, [setPageTitle, setShowDateRange]);
 
-  const fetchSettlements = useCallback(async (page = 1) => {
-    setLoading(true);
-    try {
+  // Cached per-filter/page query — revisiting this page renders instantly from
+  // cache instead of re-fetching the whole settlement history on every visit.
+  const {
+    data,
+    isLoading,
+    isFetching,
+    error: queryError,
+  } = useQuery<{ data: SettlementRecord[]; pagination: Pagination }>({
+    queryKey: [
+      'settlements',
+      methodFilter,
+      dateFrom,
+      dateTo,
+      minAmount,
+      maxAmount,
+      tableFilter.trim(),
+      orderFilter.trim(),
+      recordedByFilter.trim(),
+      page,
+    ],
+    queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 25 };
       if (methodFilter) params.method = methodFilter;
       if (dateFrom) params.from = new Date(`${dateFrom}T00:00:00.000`).toISOString();
@@ -170,27 +187,23 @@ export const GlobalSettlementHistory: React.FC = () => {
       if (recordedByFilter.trim()) params.recordedBy = recordedByFilter.trim();
 
       const res = await axiosClient.get('/settlements', { params });
-      setSettlements(res.data.data);
-      setPagination(res.data.pagination);
-    } catch (error) {
-      console.error('Failed to fetch settlement history:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    methodFilter,
-    dateFrom,
-    dateTo,
-    minAmount,
-    maxAmount,
-    tableFilter,
-    orderFilter,
-    recordedByFilter,
-  ]);
-
+      return res.data;
+    },
+    staleTime: 2 * 60_000,
+  });
   useEffect(() => {
-    fetchSettlements(1);
-  }, [fetchSettlements]);
+    if (queryError) console.error('Failed to fetch settlement history:', queryError);
+  }, [queryError]);
+
+  const settlements = data?.data ?? [];
+  const pagination = data?.pagination ?? { page, limit: 25, total: 0, totalPages: 0 };
+  // Skeleton only while there is no cached page; background refetches stay silent.
+  const loading = isLoading || (isFetching && !data);
+
+  // Any filter change starts over at page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [methodFilter, dateFrom, dateTo, minAmount, maxAmount, tableFilter, orderFilter, recordedByFilter]);
 
   const formatAmount = (amountMinor: number) => {
     return (amountMinor / 100).toFixed(2);
@@ -643,7 +656,7 @@ export const GlobalSettlementHistory: React.FC = () => {
               variant="outline"
               size="sm"
               disabled={pagination.page <= 1}
-              onClick={() => fetchSettlements(pagination.page - 1)}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               <ArrowLeft className="w-4 h-4" />
             </Button>
@@ -651,7 +664,7 @@ export const GlobalSettlementHistory: React.FC = () => {
               variant="outline"
               size="sm"
               disabled={pagination.page >= pagination.totalPages}
-              onClick={() => fetchSettlements(pagination.page + 1)}
+              onClick={() => setPage((p) => p + 1)}
             >
               <ArrowRight className="w-4 h-4" />
             </Button>

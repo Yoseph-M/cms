@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { BarList, Title, Text, Grid, Flex } from '@tremor/react';
+import { useQuery } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { Select } from '../../components/ui/Select';
 import { DateRangePicker, computeRange, type DateRange } from '../../components/ui/DateRangePicker';
@@ -24,28 +25,20 @@ function exportPDF(title: string, rows: string[][]) {
 }
 
 function useWidget<T>(endpoint: string, deps: Record<string, string> = {}) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const key = JSON.stringify(deps);
-
-  const refetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  // React Query backs every finance widget so results are cached across page
+  // switches — navigating back to Finance renders instantly instead of
+  // re-fetching all ~8 analytics endpoints from scratch.
+  const { data, isLoading, error, refetch } = useQuery<T>({
+    queryKey: ['analytics', endpoint, deps],
+    queryFn: async () => {
       const qs = new URLSearchParams(deps).toString();
       const res = await axiosClient.get(`${endpoint}${qs ? `?${qs}` : ''}`);
-      setData(res.data);
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } };
-      setError(extractErrorMessage(err, 'Failed to load data.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [endpoint, key]);
-
-  useEffect(() => { refetch(); }, [refetch]);
-  return { data, loading, error, refetch };
+      return res.data as T;
+    },
+    staleTime: 90_000,
+  });
+  const message = error ? extractErrorMessage(error, 'Failed to load data.') : null;
+  return { data: data ?? null, loading: isLoading, error: message, refetch };
 }
 
 const DONUT_PALETTE = DONUT_COLORS;

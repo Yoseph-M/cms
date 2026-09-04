@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
+import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useHeaderStore } from '../../store/headerStore';
+import { usePayrollQuery, useUsersQuery } from '../../hooks/useCachedQueries';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -65,10 +67,17 @@ export const OwnerPayroll: React.FC = () => {
     };
   }, [setPageTitle, setShowDateRange]);
 
-  const [ledger, setLedger] = useState<PayrollRecord[]>([]);
-  const [staff, setStaff] = useState<StaffUser[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const payrollQuery = usePayrollQuery();
+  const usersQuery = useUsersQuery();
+
+  const ledger: PayrollRecord[] = Array.isArray(payrollQuery.data) ? payrollQuery.data : [];
+  const staff: StaffUser[] = useMemo(
+    () => (Array.isArray(usersQuery.data) ? usersQuery.data.filter((u: StaffUser) => u.isActive && u.role !== 'OWNER') : []),
+    [usersQuery.data],
+  );
+  const isLoading = payrollQuery.isLoading || usersQuery.isLoading;
+  const error = payrollQuery.error ? 'Failed to load payroll ledger.' : null;
 
   const [formOpen, setFormOpen] = useState(false);
   const [userId, setUserId] = useState('');
@@ -88,32 +97,9 @@ export const OwnerPayroll: React.FC = () => {
   const [adjAmount, setAdjAmount] = useState('');
   const [isAdjusting, setIsAdjusting] = useState(false);
 
-  const fetchLedger = useCallback(async () => {
-    try {
-      const res = await axiosClient.get('/payroll');
-      setLedger(res.data);
-    } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to load payroll ledger.'));
-    }
-  }, []);
-
-  const fetchStaff = useCallback(async () => {
-    try {
-      const res = await axiosClient.get('/users');
-      setStaff(
-        res.data.filter((u: StaffUser) => u.isActive && u.role !== 'OWNER')
-      );
-    } catch {
-      // silent
-    }
-  }, []);
-
-  useEffect(() => {
-    setIsLoading(true);
-    Promise.all([fetchLedger(), fetchStaff()]).finally(() => {
-      setIsLoading(false);
-    });
-  }, [fetchLedger, fetchStaff]);
+  const invalidatePayroll = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['payroll'] });
+  }, [queryClient]);
 
   const resetForm = () => {
     setUserId('');
@@ -174,7 +160,7 @@ export const OwnerPayroll: React.FC = () => {
       addToast({ type: 'success', title: 'Payroll entry recorded' });
       setFormOpen(false);
       resetForm();
-      fetchLedger();
+      invalidatePayroll();
     } catch (err: any) {
       const detail = err.response?.data?.details?.[0]?.error;
       addToast({
@@ -204,7 +190,7 @@ export const OwnerPayroll: React.FC = () => {
       setAdjReason('');
       setAdjAmount('');
       setDetailRow(null);
-      fetchLedger();
+      invalidatePayroll();
     } catch (err: any) {
       addToast({ type: 'error', title: 'Adjustment failed', message: extractErrorMessage(err) });
     } finally {
@@ -363,7 +349,7 @@ export const OwnerPayroll: React.FC = () => {
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-destructive">{error}</p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={fetchLedger}>Retry</Button>
+              <Button variant="outline" size="sm" className="mt-3" onClick={invalidatePayroll}>Retry</Button>
             </div>
           ) : paymentRows.length === 0 ? (
             <EmptyState

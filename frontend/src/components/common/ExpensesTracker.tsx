@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
@@ -95,13 +96,34 @@ export const ExpensesTracker: React.FC = () => {
     OTHER: t('expenses.categories.other', { defaultValue: 'Other' }),
   };
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+
+  const queryClient = useQueryClient();
+
+  // Cached per-filter query: switching tabs/pages and coming back renders the
+  // cached records instantly instead of re-fetching the whole list.
+  const { data: expenses = [], isLoading, error: queryError, refetch } = useQuery<Expense[]>({
+    queryKey: ['expenses', categoryFilter, from, to],
+    queryFn: async () => {
+      const params: Record<string, string> = {};
+      if (from) params.from = from;
+      if (to) params.to = to;
+      if (categoryFilter) params.category = categoryFilter;
+      const res = await axiosClient.get('/expenses', { params });
+      return res.data;
+    },
+    staleTime: 60_000,
+  });
+  const error = queryError
+    ? extractErrorMessage(queryError, t('expenses.toasts.loadFailed', { defaultValue: 'Failed to load expenses.' }))
+    : null;
+
+  // After create/update/delete, invalidate so the list refreshes from the server.
+  const refreshExpenses = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['expenses'] });
+  }, [queryClient]);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -121,26 +143,7 @@ export const ExpensesTracker: React.FC = () => {
   );
   const hasFilters = Boolean(categoryFilter || from || to);
 
-  const fetchExpenses = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const params: Record<string, string> = {};
-      if (from) params.from = from;
-      if (to) params.to = to;
-      if (categoryFilter) params.category = categoryFilter;
-      const res = await axiosClient.get('/expenses', { params });
-      setExpenses(res.data);
-    } catch (err: any) {
-      setError(extractErrorMessage(err, t('expenses.toasts.loadFailed')));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [from, to, categoryFilter, t]);
 
-  useEffect(() => {
-    fetchExpenses();
-  }, [fetchExpenses]);
 
   const openCreate = () => {
     setEditing(null);
@@ -187,7 +190,7 @@ export const ExpensesTracker: React.FC = () => {
       }
       setSheetOpen(false);
       setEditing(null);
-      fetchExpenses();
+      refreshExpenses();
     } catch (err: any) {
       addToast({
         type: 'error',
@@ -208,7 +211,7 @@ export const ExpensesTracker: React.FC = () => {
       await axiosClient.delete(`/expenses/${deleteTarget.id}`);
       addToast({ type: 'success', title: t('expenses.toasts.deleted', { defaultValue: 'Expense deleted' }) });
       setDeleteTarget(null);
-      fetchExpenses();
+      refreshExpenses();
     } catch (err: any) {
       addToast({ 
         type: 'error', 
@@ -316,7 +319,7 @@ export const ExpensesTracker: React.FC = () => {
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-destructive">{error}</p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={fetchExpenses}>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>
                 {t('expenses.retry', { defaultValue: 'Retry' })}
               </Button>
             </div>

@@ -1,17 +1,24 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CircleDollarSign, Clock3, ListTodo, ReceiptText, Sparkles, TrendingUp } from 'lucide-react';
-import { axiosClient } from '../../api/axiosClient';
 import type { Order } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { useHeaderStore } from '../../store/headerStore';
+import { useOrdersQuery } from '../../hooks/useCachedQueries';
 
 /** A calm starting point for a cashier shift. Ticket processing lives in /tickets. */
 export const CashierDashboard: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
   const { setPageTitle, setShowDateRange } = useHeaderStore();
+  const ordersQuery = useOrdersQuery();
+
+  const orders: Order[] = useMemo(() => {
+    const raw = ordersQuery.data;
+    if (!raw) return [];
+    const list = raw?.data ?? raw;
+    return Array.isArray(list) ? list : [];
+  }, [ordersQuery.data]);
+  const loading = ordersQuery.isLoading;
 
   useEffect(() => {
     setPageTitle({ title: 'Cashier dashboard', subtitle: 'Live shift overview' });
@@ -21,13 +28,6 @@ export const CashierDashboard: React.FC = () => {
       setShowDateRange(false);
     };
   }, [setPageTitle, setShowDateRange]);
-
-  useEffect(() => {
-    axiosClient.get('/orders')
-      .then((response) => setOrders(response.data.data || response.data || []))
-      .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
-  }, []);
 
   const stats = useMemo(() => {
     const active = orders.filter((order) => order.status !== 'PAID' && order.status !== 'CANCELLED');

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
+import { useQuery } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { Card, CardContent } from '../../components/ui/Card';
@@ -72,12 +73,10 @@ AuditRow.displayName = 'AuditRow';
 export const OwnerAudit: React.FC = () => {
   const { addToast } = useToastStore();
 
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Rows appended by infinite-scroll past the cached first page.
+  const [appendedLogs, setAppendedLogs] = useState<AuditLog[]>([]);
+  const [appendCursor, setAppendCursor] = useState<string | null>(null);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
 
   const [actionFilter, setActionFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -95,52 +94,67 @@ export const OwnerAudit: React.FC = () => {
     return params.toString();
   }, [actionFilter, dateFrom, dateTo]);
 
-  const fetchLogs = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    setLogs([]);
-    setNextCursor(null);
-    setExpandedLog(null);
-    try {
+  // First page is cached per filter set, so revisiting the tab renders instantly.
+  const {
+    data: firstPage,
+    isLoading,
+    error: queryError,
+    refetch,
+  } = useQuery<{ logs: AuditLog[]; nextCursor: string | null }>({
+    queryKey: ['audit', actionFilter, dateFrom, dateTo],
+    queryFn: async () => {
       const res = await axiosClient.get(`/audit?${buildQuery()}`);
       const data = res.data;
-      if (Array.isArray(data)) {
-        setLogs(data);
-        setHasMore(false);
-      } else {
-        setLogs(data.logs || []);
-        setNextCursor(data.nextCursor || null);
-        setHasMore(!!data.nextCursor);
-      }
-    } catch (err: unknown) {
-      setError(extractErrorMessage(err, 'Failed to load audit logs.'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [buildQuery]);
+      if (Array.isArray(data)) return { logs: data as AuditLog[], nextCursor: null };
+      return { logs: data.logs || [], nextCursor: data.nextCursor || null };
+    },
+    staleTime: 2 * 60_000,
+  });
+  const error = queryError
+    ? extractErrorMessage(queryError, 'Failed to load audit logs.')
+    : null;
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+  const cursor = appendCursor ?? firstPage?.nextCursor ?? null;
+  const hasMore = cursor !== null;
+  const logs = useMemo<AuditLog[]>(
+    () => [...(firstPage?.logs ?? []), ...appendedLogs],
+    [firstPage, appendedLogs]
+  );
+
+  // Filter change → back to a fresh first page (drop appended rows).
+  useEffect(() => {
+    setAppendedLogs([]);
+    setAppendCursor(null);
+    setExpandedLog(null);
+  }, [actionFilter, dateFrom, dateTo]);
 
   const loadMore = useCallback(async () => {
-    if (!nextCursor || isFetchingMore) return;
+    if (!cursor || isFetchingMore) return;
     setIsFetchingMore(true);
     try {
-      const res = await axiosClient.get(`/audit?${buildQuery(nextCursor)}`);
+      const res = await axiosClient.get(`/audit?${buildQuery(cursor)}`);
       const data = res.data;
       if (Array.isArray(data)) {
-        setLogs((prev) => [...prev, ...data]);
-        setHasMore(false);
+        setAppendedLogs((prev) => [...prev, ...(data as AuditLog[])]);
+        setAppendCursor(null);
       } else {
-        setLogs((prev) => [...prev, ...(data.logs || [])]);
-        setNextCursor(data.nextCursor || null);
-        setHasMore(!!data.nextCursor);
+        setAppendedLogs((prev) => [...prev, ...(data.logs || [])]);
+        setAppendCursor(data.nextCursor || null);
       }
     } catch {
       addToast({ type: 'error', title: 'Failed to load more logs' });
     } finally {
       setIsFetchingMore(false);
     }
-  }, [nextCursor, isFetchingMore, buildQuery, addToast]);
+  }, [cursor, isFetchingMore, buildQuery, addToast]);
+
+  // "Apply" re-runs the current filter search from page 1.
+  const applyFilters = useCallback(() => {
+    setAppendedLogs([]);
+    setAppendCursor(null);
+    setExpandedLog(null);
+    void refetch();
+  }, [refetch]);
 
   const handleSelect = useCallback((log: AuditLog) => {
     setExpandedLog((prev) => (prev?.id === log.id ? null : log));
@@ -207,7 +221,7 @@ export const OwnerAudit: React.FC = () => {
               <label className="text-xs font-medium text-muted-foreground mb-1 block">To Date</label>
               <Input id="audit-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9" />
             </div>
-            <Button variant="outline" size="sm" onClick={fetchLogs}>
+            <Button variant="outline" size="sm" onClick={applyFilters}>
               <Filter className="w-3.5 h-3.5 mr-1.5" />Apply
             </Button>
             <Button variant="outline" size="sm" onClick={exportCSV}>
@@ -229,7 +243,7 @@ export const OwnerAudit: React.FC = () => {
             <div className="p-12 text-center">
               <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
               <p className="text-destructive">{error}</p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={fetchLogs}>Retry</Button>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>Retry</Button>
             </div>
           ) : logs.length === 0 ? (
             <EmptyState

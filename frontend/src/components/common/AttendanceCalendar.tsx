@@ -1,5 +1,6 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useHeaderStore } from '../../store/headerStore';
@@ -8,7 +9,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
-import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
+import { useSystemSettingQuery, useUsersQuery } from '../../hooks/useCachedQueries';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle, BarChart3, Info, Grid3X3, History } from 'lucide-react';
@@ -79,11 +80,6 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
   const workOnSundaysSetting = useSystemSettingQuery('workOnSundays');
   const workOnSundays = workOnSundaysSetting.data?.value === 'true';
 
-  const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   // Popover state
   const [popover, setPopover] = useState<{ staffId: string; date: string; existing: AttendanceRecord | null } | null>(null);
   const [popStatus, setPopStatus] = useState<AttendanceStatus>('PRESENT');
@@ -93,31 +89,39 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
   const daysInMonth = new Date(year, month, 0).getDate();
   const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [staffRes, attRes] = await Promise.all([
-        axiosClient.get('/users'),
-        axiosClient.get(`/attendance?month=${month}&year=${year}`),
-      ]);
-      let staffData: StaffMember[] = staffRes.data;
-      // Always exclude owners from attendance roster
-      staffData = staffData.filter(s => s.role !== 'OWNER');
-      
-      if (!isOwner) {
-        staffData = staffData.filter(s => s.role !== 'MANAGER');
-      }
-      setStaff(staffData);
-      setAttendance(attRes.data);
-    } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to load attendance data.'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [month, year, isOwner]);
+  const queryClient = useQueryClient();
+  const usersQuery = useUsersQuery();
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Attendance is cached per month/year — flipping back and forth between
+  // months (or leaving/re-entering the page) renders instantly.
+  const {
+    data: attendance = [],
+    isLoading: attendanceLoading,
+    error: attendanceError,
+    refetch: refetchAttendance,
+  } = useQuery<AttendanceRecord[]>({
+    queryKey: ['attendance', month, year],
+    queryFn: async () => {
+      const res = await axiosClient.get(`/attendance?month=${month}&year=${year}`);
+      return res.data;
+    },
+    staleTime: 2 * 60_000,
+  });
+
+  const isLoading = usersQuery.isLoading || attendanceLoading;
+  const error = attendanceError
+    ? extractErrorMessage(attendanceError, 'Failed to load attendance data.')
+    : usersQuery.error
+      ? extractErrorMessage(usersQuery.error, 'Failed to load staff.')
+      : null;
+
+  // Roster comes from the shared cached user list (same cache as staff/payroll).
+  const staff = useMemo(() => {
+    const list = ((usersQuery.data as StaffMember[] | undefined) ?? []).filter(
+      (s) => s.role !== 'OWNER' && (isOwner || s.role !== 'MANAGER')
+    );
+    return list;
+  }, [usersQuery.data, isOwner]);
 
   const getRecord = (staffId: string, day: number): AttendanceRecord | null => {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -142,7 +146,9 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
     try {
       if (popover.existing) {
         await axiosClient.patch(`/attendance/${popover.existing.id}`, { status: popStatus, note: popNote });
-        setAttendance(prev => prev.map(r => r.id === popover.existing!.id ? { ...r, status: popStatus, note: popNote } : r));
+        queryClient.setQueryData<AttendanceRecord[]>(['attendance', month, year], (prev) =>
+          (prev ?? []).map((r) => (r.id === popover.existing!.id ? { ...r, status: popStatus, note: popNote } : r))
+        );
       } else {
         const res = await axiosClient.post('/attendance', {
           userId: popover.staffId,
@@ -150,7 +156,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           status: popStatus,
           note: popNote,
         });
-        setAttendance(prev => [...prev, res.data]);
+        queryClient.setQueryData<AttendanceRecord[]>(['attendance', month, year], (prev) => [...(prev ?? []), res.data]);
       }
       addToast({ type: 'success', title: 'Attendance saved' });
       setPopover(null);
@@ -211,8 +217,8 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           }
         })
       );
-      setAttendance(prev => {
-        let next = prev.map(r => updatedIds[r.id] ?? r);
+      queryClient.setQueryData<AttendanceRecord[]>(['attendance', month, year], (prev) => {
+        let next = (prev ?? []).map((r) => updatedIds[r.id] ?? r);
         const existingKeys = new Set(next.map(r => `${r.userId}|${r.date}`));
         newRecords.forEach(r => {
           const k = `${r.userId}|${r.date}`;
@@ -312,7 +318,14 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <AlertCircle className="w-8 h-8 text-destructive" />
           <p className="text-destructive font-medium">{error}</p>
-          <Button variant="outline" size="sm" onClick={fetchData}>Retry</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void refetchAttendance();
+              void usersQuery.refetch();
+            }}
+          >Retry</Button>
         </div>
       ) : view === 'history' ? (
         <AttendanceHistory isOwner={isOwner} />

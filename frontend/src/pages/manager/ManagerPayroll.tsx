@@ -1,9 +1,11 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useHeaderStore } from '../../store/headerStore';
+import { usePayrollQuery, useUsersQuery } from '../../hooks/useCachedQueries';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -53,10 +55,20 @@ export const ManagerPayroll: React.FC = () => {
     };
   }, [setPageTitle, setShowDateRange]);
 
-  const [ledger, setLedger] = useState<PayrollRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const payrollQuery = usePayrollQuery('manager');
+  const usersQuery = useUsersQuery();
 
-  const [staff, setStaff] = useState<StaffUser[]>([]);
+  const ledger: PayrollRecord[] = useMemo(
+    () => (Array.isArray(payrollQuery.data) ? payrollQuery.data.filter((r: PayrollRecord) => SCOPED_ROLES.includes(r.user?.role)) : []),
+    [payrollQuery.data],
+  );
+  const isLoading = payrollQuery.isLoading;
+
+  const staff: StaffUser[] = useMemo(
+    () => (Array.isArray(usersQuery.data) ? usersQuery.data.filter((u: StaffUser) => u.isActive && SCOPED_ROLES.includes(u.role)) : []),
+    [usersQuery.data],
+  );
   const [formOpen, setFormOpen] = useState(false);
   const [userId, setUserId] = useState('');
   const [periodMonth, setPeriodMonth] = useState(() => new Date().getMonth() + 1);
@@ -67,34 +79,9 @@ export const ManagerPayroll: React.FC = () => {
   const [isLoadingRef, setIsLoadingRef] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchLedger = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const res = await axiosClient.get('/payroll?scope=manager');
-      setLedger(
-        res.data.filter((r: PayrollRecord) => SCOPED_ROLES.includes(r.user?.role))
-      );
-    } catch {
-      setLedger([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const fetchStaff = useCallback(async () => {
-    try {
-      const res = await axiosClient.get('/users');
-      setStaff(
-        res.data.filter(
-          (u: StaffUser) => u.isActive && SCOPED_ROLES.includes(u.role)
-        )
-      );
-    } catch {
-      // silent
-    }
-  }, []);
-
-  useEffect(() => { fetchLedger(); }, [fetchLedger]);
+  const invalidatePayroll = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['payroll'] });
+  }, [queryClient]);
 
   const resetForm = () => {
     setUserId('');
@@ -107,7 +94,7 @@ export const ManagerPayroll: React.FC = () => {
 
   const openForm = () => {
     resetForm();
-    fetchStaff();
+    void usersQuery.refetch();
     setFormOpen(true);
   };
 
@@ -151,7 +138,7 @@ export const ManagerPayroll: React.FC = () => {
       addToast({ type: 'success', title: 'Payroll recorded', message: 'The payment has been recorded successfully.' });
       setFormOpen(false);
       resetForm();
-      fetchLedger();
+      invalidatePayroll();
     } catch (err: any) {
       const detail = err.response?.data?.details?.[0]?.error;
       addToast({
