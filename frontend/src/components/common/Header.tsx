@@ -317,7 +317,7 @@ export const Header: React.FC = () => {
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
-              className="ml-1 flex items-center gap-2 rounded-full border border-input bg-card py-1 pl-1 pr-2.5 shadow-sm transition-colors hover:border-primary/40"
+              className="ml-1 flex items-center gap-2 rounded-full bg-transparent py-1 pl-1 pr-2.5 transition-colors hover:bg-secondary/60 focus:outline-none focus-visible:ring-0"
               aria-label="Open profile menu"
             >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-xs font-bold text-primary">
@@ -348,7 +348,7 @@ export const Header: React.FC = () => {
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl animate-fade-in z-40">
+              <div className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-2xl animate-fade-in z-40 ring-1 ring-black/5">
                 <div className="flex items-center gap-3 border-b border-border bg-gradient-to-br from-primary/10 via-primary/5 to-transparent px-3.5 py-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-sm font-bold text-primary">
                     {user.avatarUrl ? (
