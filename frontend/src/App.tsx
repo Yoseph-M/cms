@@ -117,7 +117,19 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
 }) => {
   const { user, isAuthenticated, isLoading } = useAuthStore();
 
-  // Keep the shell mounted when we already have a user; only block first paint.
+  // A hard refresh wipes the in-memory access token, so every reload has to
+  // silently restore the session from the HttpOnly refresh cookie. When we
+  // already know who the user is (cached) and the restore is still running,
+  // keep the page mounted (layout + content) and let the data reload in place —
+  // redirecting to /login mid-bootstrap is what reads as "it logs me out when
+  // I refresh". Requests fired before the refresh finishes get a 401, which
+  // axiosClient resolves by waiting on the single-flight /auth/refresh and
+  // retrying with the new access token.
+  if (isLoading && user && user.role === allowedRole) {
+    return <>{children}</>;
+  }
+
+  // Still bootstrapping and no cached user yet — nothing to show.
   if (isLoading && !user) {
     return <PageSkeleton />;
   }
