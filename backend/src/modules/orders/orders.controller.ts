@@ -29,7 +29,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   let cashierId: string | null = null;
   const { clientOrderId, tableNumber, items, waiterId: bodyWaiterId } = req.body;
 
-  if ([Role.CASHIER, Role.MANAGER, Role.OWNER].includes(callerRole)) {
+  if (([Role.CASHIER, Role.MANAGER, Role.OWNER] as Role[]).includes(callerRole)) {
     // The caller is the cashier on record
     cashierId = req.user!.userId;
 
