@@ -84,14 +84,17 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
           pagination: { page, limit, total: 0, totalPages: 0 },
         });
       }
-      where.recordedById = { in: users.map((u) => u.id) };
+      where.order = { waiterId: { in: users.map((u) => u.id) } };
     }
 
     const settlements = await prisma.settlement.findMany({
       where,
       include: {
         order: {
-          select: { id: true, clientOrderId: true, tableNumber: true, totalAmount: true, status: true },
+          select: { 
+            id: true, clientOrderId: true, tableNumber: true, totalAmount: true, status: true,
+            waiter: { select: { id: true, name: true, role: true } }
+          },
         },
         recordedBy: {
           select: { id: true, name: true, role: true },
