@@ -1,5 +1,30 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type QueryKey } from '@tanstack/react-query';
 import { axiosClient } from '../api/axiosClient';
+import type { User } from '../types';
+
+type ParamMap = Record<string, string | number | undefined>;
+
+function compactParams(params?: ParamMap) {
+  if (!params) return undefined;
+  const next: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '') continue;
+    next[key] = value;
+  }
+  return Object.keys(next).length ? next : undefined;
+}
+
+export function useApiQuery<T>(queryKey: QueryKey, path: string, params?: ParamMap) {
+  const compact = compactParams(params);
+  return useQuery<T>({
+    queryKey: compact ? [...queryKey, compact] : queryKey,
+    queryFn: async () => {
+      const res = await axiosClient.get(path, { params: compact });
+      return res.data as T;
+    },
+    placeholderData: keepPreviousData,
+  });
+}
 
 /** Menu catalog — rarely changes; 5 min stale */
 export function useMenuQuery(params?: { category?: string; isAvailable?: string }) {
@@ -30,7 +55,7 @@ export function usePrintersQuery() {
   });
 }
 
-/** Analytics widgets — 90s stale */
+/** Analytics widgets — 90s stale; keep previous range visible while a new one loads */
 export function useAnalyticsQuery<T = unknown>(endpoint: string, deps: Record<string, string> = {}) {
   const qs = new URLSearchParams(deps).toString();
   return useQuery<T>({
@@ -40,6 +65,7 @@ export function useAnalyticsQuery<T = unknown>(endpoint: string, deps: Record<st
       return res.data as T;
     },
     staleTime: 90_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -72,5 +98,28 @@ export function useMeQuery() {
       return res.data;
     },
     staleTime: 60_000,
+  });
+}
+
+export function useUsersQuery() {
+  return useQuery({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const res = await axiosClient.get('/users');
+      return res.data as User[];
+    },
+    staleTime: 60_000,
+  });
+}
+
+export function useRecentOrdersQuery(limit = 8) {
+  return useQuery({
+    queryKey: ['orders', 'recent', limit],
+    queryFn: async () => {
+      const res = await axiosClient.get('/orders', { params: { limit, sort: 'createdAt:desc' } });
+      const list = res.data?.data || res.data || [];
+      return (Array.isArray(list) ? list : []) as unknown[];
+    },
+    staleTime: 30_000,
   });
 }
