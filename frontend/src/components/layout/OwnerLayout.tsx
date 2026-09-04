@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
+import { PageSkeleton } from '../common/PageSkeleton';
 
 const GROUP_ORDER: string[] = ['core', 'ops', 'people', 'system'];
 
@@ -251,7 +252,13 @@ const OwnerLayoutInner: React.FC = () => {
             isDashboardPage ? '' : 'p-4 sm:p-6 lg:p-8',
           )}
         >
-          <Outlet />
+          {/* Owner routes are React.lazy() — wrap the Outlet in a Suspense
+              boundary so a fresh chunk load (e.g. navigating to /owner/finance
+              for the first time) shows the page skeleton instead of replacing
+              the whole UI with a loading indicator. */}
+          <Suspense fallback={<PageSkeleton />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
