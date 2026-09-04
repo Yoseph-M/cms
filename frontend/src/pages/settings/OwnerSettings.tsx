@@ -25,6 +25,7 @@ import { NotificationPreferencesSection } from '../../components/settings/Notifi
 import { BusinessProfileSection } from '../../components/settings/BusinessProfileSection';
 import { CashierOrderingToggle } from '../../components/settings/CashierOrderingToggle';
 import { OwnerAttendanceToggle } from '../../components/settings/OwnerAttendanceToggle';
+import { WorkOnSundaysToggle } from '../../components/settings/WorkOnSundaysToggle';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
 import { FeatureToggles } from '../../components/settings/FeatureToggles';
@@ -298,7 +299,7 @@ function descriptionFor(id: string): string {
     appearance:    'Switch the app between light and dark. "System" uses the app\'s default light mode.',
     notifications: 'Pick which alerts reach your notification bell on this device.',
     ordering:      'What cashiers can do on their dashboard.',
-    attendance:    'Whether the owner can correct historical attendance records.',
+    attendance:    'Whether the owner can correct historical attendance records and whether Sundays are working days.',
     features:      'Switch optional areas of the app on or off system-wide.',
   };
   return map[id] ?? '';
@@ -311,7 +312,7 @@ function contentFor(id: string): React.ReactNode {
     case 'appearance':    return <ThemePreferenceSection />;
     case 'notifications': return <NotificationPreferencesSection />;
     case 'ordering':      return <CashierOrderingToggle />;
-    case 'attendance':    return <OwnerAttendanceToggle />;
+    case 'attendance':    return <><OwnerAttendanceToggle /><WorkOnSundaysToggle /></>;
     case 'features':      return <FeatureToggles />;
     default:              return null;
   }
