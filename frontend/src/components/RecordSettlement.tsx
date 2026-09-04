@@ -31,6 +31,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const retryCountRef = useRef(0);
+  const isSubmittingRef = useRef(false);
   const MAX_RETRIES = 3;
   const RETRY_DELAYS = [500, 1000, 2000]; // Exponential backoff
 
@@ -60,6 +61,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
       onSuccess();
       retryCountRef.current = 0; // Reset for next submission
+      isSubmittingRef.current = false;
     } catch (err: any) {
       const errorDetails = extractErrorDetails(err);
       const isConcurrentError = errorDetails.code === 'CONCURRENT_MODIFICATION';
@@ -84,6 +86,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
       // Max retries reached or non-retryable error
       retryCountRef.current = 0;
+      isSubmittingRef.current = false;
       
       if (isConcurrentError) {
         setError('Order is being modified by another user. Please wait and try again.');
@@ -97,13 +100,17 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
+    
     setError(null);
     retryCountRef.current = 0;
+    isSubmittingRef.current = true;
 
     const amountMinor = Math.round(parseFloat(amount) * 100);
 
     if (amountMinor <= 0) {
       setError('Amount must be greater than zero');
+      isSubmittingRef.current = false;
       return;
     }
 
@@ -111,6 +118,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
       setError(
         `Amount cannot exceed remaining balance of $${(remainingAmount / 100).toFixed(2)}`
       );
+      isSubmittingRef.current = false;
       return;
     }
 
