@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { BarList, Title, Text, Grid, Flex } from '@tremor/react';
 import { axiosClient } from '../../api/axiosClient';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { DateRangePicker, computeRange, type DateRange } from '../../components/ui/DateRangePicker';
-import { Donut, BarChart, LineChart } from '../../components/ui/Charts';
-import { Tooltip } from '../../components/ui/Tooltip';
+import { BarChart, LineChart, DONUT_COLORS } from '../../components/ui/Charts';
+import { RevenueDonut } from '../../components/owner/dashboard/RevenueDonut';
+import { PeakHoursHeatmap } from '../../components/ui/PeakHoursHeatmap';
+import { TremorWidget, ChartToggle, KpiMetricCard } from '../../components/ui/TremorWidgets';
 import { motion } from 'framer-motion';
-import {
-  Download, AlertCircle, RotateCcw, TrendingUp, ShoppingCart, DollarSign, PieChart
-} from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
-import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
 import { useSocketStore } from '../../store/socketStore';
@@ -24,58 +22,6 @@ function exportPDF(title: string, rows: string[][]) {
   a.download = `${title.toLowerCase().replace(/\s+/g, '-')}.txt`;
   a.click();
 }
-
-const Widget: React.FC<{
-  title: string;
-  onExportCSV?: () => void;
-  onExportPDF?: () => void;
-  loading: boolean;
-  error: string | null;
-  onRetry: () => void;
-  empty?: boolean;
-  emptyMsg?: string;
-  emptyIcon?: React.ReactNode;
-  emptyTitle?: string;
-  headerExtra?: React.ReactNode;
-  children: React.ReactNode;
-}> = ({ title, onExportCSV, onExportPDF, loading, error, onRetry, empty, emptyMsg, emptyIcon, emptyTitle, headerExtra, children }) => (
-  <Card>
-    <CardHeader className="flex flex-row items-center justify-between pb-3 gap-2 flex-wrap">
-      <CardTitle className="text-sm font-bold text-foreground">{title}</CardTitle>
-      <div className="flex items-center gap-2 flex-wrap">
-        {headerExtra}
-        {onExportCSV && (
-          <Button variant="outline" size="sm" onClick={onExportCSV}>
-            <Download className="w-3 h-3 mr-1.5" />CSV
-          </Button>
-        )}
-        {onExportPDF && (
-          <Button variant="outline" size="sm" onClick={onExportPDF}>
-            <Download className="w-3 h-3 mr-1.5" />PDF
-          </Button>
-        )}
-      </div>
-    </CardHeader>
-    <CardContent>
-      {loading ? (
-        <div className="h-48 bg-secondary/40 rounded-lg animate-pulse" />
-      ) : error ? (
-        <div className="h-40 flex flex-col items-center justify-center gap-2 text-center">
-          <AlertCircle className="w-6 h-6 text-destructive" />
-          <p className="text-sm text-destructive">{error}</p>
-          <Button variant="outline" size="sm" onClick={onRetry}><RotateCcw className="w-3 h-3 mr-1.5" />Retry</Button>
-        </div>
-      ) : empty ? (
-        <EmptyState
-          title={emptyTitle || 'No data for this period'}
-          message={emptyMsg || 'Try widening the date range or check back once there is activity.'}
-          icon={emptyIcon || <PieChart className="w-7 h-7" />}
-          className="min-h-[10rem] py-8"
-        />
-      ) : children}
-    </CardContent>
-  </Card>
-);
 
 function useWidget<T>(endpoint: string, deps: Record<string, string> = {}) {
   const [data, setData] = useState<T | null>(null);
@@ -102,11 +48,7 @@ function useWidget<T>(endpoint: string, deps: Record<string, string> = {}) {
   return { data, loading, error, refetch };
 }
 
-const DONUT_PALETTE = [
-  'hsl(220,80%,55%)',
-  'hsl(35,90%,55%)',
-  'hsl(150,65%,42%)',
-];
+const DONUT_PALETTE = DONUT_COLORS;
 
 const fmtDate = (d: Date) => d.toISOString().split('T')[0];
 
@@ -151,13 +93,8 @@ export const OwnerFinance: React.FC = () => {
   const [trendChart, setTrendChart] = useState<'line' | 'bar'>('line');
   const [trendOverlay, setTrendOverlay] = useState<'none' | 'wow' | 'mom' | 'yoy'>('none');
   const [topItemsMode, setTopItemsMode] = useState<'revenue' | 'qty'>('qty');
-  const [staffRole, setStaffRole] = useState('');
 
   const rangeDeps = useMemo(() => ({ from, to }), [from, to]);
-  const staffDeps = useMemo(
-    () => (staffRole ? { ...rangeDeps, role: staffRole } : rangeDeps),
-    [rangeDeps, staffRole]
-  );
   const daily = useWidget<{
     totalRevenue: number;
     mtdRevenue: number;
@@ -198,7 +135,7 @@ export const OwnerFinance: React.FC = () => {
 
   const staffP = useWidget<{ waiterId: string; name: string; role: string; totalSales: number; orderCount: number }[]>(
     '/analytics/staff-performance',
-    staffDeps
+    rangeDeps
   );
 
   const cancels = useWidget<{ reason: string; count: number }[]>(
@@ -224,6 +161,7 @@ export const OwnerFinance: React.FC = () => {
       pnl.refetch();
       topItm.refetch();
       catSpl.refetch();
+      peak.refetch();
       payMth.refetch();
       staffP.refetch();
       cancels.refetch();
@@ -238,7 +176,6 @@ export const OwnerFinance: React.FC = () => {
   const trendValues = useMemo(() => (trend.data || []).map((d) => d.revenue), [trend.data]);
 
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
   const heatmap = useMemo(() => {
     const grid: Record<number, Record<number, number>> = {};
@@ -247,6 +184,7 @@ export const OwnerFinance: React.FC = () => {
     // configurations). Coerce everything to plain numbers so the grid lookup
     // works regardless of the wire format.
     const raw = peak.data as unknown;
+    
     const rows: Array<{ dayOfWeek: number; hour: number; count: number }> = Array.isArray(raw)
       ? (raw as Array<Record<string, unknown>>).map((d) => ({
           dayOfWeek: Number(d.dayOfWeek ?? d.day ?? 0),
@@ -271,12 +209,6 @@ export const OwnerFinance: React.FC = () => {
     return grid;
   }, [peak.data]);
 
-  const maxHeat = useMemo(() => {
-    let m = 0;
-    Object.values(heatmap).forEach((row) => Object.values(row).forEach((v) => { if (v > m) m = v; }));
-    return m;
-  }, [heatmap]);
-
   /**
    * Item names are snapshotted at order time and may be bilingual,
    * e.g. "የበሬ ጥብስ (Beef Tibs)". Prefer the English name in parentheses
@@ -300,50 +232,39 @@ export const OwnerFinance: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <Flex justifyContent="between" alignItems="center" className="flex-wrap gap-4">
         <div>
-          <h2 className="text-xl font-bold">Finance</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Analytics & revenue intelligence</p>
+          <Title className="text-xl font-bold text-foreground">Finance</Title>
+          <Text className="text-sm text-muted-foreground mt-0.5">Analytics & revenue intelligence</Text>
         </div>
         <DateRangePicker value={range} onChange={setRange} />
-      </div>
+      </Flex>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <Grid numItems={1} numItemsSm={2} className="gap-4">
         {[
-          { label: "Today's Revenue", value: daily.data ? formatCurrency(daily.data.totalRevenue ?? 0) : '—', delta: daily.data?.deltas?.revenueVsPriorDay, icon: DollarSign },
           { label: 'MTD Revenue', value: daily.data ? formatCurrency(daily.data.mtdRevenue ?? 0) : '—', delta: daily.data?.deltas?.mtdVsPriorMonth, icon: TrendingUp },
-          { label: 'Order Count', value: daily.data?.orderCount ?? '—', delta: daily.data?.deltas?.ordersVsPriorDay, icon: ShoppingCart },
-          { label: 'AOV', value: daily.data ? formatCurrency(daily.data.avgTicket ?? 0) : '—', delta: daily.data?.deltas?.aovVsPriorDay, icon: DollarSign },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
             <motion.div key={kpi.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card className="hover:shadow-md transition-shadow">
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium text-muted-foreground">{kpi.label}</p>
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Icon className="w-4 h-4 text-primary" />
-                    </div>
+              <KpiMetricCard
+                label={kpi.label}
+                value={kpi.value}
+                loading={daily.loading}
+                delta={<Delta value={kpi.delta} />}
+                icon={
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Icon className="w-4 h-4 text-primary" />
                   </div>
-                  {daily.loading ? (
-                    <div className="h-7 w-20 rounded bg-secondary/50 animate-pulse" />
-                  ) : (
-                    <>
-                      <p className="text-2xl font-bold font-mono text-foreground">{kpi.value}</p>
-                      <div className="mt-1"><Delta value={kpi.delta} /></div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+                }
+              />
             </motion.div>
           );
         })}
-      </div>
+      </Grid>
 
       {/* Profit & Loss */}
-      <Widget
+      <TremorWidget
         title="Revenue vs Costs"
         loading={pnl.loading}
         error={pnl.error}
@@ -381,10 +302,10 @@ export const OwnerFinance: React.FC = () => {
             />
           </div>
         )}
-      </Widget>
+      </TremorWidget>
 
       {/* Revenue Trend */}
-      <Widget
+      <TremorWidget
         title="Revenue Trend"
         loading={trend.loading}
         error={trend.error}
@@ -393,16 +314,22 @@ export const OwnerFinance: React.FC = () => {
         emptyMsg="No revenue in this date range."
         onExportPDF={() => trend.data && exportPDF('Revenue Trend', [['Date', 'Revenue', 'Orders'], ...trend.data.map((d) => [d.date, String(d.revenue), String(d.orderCount)])])}
         headerExtra={
-          <div className="flex gap-1">
-            <button onClick={() => setTrendChart('line')} className={`px-2 py-1 text-xs rounded border ${trendChart === 'line' ? 'border-primary bg-primary/10' : 'border-border'}`}>Line</button>
-            <button onClick={() => setTrendChart('bar')} className={`px-2 py-1 text-xs rounded border ${trendChart === 'bar' ? 'border-primary bg-primary/10' : 'border-border'}`}>Bar</button>
+          <Flex alignItems="center" className="gap-2">
+            <ChartToggle
+              options={[
+                { value: 'line', label: 'Line' },
+                { value: 'bar', label: 'Bar' },
+              ]}
+              value={trendChart}
+              onChange={(v) => setTrendChart(v as 'line' | 'bar')}
+            />
             <Select value={trendOverlay} onChange={(e) => setTrendOverlay(e.target.value as typeof trendOverlay)} className="h-7 text-xs w-24">
               <option value="none">No overlay</option>
               <option value="wow">WoW</option>
               <option value="mom">MoM</option>
               <option value="yoy">YoY</option>
             </Select>
-          </div>
+          </Flex>
         }
       >
         {trendChart === 'line' ? (
@@ -410,19 +337,23 @@ export const OwnerFinance: React.FC = () => {
         ) : (
           <BarChart labels={trendLabels} series={[{ label: 'Revenue', values: trendValues }]} height={180} yTickFormat={(v) => formatCurrency(v)} />
         )}
-      </Widget>
+      </TremorWidget>
 
-      <Widget
+      <TremorWidget
         title="Top Items"
         loading={topItm.loading}
         error={topItm.error}
         onRetry={topItm.refetch}
         empty={!topItm.data?.length}
         headerExtra={
-          <div className="flex gap-1">
-            <button onClick={() => setTopItemsMode('qty')} className={`px-2 py-1 text-xs rounded border ${topItemsMode === 'qty' ? 'border-primary bg-primary/10' : 'border-border'}`}>Qty</button>
-            <button onClick={() => setTopItemsMode('revenue')} className={`px-2 py-1 text-xs rounded border ${topItemsMode === 'revenue' ? 'border-primary bg-primary/10' : 'border-border'}`}>Revenue</button>
-          </div>
+          <ChartToggle
+            options={[
+              { value: 'qty', label: 'Qty' },
+              { value: 'revenue', label: 'Revenue' },
+            ]}
+            value={topItemsMode}
+            onChange={(v) => setTopItemsMode(v as 'revenue' | 'qty')}
+          />
         }
       >
         <BarChart
@@ -431,76 +362,63 @@ export const OwnerFinance: React.FC = () => {
           height={180}
           yTickFormat={(v) => (topItemsMode === 'revenue' ? formatCurrency(v) : String(v))}
         />
-      </Widget>
+      </TremorWidget>
 
       <div className="grid grid-cols-2 gap-4">
-        <Widget
+        <TremorWidget
           title="Staff Leaderboard"
           loading={staffP.loading}
           error={staffP.error}
           onRetry={staffP.refetch}
           empty={!staffP.data?.length}
           headerExtra={
-            <Select value={staffRole} onChange={(e) => setStaffRole(e.target.value)} className="h-7 text-xs w-28">
-              <option value="">All roles</option>
-              <option value="WAITER">Waiter</option>
-              <option value="CASHIER">Cashier</option>
-              <option value="COOKER">Kitchen</option>
-              <option value="BARISTA">Barista</option>
-            </Select>
+            <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Revenue
+            </Text>
           }
         >
-          <div className="space-y-2.5">
-            {(staffP.data || []).slice(0, 8).map((s, i) => {
-              const max = Math.max(...(staffP.data || []).map((x) => x.totalSales || 0), 1);
-              return (
-                <div key={s.waiterId} className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-muted-foreground w-5 text-center">{i + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-xs font-medium truncate">{s.name} <span className="text-muted-foreground">({s.role})</span></span>
-                      <span className="text-xs font-mono font-bold text-primary ml-2 shrink-0">{formatCurrency(s.totalSales)}</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-                      <div className="h-full rounded-full bg-primary/70" style={{ width: `${(s.totalSales / max) * 100}%` }} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Widget>
+          <BarList
+            data={(staffP.data || []).map((s) => ({
+              key: s.waiterId,
+              name: (
+                <span>
+                  {s.name} <span className="text-muted-foreground">({s.role})</span>
+                </span>
+              ),
+              value: s.totalSales || 0,
+            }))}
+            valueFormatter={(v: number) => formatCurrency(v)}
+            color="blue"
+            showAnimation
+          />
+        </TremorWidget>
 
-        <Widget
+        <TremorWidget
           title="Cancellation Analysis"
           loading={cancels.loading}
           error={cancels.error}
           onRetry={cancels.refetch}
           empty={!cancels.data?.length}
           emptyMsg="No cancellations in this period."
+          headerExtra={
+            <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Count
+            </Text>
+          }
         >
-          <div className="space-y-2">
-            {(cancels.data || []).slice(0, 10).map((d, i) => {
-              const max = Math.max(...(cancels.data || []).map((x) => x.count || 0), 1);
-              return (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-xs text-muted-foreground truncate">{d.reason || 'No reason given'}</span>
-                      <span className="text-xs font-bold ml-2 shrink-0">{d.count}</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-                      <div className="h-full rounded-full bg-destructive/60" style={{ width: `${((d.count || 0) / max) * 100}%` }} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Widget>
+          <BarList
+            data={(cancels.data || []).map((d, i) => ({
+              key: String(i),
+              name: d.reason || 'No reason given',
+              value: d.count || 0,
+            }))}
+            color="red"
+            showAnimation
+          />
+        </TremorWidget>
       </div>
 
-      <Widget
+      <TremorWidget
         title="Peak Hours Heatmap"
         loading={peak.loading}
         error={peak.error}
@@ -509,85 +427,41 @@ export const OwnerFinance: React.FC = () => {
         emptyTitle="No peak-hour data yet"
         emptyMsg="Orders placed during the selected window will populate this heatmap."
       >
-        <div className="space-y-3">
-          <div className="overflow-x-auto">
-            <div style={{ minWidth: 600 }}>
-              <div className="flex mb-1 pl-10">
-                {HOURS.map((h) => <div key={h} className="flex-1 text-center text-[8px] text-muted-foreground">{h}</div>)}
-              </div>
-              {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
-                <div key={dow} className="flex items-center mb-0.5">
-                  <div className="w-10 text-[10px] text-muted-foreground text-right pr-2 shrink-0">{DAYS[dow - 1]}</div>
-                  {HOURS.map((h) => {
-                    const v = heatmap[dow]?.[h] || 0;
-                    const intensity = maxHeat > 0 ? v / maxHeat : 0;
-                    return (
-                      <div key={h} className="flex-1 mx-px">
-                        <Tooltip label={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`} side="top">
-                          <div
-                            className="h-5 w-full rounded-sm cursor-default ring-1 ring-inset ring-black/[0.04]"
-                            style={{ background: `hsla(24,80%,55%,${0.12 + intensity * 0.88})` }}
-                          />
-                        </Tooltip>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Legend — anchors the colour scale so the grid is always interpretable. */}
-          <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground">
-            <span>Less</span>
-            <div className="flex gap-0.5">
-              {[0, 0.25, 0.5, 0.75, 1].map((step) => (
-                <span
-                  key={step}
-                  className="h-3 w-4 rounded-sm ring-1 ring-inset ring-black/[0.04]"
-                  style={{ background: `hsla(24,80%,55%,${0.12 + step * 0.88})` }}
-                />
-              ))}
-            </div>
-            <span>More</span>
-            {maxHeat > 0 && (
-              <span className="ml-2 font-mono text-muted-foreground">peak: {maxHeat}</span>
-            )}
-          </div>
-        </div>
-      </Widget>
+        <PeakHoursHeatmap grid={heatmap} dayLabels={DAYS} />
+      </TremorWidget>
 
       <div className="grid grid-cols-2 gap-4">
-        <Widget
+        <TremorWidget
           title="Revenue by Category"
           loading={catSpl.loading}
           error={catSpl.error}
           onRetry={catSpl.refetch}
           empty={!catSpl.data?.length}
         >
-          <Donut
-            slices={(catSpl.data || []).map((d, i) => ({
+          <RevenueDonut
+            segments={(catSpl.data || []).map((d, i) => ({
               label: d.category,
-              value: Number(d.revenue) || 0,
+              value: d.revenue,
               color: DONUT_PALETTE[i % DONUT_PALETTE.length],
             }))}
           />
-        </Widget>
+        </TremorWidget>
 
-        <Widget
+        <TremorWidget
           title="Payment Method Split"
           loading={payMth.loading}
           error={payMth.error}
           onRetry={payMth.refetch}
           empty={!payMth.data?.length}
         >
-          <Donut
-            slices={(payMth.data || []).map((d, i) => ({
+          <RevenueDonut
+            segments={(payMth.data || []).map((d, i) => ({
               label: d.method,
-              value: Number(d.revenue) || 0,
+              value: d.revenue,
               color: DONUT_PALETTE[i % DONUT_PALETTE.length],
             }))}
           />
-        </Widget>
+        </TremorWidget>
       </div>
 
     </div>
