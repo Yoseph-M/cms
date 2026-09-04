@@ -52,6 +52,32 @@ Both modes maintain data consistency, but replica set mode provides stronger ato
 
 
 
+## Environment Variables
+
+### Backend (`backend/.env`)
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `PORT` | API port | `5001` |
+| `DATABASE_URL` | MongoDB connection string (replica set in production) | `mongodb://localhost:27017/pos_db` |
+| `JWT_SECRET` / `JWT_REFRESH_SECRET` | Access / refresh token signing secrets — **required** in production | — |
+| `WEB_APP_URL` | Exact frontend origin for CORS allow-list (no trailing slash). Must match the deployed frontend URL exactly in cross-origin deployments. | `http://localhost:5173` |
+| `CORS_EXTRA_ORIGINS` (alias `EXTRA_CORS_ORIGINS`) | Comma-separated extra allowed origins | — |
+| `NODE_ENV` | `production` enables Secure/None cookies over HTTPS | `development` |
+| `COOKIE_SAME_SITE` | Force cookie SameSite: `strict` \| `lax` \| `none` (overrides auto-detection) | auto: `none` cross-site, else `lax` |
+| `COOKIE_SECURE` | Force cookie Secure flag: `true` \| `false` (overrides protocol detection) | auto: HTTPS only |
+
+**How the refresh cookie flags are chosen (least permissive that works):**
+
+- `Secure` is set only when the browser-facing connection is HTTPS (direct TLS or `X-Forwarded-Proto: https` from nginx). On plain-HTTP deployments the flag is omitted — a `Secure` cookie over HTTP is silently dropped by browsers, which logs users out on every page refresh.
+- `SameSite=None` is used only when the SPA and API are on **different sites** (browser `Origin` host differs from the API `Host`), because cross-site credentialed requests require it. Same-origin/same-site deployments keep `SameSite=Lax`. `SameSite=None` is never emitted without `Secure`.
+
+### Frontend (`frontend/.env`)
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `VITE_API_URL` | API base origin when the frontend is hosted separately (e.g. Vercel SPA + hosted API). Leave unset in the nginx/docker deployment where `/api` is proxied same-origin. | `/api` (same-origin proxy) |
+
 ## Documentation
 
 See the [Runbook](./Runbook.md) for testing, deployment, and emergency procedures.

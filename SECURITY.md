@@ -25,7 +25,7 @@ Expect acknowledgement within **48 hours** and a fix timeline within **7 days** 
 | PIN hashing | `scrypt` with per-user 32-byte random salt |
 | JWT signing | HS256, `ACCESS_TOKEN_SECRET` & `REFRESH_TOKEN_SECRET` via env |
 | Refresh token storage | Hashed (SHA-256) in MongoDB; revoked on rotation |
-| Refresh token transport | **HttpOnly, Secure, SameSite=Strict** cookie |
+| Refresh token transport | **HttpOnly** cookie; `Secure` + `SameSite` resolved per deployment (see below) |
 | Session revocation | DB-backed token family revocation on reset / logout |
 | Rate limiting | 20 req / 60s IP-based on all auth endpoints |
 
@@ -47,8 +47,11 @@ Expect acknowledgement within **48 hours** and a fix timeline within **7 days** 
 ### Data Transport
 
 - All API responses use `helmet` security headers
-- CORS policy is strictly allow-listed via `CORS_ORIGIN` env variable
-- Refresh cookies use `Secure` flag (enforced in `NODE_ENV=production`)
+- CORS policy is strictly allow-listed — never `origin: '*'` — via `WEB_APP_URL` and `CORS_EXTRA_ORIGINS` (alias `EXTRA_CORS_ORIGINS`) env variables. `credentials: true` is always on.
+- Refresh cookies are set and cleared with identical attributes (`path=/`, `HttpOnly`, matching `Secure`/`SameSite`) so browsers reliably store and delete them.
+- `Secure` flag follows the real browser-facing protocol (direct TLS or `X-Forwarded-Proto: https` from the nginx proxy). Over plain HTTP the flag is omitted — marking it Secure on an HTTP deployment makes browsers silently drop the cookie and log users out on every page refresh.
+- `SameSite=None` is used **only** when the SPA and API are on different sites (browser `Origin` ≠ `Host`), because cross-site credentialed requests require it — and None is only ever emitted together with `Secure`. Same-origin and same-site deployments stay on `SameSite=Lax`, the least permissive option that works.
+- Unusual topologies can force values with env overrides: `COOKIE_SECURE=true|false` and `COOKIE_SAME_SITE=strict|lax|none`.
 
 ### Infrastructure
 

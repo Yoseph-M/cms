@@ -9,6 +9,121 @@ function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+const REFRESH_TOKEN_COOKIE = 'refresh_token';
+const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days, matches JWT expiry
+
+type SameSiteOption = 'strict' | 'lax' | 'none';
+
+interface RefreshCookieSecurity {
+  secure: boolean;
+  sameSite: SameSiteOption;
+}
+
+/** Whether the browser-facing connection is HTTPS (direct TLS or X-Forwarded-Proto). */
+function isSecureConnection(req: Request): boolean {
+  if (req.secure) return true;
+  const forwarded = req.headers['x-forwarded-proto'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim() === 'https';
+  }
+  return false;
+}
+
+/**
+ * True when the request is a cross-site XHR/fetch (browser `Origin` header host
+ * differs from the `Host` header). Same-origin deployments (nginx proxying the
+ * SPA and /api from one origin) and non-browser clients never need SameSite=None.
+ */
+function isCrossSiteRequest(req: Request): boolean {
+  const origin = req.headers.origin;
+  const host = req.headers.host;
+  if (!origin || !host) return false;
+  try {
+    return new URL(origin).host !== host;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the `Secure` / `SameSite` pair for the refresh cookie.
+ *
+ * This is the single policy used to WRITE the cookie (login, refresh) AND to
+ * CLEAR it (logout, replay detection), so attributes always match — mismatched
+ * `path`/`sameSite`/`secure` between set and clear is a common reason a
+ * refresh cookie survives login but is dropped on a later request.
+ *
+ * Rules (least permissive that works for each deployment):
+ *  - `secure` follows the real connection protocol (direct TLS or
+ *    `X-Forwarded-Proto` from nginx). Over plain HTTP the flag is omitted —
+ *    marking it Secure on an HTTP deployment makes browsers silently drop the
+ *    cookie and forces a re-login on every page refresh.
+ *  - `sameSite` is `'none'` only when the SPA and API are on different sites
+ *    (cross-origin credentialed requests REQUIRE None); same-origin and
+ *    non-browser requests stay on the safer `'lax'`.
+ *  - Explicit overrides `COOKIE_SECURE=true|false` and
+ *    `COOKIE_SAME_SITE=strict|lax|none` win over the auto-detection for
+ *    unusual topologies (e.g. TLS terminated ahead of the API without
+ *    forwarded headers, or a forced None cookie on a same-site host).
+ *
+ * SameSite=None is only ever emitted together with Secure.
+ */
+function resolveCookieSecurity(req: Request): RefreshCookieSecurity {
+  const overrideSecure = (process.env.COOKIE_SECURE || '').toLowerCase();
+  const overrideSameSite = (process.env.COOKIE_SAME_SITE || '').toLowerCase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  const crossSite = isCrossSiteRequest(req);
+
+  let sameSite: SameSiteOption;
+  if (overrideSameSite === 'strict' || overrideSameSite === 'lax' || overrideSameSite === 'none') {
+    sameSite = overrideSameSite;
+  } else {
+    sameSite = isProduction && crossSite ? 'none' : 'lax';
+  }
+
+  let secure: boolean;
+  if (overrideSecure === 'true') secure = true;
+  else if (overrideSecure === 'false') secure = false;
+  else if (sameSite === 'none') secure = true; // SameSite=None is only valid over HTTPS
+  else secure = isProduction ? isSecureConnection(req) : false;
+
+  return { secure, sameSite };
+}
+
+/**
+ * Single source of truth for the refresh cookie attributes used to WRITE it.
+ */
+function getRefreshCookieOptions(req: Request): {
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: SameSiteOption;
+  path: string;
+  maxAge: number;
+} {
+  const { secure, sameSite } = resolveCookieSecurity(req);
+  return {
+    httpOnly: true,
+    secure,
+    sameSite,
+    path: '/',
+    maxAge: REFRESH_COOKIE_MAX_AGE,
+  };
+}
+
+/**
+ * Clears the refresh cookie with the SAME attributes used to set it
+ * (`path`, `sameSite`, `secure`) so browsers actually delete it.
+ */
+function clearRefreshCookie(req: Request, res: Response) {
+  const { secure, sameSite } = resolveCookieSecurity(req);
+  res.clearCookie(REFRESH_TOKEN_COOKIE, {
+    httpOnly: true,
+    secure,
+    sameSite,
+    path: '/',
+  });
+}
+
 /**
  * GET /auth/roles
  * Returns the list of roles that have at least one active user.
@@ -216,12 +331,7 @@ export async function login(req: Request, res: Response) {
     }
   }
 
-  res.cookie('refresh_token', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, getRefreshCookieOptions(req));
 
   // Structured auth logging
   logger.info({ userId: user.id, role: user.role, outcome: 'success' }, 'auth.login.success');
@@ -281,7 +391,7 @@ export async function refreshToken(req: Request, res: Response) {
         where: { userId: user.id },
         data: { revoked: true },
       });
-      res.clearCookie('refresh_token');
+      clearRefreshCookie(req, res);
       return res.status(401).json({ error: 'Session compromised. Please log in again.' });
     }
 
@@ -306,12 +416,7 @@ export async function refreshToken(req: Request, res: Response) {
       },
     });
 
-    res.cookie('refresh_token', newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie(REFRESH_TOKEN_COOKIE, newRefreshToken, getRefreshCookieOptions(req));
 
     // Refresh token is ONLY delivered via HttpOnly cookie — never in JSON
     return res.json({
@@ -361,7 +466,7 @@ export async function logout(req: Request, res: Response) {
     }
   }
 
-  res.clearCookie('refresh_token');
+  clearRefreshCookie(req, res);
   
   // Structured auth logging
   logger.info({ userId, outcome: 'success' }, 'auth.logout');

@@ -52,6 +52,12 @@ const CashierOrderingPanel = lazy(() =>
 const ManagerDashboard = lazy(() =>
   import('./pages/manager/ManagerDashboard').then((m) => ({ default: m.ManagerDashboard }))
 );
+const ManagerStaff = lazy(() =>
+  import('./pages/manager/ManagerStaff').then((m) => ({ default: m.ManagerStaff }))
+);
+const ManagerAttendance = lazy(() =>
+  import('./pages/manager/ManagerAttendance').then((m) => ({ default: m.ManagerAttendance }))
+);
 const ManagerPayroll = lazy(() =>
   import('./pages/manager/ManagerPayroll').then((m) => ({ default: m.ManagerPayroll }))
 );
@@ -90,11 +96,20 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
-      staleTime: 60_000,
+      // Long default staleTime: cached data survives page/tab switches, so
+      // navigating back renders instantly. Queries that need fresher data
+      // (e.g. live orders) override this per-hook with a shorter staleTime.
+      staleTime: 5 * 60_000,
       gcTime: 30 * 60_000,
     },
   },
 });
+
+const ROLE_HOME: Record<string, string> = {
+  OWNER: '/owner',
+  MANAGER: '/manager',
+  CASHIER: '/cashier',
+};
 
 const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = ({
   children,
@@ -112,15 +127,44 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
   }
 
   if (user.role !== allowedRole) {
-    if (user.role === 'OWNER') return <Navigate to="/owner" replace />;
-    if (user.role === 'MANAGER') return <Navigate to="/manager" replace />;
-    if (user.role === 'CASHIER') return <Navigate to="/cashier" replace />;
-    return <Navigate to="/login" replace />;
+    const home = ROLE_HOME[user.role];
+    return home ? <Navigate to={home} replace /> : <Navigate to="/login" replace />;
   }
 
   return (
     <>{children}</>
   );
+};
+
+/**
+ * Login entry point (used by both `/` and `/login`).
+ *
+ * On a hard refresh the access token lives only in memory, so the app must
+ * silently restore the session from the HttpOnly refresh cookie. While that
+ * bootstrap is in flight we must NOT render the login form — otherwise the user
+ * sees a jarring "logged out" flash followed by an automatic sign-in. Instead:
+ *
+ *  - if a session is already restored → bounce straight to the role home;
+ *  - if a cached user exists but bootstrap is still running → show the skeleton;
+ *  - only when we are certain there is no session → show the login form.
+ */
+const LoginRoute: React.FC = () => {
+  const { user, isAuthenticated, isLoading } = useAuthStore();
+
+  // Never render the login form while the initial session bootstrap is still
+  // running — on a hard refresh the access token is memory-only and the app is
+  // restoring the session from the HttpOnly refresh cookie. Showing the form
+  // here would flash a false "logged out" screen right before the auto sign-in.
+  if (isLoading) {
+    return <PageSkeleton />;
+  }
+
+  if (isAuthenticated && user) {
+    const home = ROLE_HOME[user.role];
+    if (home) return <Navigate to={home} replace />;
+  }
+
+  return <LoginPage />;
 };
 
 /** Router-free app shell — use with MemoryRouter in tests, BrowserRouter in production. */
@@ -154,8 +198,8 @@ export const AppRoutes: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ToastContainer />
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<LoginRoute />} />
+        <Route path="/login" element={<LoginRoute />} />
 
         <Route
           path="/owner"
@@ -187,9 +231,10 @@ export const AppRoutes: React.FC = () => {
             </RoleGuard>
           }
         >
-          <Route index element={<Navigate to="people" replace />} />
-          <Route path="attendance" element={<Lazy><ManagerDashboard /></Lazy>} />
-          <Route path="people" element={<Lazy><ManagerDashboard /></Lazy>} />
+          <Route index element={<Lazy><ManagerDashboard /></Lazy>} />
+          <Route path="dashboard" element={<Lazy><ManagerDashboard /></Lazy>} />
+          <Route path="staff" element={<Lazy><ManagerStaff /></Lazy>} />
+          <Route path="attendance" element={<Lazy><ManagerAttendance /></Lazy>} />
           <Route path="reconciliation" element={<Lazy><OperationalReconciliation /></Lazy>} />
           <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} showAvailability={false} /></Lazy>} />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
@@ -197,7 +242,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
-          <Route path="*" element={<Navigate to="/manager/people" replace />} />
+          <Route path="*" element={<Navigate to="/manager" replace />} />
         </Route>
 
         <Route

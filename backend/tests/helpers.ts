@@ -31,7 +31,7 @@ export interface TestUser {
   id: string;
   name: string;
   role: Role;
-  email: string;
+  username: string;
   phone: string;
   accessToken: string;
   refreshToken: string;
@@ -47,14 +47,14 @@ export interface TestUser {
 export async function seedTestUser(overrides: {
   name?: string;
   role?: Role;
-  email?: string;
+  username?: string;
   phone?: string;
   salaryAmount?: number;
 } = {}): Promise<TestUser> {
   const p = getPrisma();
   const name = overrides.name || 'Test User';
   const role = overrides.role || Role.OWNER;
-  const email = overrides.email || `test-${Date.now()}-${Math.random().toString(36).slice(2)}@pos.com`;
+  const username = overrides.username || `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const phone = overrides.phone || `+1555${Date.now().toString().slice(-7)}`;
   const salaryAmount = overrides.salaryAmount ?? 3000;
 
@@ -65,7 +65,7 @@ export async function seedTestUser(overrides: {
       name,
       role,
       phone,
-      email,
+      username,
       passwordHash,
       salaryAmount,
     },
@@ -75,7 +75,7 @@ export async function seedTestUser(overrides: {
     userId: user.id,
     role: user.role,
     name: user.name,
-    email: user.email,
+    username: user.username,
   };
   const accessToken = generateAccessToken(tokenPayload);
   const refreshToken = generateRefreshToken(tokenPayload);
@@ -84,7 +84,7 @@ export async function seedTestUser(overrides: {
     id: user.id,
     name: user.name,
     role: user.role,
-    email: user.email!,
+    username: user.username!,
     phone: user.phone,
     accessToken,
     refreshToken,
@@ -107,6 +107,7 @@ export async function cleanDb() {
   await p.dailyClose.deleteMany();
   await p.settlement.deleteMany();
   await p.orderCancellationRequest.deleteMany();
+  await p.loginHistory.deleteMany();
   await p.refreshToken.deleteMany();
   await p.loginAttempt.deleteMany();
   await p.payrollAdjustment.deleteMany();
@@ -146,13 +147,13 @@ export function generateTokensForUser(user: {
   id: string;
   role: Role;
   name: string;
-  email?: string | null;
+  username?: string | null;
 }): { accessToken: string; refreshToken: string } {
   const tokenPayload = {
     userId: user.id,
     role: user.role,
     name: user.name,
-    email: user.email || undefined,
+    username: user.username || undefined,
   };
 
   return {
@@ -177,7 +178,7 @@ export async function createAuthenticatedUser(
   userOptions: {
     name?: string;
     role?: Role;
-    email?: string;
+    username?: string;
     phone?: string;
     salaryAmount?: number;
   } = {}
@@ -190,7 +191,7 @@ export async function createAuthenticatedUser(
       name: userOptions.name || 'Test User',
       role: userOptions.role || Role.CASHIER,
       phone: userOptions.phone || `+1555${Date.now().toString().slice(-7)}`,
-      email: userOptions.email || `test-${Date.now()}-${Math.random().toString(36).slice(2)}@pos.com`,
+      username: userOptions.username || `test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       passwordHash,
       salaryAmount: userOptions.salaryAmount ?? 3000,
     },
@@ -202,7 +203,7 @@ export async function createAuthenticatedUser(
     id: user.id,
     name: user.name,
     role: user.role,
-    email: user.email!,
+    username: user.username!,
     phone: user.phone,
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
@@ -228,22 +229,22 @@ export async function createTestUsers(factoryOptions: { prisma: PrismaClient }):
   const [owner, manager, cashier, waiter] = await Promise.all([
     createAuthenticatedUser(factoryOptions, { 
       role: Role.OWNER, 
-      email: 'owner@test.com',
+      username: 'owner',
       name: 'Test Owner',
     }),
     createAuthenticatedUser(factoryOptions, { 
       role: Role.MANAGER, 
-      email: 'manager@test.com',
+      username: 'manager',
       name: 'Test Manager',
     }),
     createAuthenticatedUser(factoryOptions, { 
       role: Role.CASHIER, 
-      email: 'cashier@test.com',
+      username: 'cashier',
       name: 'Test Cashier',
     }),
     createAuthenticatedUser(factoryOptions, { 
       role: Role.WAITER, 
-      email: 'waiter@test.com',
+      username: 'waiter',
       name: 'Test Waiter',
     }),
   ]);

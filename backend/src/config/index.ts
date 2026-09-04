@@ -11,8 +11,9 @@ export const config = {
   jwtRefreshExpiresIn: '7d',
   /** Frontend origin for CORS in production */
   webAppUrl: (process.env.WEB_APP_URL || 'http://localhost:5173').replace(/\/$/, ''),
-  /** Extra origins (comma-separated), e.g. external ordering app */
-  extraCorsOrigins: (process.env.CORS_EXTRA_ORIGINS || '')
+  /** Extra origins (comma-separated), e.g. external ordering app.
+   * Both spellings accepted for compatibility with older configs. */
+  extraCorsOrigins: (process.env.CORS_EXTRA_ORIGINS || process.env.EXTRA_CORS_ORIGINS || '')
     .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean),

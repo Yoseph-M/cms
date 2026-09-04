@@ -69,6 +69,63 @@ describe('ProtectedLayout / App Routing', () => {
     expect(await screen.findByText('Owner Dashboard Mock')).toBeInTheDocument();
   });
 
+  // Regression: during initial session bootstrap (hard refresh) the app must
+  // NOT redirect to /login before bootstrapSession has finished restoring the
+  // session from the HttpOnly refresh cookie.
+  it('shows the loading skeleton (not /login) while session bootstrap is in progress', async () => {
+    (useAuthStore as any).mockReturnValue({
+      isAuthenticated: false,
+      user: { role: 'OWNER', id: '1', name: 'Owner' },
+      isLoading: true, // bootstrap still running
+      bootstrapSession: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/owner']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+
+    // Skeleton shown while restoring; login page must NOT appear yet.
+    expect(screen.getByLabelText('Loading page')).toBeInTheDocument();
+    expect(screen.queryByText('Login Page Mock')).not.toBeInTheDocument();
+  });
+
+  it('does not render the login form on /login until bootstrap finishes', async () => {
+    (useAuthStore as any).mockReturnValue({
+      isAuthenticated: false,
+      user: { role: 'OWNER', id: '1', name: 'Owner' },
+      isLoading: true,
+      bootstrapSession: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByLabelText('Loading page')).toBeInTheDocument();
+    expect(screen.queryByText('Login Page Mock')).not.toBeInTheDocument();
+  });
+
+  it('only renders /login after bootstrap completes without a session', async () => {
+    (useAuthStore as any).mockReturnValue({
+      isAuthenticated: false,
+      user: null,
+      isLoading: false, // bootstrap finished → genuinely logged out
+      bootstrapSession: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Login Page Mock')).toBeInTheDocument();
+  });
+
   it('redirects unknown roles (e.g. WAITER) away from /owner to /login', async () => {
     (useAuthStore as any).mockReturnValue({
       isAuthenticated: true,

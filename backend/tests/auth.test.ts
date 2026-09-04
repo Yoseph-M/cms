@@ -38,32 +38,32 @@ function getTokenFromCookie(cookieString: string): string {
 // ---------------------------------------------------------------------------
 describe('Password lockout persistence (§1.1)', () => {
   it('locks out after 5 failed password attempts', async () => {
-    const user = await seedTestUser({ role: 'WAITER' as any, email: 'lockout-test@pos.com' });
+    const user = await seedTestUser({ role: 'WAITER' as any, username: 'lockout-test' });
 
     // Fire 5 wrong passwords
     for (let i = 0; i < 5; i++) {
       await request(app)
         .post('/api/auth/login')
-        .send({ email: user.email, password: 'wrongpassword' });
+        .send({ username: user.username, password: 'wrongpassword' });
     }
 
     // 6th attempt should be locked out (429)
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'password123' }); // even the right password
+      .send({ username: user.username, password: 'password123' }); // even the right password
     expect(res.status).toBe(429);
     expect(res.body.error).toMatch(/locked/i);
   });
 
   it('lockout state persists across a fresh PrismaClient instance (simulated restart)', async () => {
-    const user = await seedTestUser({ role: 'WAITER' as any, email: 'persist-test@pos.com' });
+    const user = await seedTestUser({ role: 'WAITER' as any, username: 'persist-test' });
     const p = getPrisma();
 
     // Fire 5 wrong passwords
     for (let i = 0; i < 5; i++) {
       await request(app)
         .post('/api/auth/login')
-        .send({ email: user.email, password: 'wrongpassword' });
+        .send({ username: user.username, password: 'wrongpassword' });
     }
 
     // Verify lockout record exists in DB directly (not through the API)
@@ -75,19 +75,19 @@ describe('Password lockout persistence (§1.1)', () => {
     // The API should still reject even "after restart" because the DB state persists
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'password123' });
+      .send({ username: user.username, password: 'password123' });
     expect(res.status).toBe(429);
   });
 
   it('Manager/Owner can unlock a locked-out user', async () => {
-    const owner = await seedTestUser({ role: 'OWNER' as any, email: 'unlock-owner@pos.com' });
-    const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'unlock-waiter@pos.com' });
+    const owner = await seedTestUser({ role: 'OWNER' as any, username: 'unlock-owner' });
+    const waiter = await seedTestUser({ role: 'WAITER' as any, username: 'unlock-waiter' });
 
     // Lock the waiter out
     for (let i = 0; i < 5; i++) {
       await request(app)
         .post('/api/auth/login')
-        .send({ email: waiter.email, password: 'wrongpassword' });
+        .send({ username: waiter.username, password: 'wrongpassword' });
     }
 
     // Owner unlocks
@@ -99,7 +99,7 @@ describe('Password lockout persistence (§1.1)', () => {
     // Waiter can now log in again
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: waiter.email, password: 'password123' });
+      .send({ username: waiter.username, password: 'password123' });
     expect(loginRes.status).toBe(200);
     expect(loginRes.body.accessToken).toBeDefined();
   });
@@ -110,14 +110,14 @@ describe('Password lockout persistence (§1.1)', () => {
 // ---------------------------------------------------------------------------
 describe('Auth rate limiting (§1.2)', () => {
   it('blocks the 21st auth request within a minute for the same IP', async () => {
-    const user = await seedTestUser({ role: 'WAITER' as any, email: 'ratelimit-test@pos.com' });
+    const user = await seedTestUser({ role: 'WAITER' as any, username: 'ratelimit-test' });
     const results: number[] = [];
 
     // Fire 21 rapid requests (IP limiter max = 20)
     for (let i = 0; i < 21; i++) {
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: user.email, password: 'password123' });
+        .send({ username: user.username, password: 'password123' });
       results.push(res.status);
     }
 
@@ -126,35 +126,125 @@ describe('Auth rate limiting (§1.2)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// §1.2b — Refresh cookie policy: same-site vs cross-site, HTTP vs HTTPS
+// ---------------------------------------------------------------------------
+describe('Refresh cookie policy (§1.2b)', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    delete process.env.COOKIE_SECURE;
+    delete process.env.COOKIE_SAME_SITE;
+  });
+
+  async function loginCookieStr(extraHeaders: Record<string, string> = {}): Promise<string> {
+    const user = await seedTestUser({ role: 'OWNER' as any, username: `cookie-pol-${Date.now()}` });
+    const res = await request(app)
+      .post('/api/auth/login')
+      .set(extraHeaders)
+      .send({ username: user.username, password: 'password123' });
+    expect(res.status).toBe(200);
+    const setCookieHeader = res.headers['set-cookie'] as unknown as string[] | undefined;
+    const cookieStr = Array.isArray(setCookieHeader) ? setCookieHeader.join('; ') : (setCookieHeader ?? '');
+    expect(cookieStr).toMatch(/refresh_token=/i);
+    return cookieStr;
+  }
+
+  it('same-origin plain HTTP (test/dev): SameSite=Lax, no Secure', async () => {
+    process.env.NODE_ENV = 'test';
+    // Same-origin nginx proxy: Origin host == Host header
+    const cookieStr = await loginCookieStr({ Origin: 'http://localhost:5001', Host: 'localhost:5001' });
+    expect(cookieStr).toMatch(/SameSite=Lax/i);
+    expect(cookieStr).not.toMatch(/\bSecure\b/i);
+    expect(cookieStr).toMatch(/Path=/i);
+  });
+
+  it('cross-site HTTPS (production SPA + API on different sites): SameSite=None + Secure', async () => {
+    process.env.NODE_ENV = 'production';
+    const cookieStr = await loginCookieStr({
+      Origin: 'https://app.example.com',
+      'X-Forwarded-Proto': 'https',
+    });
+    expect(cookieStr).toMatch(/SameSite=None/i);
+    expect(cookieStr).toMatch(/\bSecure\b/i);
+    expect(cookieStr).toMatch(/Path=/i);
+  });
+
+  it('same-site HTTPS (production, nginx-proxied): SameSite=Lax + Secure', async () => {
+    process.env.NODE_ENV = 'production';
+    // Same-origin request over TLS (nginx sets X-Forwarded-Proto: https)
+    const cookieStr = await loginCookieStr({
+      Origin: 'https://pos.example.com',
+      Host: 'pos.example.com',
+      'X-Forwarded-Proto': 'https',
+    });
+    expect(cookieStr).toMatch(/SameSite=Lax/i);
+    expect(cookieStr).toMatch(/\bSecure\b/i);
+  });
+
+  it('env overrides win: COOKIE_SAME_SITE=strict forces strict even in dev', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.COOKIE_SAME_SITE = 'strict';
+    const cookieStr = await loginCookieStr();
+    expect(cookieStr).toMatch(/SameSite=Strict/i);
+  });
+
+  it('logout clears the cookie with the same SameSite/Secure attributes it was set with', async () => {
+    process.env.NODE_ENV = 'test';
+    const user = await seedTestUser({ role: 'OWNER' as any, username: `cookie-clear-${Date.now()}` });
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: user.username, password: 'password123' });
+    const refreshCookie = extractCookie(loginRes.headers['set-cookie'] as unknown as string[], 'refresh_token');
+
+    const logoutRes = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', refreshCookie!)
+      .send({});
+    expect(logoutRes.status).toBe(200);
+    const cleared = (logoutRes.headers['set-cookie'] as unknown as string[]).find((c) =>
+      c.startsWith('refresh_token=')
+    );
+    expect(cleared).toBeDefined();
+    expect(cleared).toMatch(/Max-Age=0|Expires=/i);
+    expect(cleared).toMatch(/SameSite=Lax/i);
+    expect(cleared).toMatch(/Path=/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // §1.3 — Refresh token rotation & reuse detection (cookie-based only)
 // ---------------------------------------------------------------------------
 describe('Refresh token rotation & reuse detection (§1.3)', () => {
   it('login sets HttpOnly cookie and does NOT return refreshToken in body', async () => {
-    const user = await seedTestUser({ role: 'OWNER' as any, email: 'cookie-test@pos.com' });
+    const user = await seedTestUser({ role: 'OWNER' as any, username: 'cookie-test' });
 
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'password123' });
+      .send({ username: user.username, password: 'password123' });
     
     expect(loginRes.status).toBe(200);
     expect(loginRes.body.accessToken).toBeDefined();
     expect(loginRes.body.refreshToken).toBeUndefined(); // Must NOT be in body
 
-    // Verify HttpOnly cookie is set
+    // Verify HttpOnly cookie is set (test env: NODE_ENV=test over plain HTTP,
+    // same-origin → SameSite=Lax and no Secure flag).
     const setCookieHeader = loginRes.headers['set-cookie'] as unknown as string[] | undefined;
     const cookieStr = Array.isArray(setCookieHeader) ? setCookieHeader.join('; ') : (setCookieHeader ?? '');
     expect(cookieStr).toMatch(/refresh_token=/i);
     expect(cookieStr).toMatch(/HttpOnly/i);
-    expect(cookieStr).toMatch(/SameSite=Strict/i);
+    expect(cookieStr).toMatch(/SameSite=Lax/i);
+    expect(cookieStr).toMatch(/Path=/i);
+    expect(cookieStr).not.toMatch(/\bSecure\b/i); // plain HTTP in tests
   });
 
   it('cookie-based refresh: reads token from HttpOnly cookie, rotates it', async () => {
-    const user = await seedTestUser({ role: 'OWNER' as any, email: 'cookie-refresh@pos.com' });
+    const user = await seedTestUser({ role: 'OWNER' as any, username: 'cookie-refresh' });
     const p = getPrisma();
 
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'password123' });
+      .send({ username: user.username, password: 'password123' });
     expect(loginRes.status).toBe(200);
 
     // Extract the refresh_token cookie
@@ -196,13 +286,13 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
   });
 
   it('reuse detection: replaying a rotated-out token revokes the entire family', async () => {
-    const user = await seedTestUser({ role: 'OWNER' as any, email: 'reuse-test@pos.com' });
+    const user = await seedTestUser({ role: 'OWNER' as any, username: 'reuse-test' });
     const p = getPrisma();
 
     // Login
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'password123' });
+      .send({ username: user.username, password: 'password123' });
     const cookie1 = extractCookie(loginRes.headers['set-cookie'] as unknown as string[], 'refresh_token');
     const rt1 = getTokenFromCookie(cookie1!);
 
@@ -238,12 +328,12 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
   });
 
   it('logout revokes the refresh token and clears cookie', async () => {
-    const user = await seedTestUser({ role: 'OWNER' as any, email: 'logout-test@pos.com' });
+    const user = await seedTestUser({ role: 'OWNER' as any, username: 'logout-test' });
     const p = getPrisma();
 
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ email: user.email, password: 'password123' });
+      .send({ username: user.username, password: 'password123' });
     expect(loginRes.status).toBe(200);
     const refreshCookie = extractCookie(loginRes.headers['set-cookie'] as unknown as string[], 'refresh_token');
     const rt = getTokenFromCookie(refreshCookie!);
@@ -255,13 +345,17 @@ describe('Refresh token rotation & reuse detection (§1.3)', () => {
       .send({});
     expect(logoutRes.status).toBe(200);
 
-    // Verify cookie is cleared (Max-Age=0 or Expires in past)
+    // Verify cookie is cleared with MATCHING attributes (Path=/, SameSite) so
+    // the browser actually deletes the refresh cookie (Max-Age=0/Expires past).
     const logoutCookies = logoutRes.headers['set-cookie'] as unknown as string[] | undefined;
-    if (logoutCookies) {
-      const clearedCookie = logoutCookies.find(c => c.startsWith('refresh_token='));
-      if (clearedCookie) {
-        expect(clearedCookie).toMatch(/Max-Age=0|Expires=/i);
-      }
+    expect(logoutCookies).toBeDefined();
+    const clearedCookie = logoutCookies?.find(c => c.startsWith('refresh_token='));
+    expect(clearedCookie).toBeDefined();
+    if (clearedCookie) {
+      expect(clearedCookie).toMatch(/refresh_token=;/i);
+      expect(clearedCookie).toMatch(/Max-Age=0|Expires=/i);
+      expect(clearedCookie).toMatch(/Path=/i);
+      expect(clearedCookie).toMatch(/SameSite=Lax/i);
     }
 
     // Verify token is revoked in DB
