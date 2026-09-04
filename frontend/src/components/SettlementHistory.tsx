@@ -20,6 +20,12 @@ interface Settlement {
     id: string;
     name: string;
   };
+  order?: {
+    waiter?: {
+      id: string;
+      name: string;
+    };
+  };
   createdAt: string;
 }
 
@@ -226,7 +232,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
               )}
 
               <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
-                Recorded by: {settlement.recordedBy.name}
+                Waiter: {settlement.order?.waiter?.name || 'N/A'}
               </div>
             </div>
           ))}
