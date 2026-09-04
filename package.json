@@ -16,6 +16,7 @@
     "prisma": "^7.9.1"
   },
   "dependencies": {
+    "@nivo/pie": "^0.99.0",
     "@prisma/client": "^7.9.1"
   }
 }
