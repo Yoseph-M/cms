@@ -90,7 +90,8 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
-      staleTime: 30_000,
+      staleTime: 60_000,
+      gcTime: 30 * 60_000,
     },
   },
 });
@@ -101,8 +102,8 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
 }) => {
   const { user, isAuthenticated, isLoading } = useAuthStore();
 
-  // Show loading while bootstrapping session
-  if (isLoading) {
+  // Keep the shell mounted when we already have a user; only block first paint.
+  if (isLoading && !user) {
     return <PageSkeleton />;
   }
 
@@ -164,17 +165,17 @@ export const AppRoutes: React.FC = () => {
             </RoleGuard>
           }
         >
-          <Route index element={<Lazy><OwnerDashboard /></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} showAvailability={false} /></Lazy>} />
-          <Route path="finance" element={<Lazy><OwnerFinance /></Lazy>} />
-          <Route path="expenses" element={<Lazy><OwnerExpenses /></Lazy>} />
-          <Route path="attendance" element={<Lazy><AttendanceCalendar isOwner /></Lazy>} />
-          <Route path="payroll" element={<Lazy><OwnerPayroll /></Lazy>} />
-          <Route path="admin" element={<Lazy><SystemAdminPage /></Lazy>} />
+          <Route index element={<OwnerDashboard />} />
+          <Route path="menu" element={<MenuCatalog canEdit={false} showAvailability={false} />} />
+          <Route path="finance" element={<OwnerFinance />} />
+          <Route path="expenses" element={<OwnerExpenses />} />
+          <Route path="attendance" element={<AttendanceCalendar isOwner />} />
+          <Route path="payroll" element={<OwnerPayroll />} />
+          <Route path="admin" element={<SystemAdminPage />} />
 
-          <Route path="settings" element={<Lazy><OwnerSettings /></Lazy>} />
-          <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
-          <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
+          <Route path="settings" element={<OwnerSettings />} />
+          <Route path="settlements" element={<GlobalSettlementHistory />} />
+          <Route path="profile" element={<ProfilePage />} />
           <Route path="*" element={<Navigate to="/owner" replace />} />
         </Route>
 
