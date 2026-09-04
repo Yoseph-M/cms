@@ -1,4 +1,5 @@
 import React from 'react';
+import { Card, Text } from '@tremor/react';
 import { Package, ShoppingCart, TrendingUp, type LucideIcon } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { AnimatedCurrency, AnimatedNumber } from '../../ui/AnimatedNumber';
@@ -32,13 +33,12 @@ export interface KpiCardProps {
   trendDots?: { active: number; total?: number; tone?: 'orange' | 'green' | 'gray' };
 }
 
-/* Soft tinted card backgrounds — use Tailwind opacity utilities so the
-   surface picks up the right base color in both light and dark mode. */
+/* Soft tinted card backgrounds — white in light mode, subtle tint in dark mode. */
 const TONE_BG: Record<KpiTone, string> = {
-  cream: 'bg-amber-100 dark:bg-amber-500/10',
-  mint:  'bg-emerald-100 dark:bg-emerald-500/10',
-  blush: 'bg-pink-100 dark:bg-pink-500/10',
-  rose:  'bg-orange-100 dark:bg-orange-500/10',
+  cream: 'bg-white dark:bg-amber-500/10',
+  mint:  'bg-white dark:bg-emerald-500/10',
+  blush: 'bg-white dark:bg-pink-500/10',
+  rose:  'bg-white dark:bg-orange-500/10',
 };
 
 /* Solid color for the icon circle. In light mode we use a vibrant solid;
@@ -77,12 +77,10 @@ export const KpiCard: React.FC<KpiCardProps> = ({
   trendDots,
 }) => {
   return (
-    <div
+    <Card
       className={cn(
-        'relative flex min-w-0 items-center gap-2.5 rounded-2xl border border-border/40 px-3 py-3.5 sm:gap-3.5 sm:px-4 sm:py-4 lg:gap-4 lg:px-5 lg:py-5',
-        // Subtle shadow + lift matching the rest of the dashboard
-        'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_-14px_rgba(15,23,42,0.10)]',
-        'transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5',
+        'relative flex min-w-0 items-center gap-2.5 rounded-2xl ring-1 ring-border/40 px-3 py-3.5 sm:gap-3.5 sm:px-4 sm:py-4 lg:gap-4 lg:px-5 lg:py-5',
+        'shadow-sm transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md',
         TONE_BG[tone],
       )}
     >
@@ -101,9 +99,9 @@ export const KpiCard: React.FC<KpiCardProps> = ({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <p className="truncate text-[11px] font-medium leading-tight text-foreground/80 sm:text-[12px] lg:text-[13px]">
+        <Text className="truncate text-[11px] font-medium leading-tight text-foreground/80 sm:text-[12px] lg:text-[13px]">
           {label}
-        </p>
+        </Text>
 
         {trendDots && (
           <div className="mt-1 flex items-center gap-1.5 sm:mt-1.5">
@@ -130,7 +128,7 @@ export const KpiCard: React.FC<KpiCardProps> = ({
           )}
         </p>
       </div>
-    </div>
+    </Card>
   );
 };
 
