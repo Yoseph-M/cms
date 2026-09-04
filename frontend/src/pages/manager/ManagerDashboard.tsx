@@ -18,6 +18,7 @@ import { ToggleGroup, ToggleGroupItem } from '../../components/ui/ToggleGroup';
 import { Avatar, AvatarFallback } from '../../components/ui/Avatar';
 import { Badge } from '../../components/ui/Badge';
 import { cn } from '../../lib/utils';
+import { AttendanceHistory } from '../../components/common/AttendanceHistory';
 
 const ROLE_TONE: Record<Role, 'default' | 'secondary' | 'success' | 'outline'> = {
   OWNER: 'default',
@@ -204,10 +205,6 @@ export const ManagerDashboard: React.FC = () => {
           >
             <RevenueDonut
               segments={donutSegments}
-              size={200}
-              thickness={26}
-              centerLabel="Total"
-              centerPercent={100}
             />
           </SectionCard>
         </div>
@@ -296,24 +293,18 @@ export const ManagerDashboard: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-border/30">
                     {waiterPerf.map((w, i) => {
-                      const initials = w.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
                       const maxOrders = waiterPerf[0]?.orderCount || 1;
                       return (
                         <tr key={w.waiterId} className="hover:bg-muted/30 transition-colors">
                           <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{i + 1}</td>
                           <td className="px-5 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0">
-                                {initials}
-                              </div>
-                              <div>
-                                <p className="font-medium text-foreground">{w.name}</p>
-                                <div className="mt-1 h-1 rounded-full bg-muted overflow-hidden" style={{ width: 80 }}>
-                                  <div
-                                    className="h-full rounded-full bg-primary"
-                                    style={{ width: `${Math.round((w.orderCount / maxOrders) * 100)}%` }}
-                                  />
-                                </div>
+                            <div>
+                              <p className="font-medium text-foreground">{w.name}</p>
+                              <div className="mt-1 h-1 rounded-full bg-muted overflow-hidden" style={{ width: 80 }}>
+                                <div
+                                  className="h-full rounded-full bg-primary"
+                                  style={{ width: `${Math.round((w.orderCount / maxOrders) * 100)}%` }}
+                                />
                               </div>
                             </div>
                           </td>
@@ -328,6 +319,14 @@ export const ManagerDashboard: React.FC = () => {
             )}
           </SectionCard>
         </div>
+
+        {/* Attendance history (90-day tracker per staff member) */}
+        <SectionCard
+          title="Attendance history"
+          description="Last 90 days of attendance per staff member"
+         >
+          <AttendanceHistory />
+        </SectionCard>
       </div>
     </motion.div>
   );
