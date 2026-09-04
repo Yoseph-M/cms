@@ -21,20 +21,29 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     }
   }
 
-  // If the caller is a CASHIER they may nominate a waiter; otherwise the caller IS the waiter.
+  // Determine the waiter and cashier for this order.
+  // If the caller is a non-waiter role (CASHIER, MANAGER, OWNER), they must
+  // nominate a waiter. The caller becomes the cashier on record.
+  // If the caller IS a waiter, they are both the waiter and no cashier is set.
   let waiterId = req.user!.userId;
+  let cashierId: string | null = null;
   const { clientOrderId, tableNumber, items, waiterId: bodyWaiterId } = req.body;
 
-  if (callerRole === Role.CASHIER && bodyWaiterId) {
-    // Validate that the supplied waiter ID is a real, active WAITER
-    const waiterUser = await prisma.user.findUnique({
-      where: { id: bodyWaiterId },
-      select: { id: true, name: true, role: true, isActive: true },
-    });
-    if (!waiterUser || !waiterUser.isActive || waiterUser.role !== 'WAITER') {
-      return res.status(400).json({ error: 'Invalid waiter selected. Please choose a valid active waiter.' });
+  if ([Role.CASHIER, Role.MANAGER, Role.OWNER].includes(callerRole)) {
+    // The caller is the cashier on record
+    cashierId = req.user!.userId;
+
+    if (bodyWaiterId) {
+      // Validate that the supplied waiter ID is a real, active WAITER
+      const waiterUser = await prisma.user.findUnique({
+        where: { id: bodyWaiterId },
+        select: { id: true, name: true, role: true, isActive: true },
+      });
+      if (!waiterUser || !waiterUser.isActive || waiterUser.role !== 'WAITER') {
+        return res.status(400).json({ error: 'Invalid waiter selected. Please choose a valid active waiter.' });
+      }
+      waiterId = waiterUser.id;
     }
-    waiterId = waiterUser.id;
   }
 
   const waiterName = req.user!.name;
@@ -73,7 +82,10 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     });
   }
 
-  const includeWaiter = { waiter: { select: { id: true, name: true } } } as const;
+  const includeWaiter = { 
+    waiter: { select: { id: true, name: true } },
+    cashier: { select: { id: true, name: true } },
+  } as const;
 
   // Idempotent create: return existing order on retry (Background Sync)
   const existing = await prisma.order.findUnique({
@@ -95,6 +107,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
           clientOrderId,
           tableNumber,
           waiterId,
+          cashierId,
           items: validatedItems,
           totalAmount: computedTotal,
           status: OrderStatus.SUBMITTED,
