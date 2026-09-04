@@ -9,7 +9,7 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Sheet } from '../ui/Sheet';
 import { AlertDialog } from '../ui/AlertDialog';
-import { CalendarDays, FilterX, Pencil, Plus, ReceiptText, RefreshCw, Tag, Trash2, Wallet } from 'lucide-react';
+import { CalendarDays, FilterX, Pencil, Plus, ReceiptText, Tag, Trash2, Wallet } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 
@@ -293,9 +293,6 @@ export const ExpensesTracker: React.FC = () => {
                   <FilterX className="h-3.5 w-3.5" /> Clear
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={fetchExpenses} disabled={isLoading}>
-                <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
-              </Button>
             </div>
           </div>
         </CardContent>
