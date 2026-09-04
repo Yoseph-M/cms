@@ -92,8 +92,9 @@ export const availabilitySchema = z.object({
 // ---------- Order Schemas ----------
 export const orderItemInputSchema = z.object({
   menuItemId: z.string().min(1, 'menuItemId is required'),
-  name: z.string().min(1, 'Item name is required'),
-  unitPrice: z.number().nonnegative('Unit price must be nonnegative'),
+  // name and unitPrice are optional — the server recomputes them from the DB
+  name: z.string().optional(),
+  unitPrice: z.number().nonnegative().optional(),
   quantity: z.number().int().positive('Quantity must be at least 1'),
   notes: z.string().default(''),
 });
@@ -101,6 +102,8 @@ export const orderItemInputSchema = z.object({
 export const createOrderSchema = z.object({
   clientOrderId: z.string().uuid('clientOrderId must be a valid UUID v4'),
   tableNumber: z.string().min(1, 'Table number is required'),
+  // waiterId is optional — required when a cashier/manager/owner creates the order
+  waiterId: z.string().optional(),
   items: z.array(orderItemInputSchema).min(1, 'Order must contain at least 1 item'),
 });
 
