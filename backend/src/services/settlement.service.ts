@@ -129,42 +129,32 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     throw new AlreadySettledError(orderId);
   }
 
+  // Fetch shift settings and active shift outside the transaction to reduce transaction duration
+  const shiftSetting = await prisma.systemSetting.findUnique({
+    where: { key: 'shiftManagementEnabled' },
+  });
+  const shiftEnabled = shiftSetting ? shiftSetting.value === 'true' : true;
+
+  let activeShiftId: string | null = null;
+  if (shiftEnabled) {
+    const activeShift = await prisma.cashierShift.findFirst({
+      where: { cashierId: recordedById, status: 'OPEN' },
+      select: { id: true }
+    });
+    
+    if (activeShift) {
+      activeShiftId = activeShift.id;
+    } else if (method === PaymentMethod.CASH) {
+      throw new ValidationError(
+        'CASH settlements require an active cashier shift. Please open a shift first.',
+        'method'
+      );
+    }
+  }
+
   // Use critical transaction wrapper - will fail if transactions unavailable
   const result = await executeInCriticalTransaction(prisma, async (tx) => {
-    // 1. First check idempotency key INSIDE the transaction
-    if (idempotencyKey) {
-      const existing = await tx.settlement.findUnique({
-        where: { idempotencyKey },
-        include: { order: true },
-      });
-      
-      if (existing) {
-        // If fingerprint provided, check for materially different request
-        if (requestFingerprint) {
-          const existingFingerprint = `${existing.orderId}:${existing.amountMinor}:${existing.method}`;
-          if (existingFingerprint !== requestFingerprint) {
-            throw new IdempotencyConflictError(
-              'Idempotency key reused with different request parameters'
-            );
-          }
-        }
-        
-        // Return existing settlement (idempotent response)
-        return {
-          settlement: existing,
-          order: existing.order,
-        };
-      }
-    }
-
     // 2. Load order WITHIN the transaction for authoritative state
-    // We use an update on updatedAt to take an exclusive lock on the order document
-    // This prevents deadlocks and ensures only one transaction can settle this order at a time.
-    await tx.order.update({
-      where: { id: orderId },
-      data: { updatedAt: new Date() },
-    });
-
     const order = await tx.order.findUnique({
       where: { id: orderId },
       include: { settlements: true },
@@ -205,30 +195,6 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     }
 
     // 4. Create settlement record WITHIN transaction
-    // For settlements: find active shift and link if shift management is enabled
-    let shiftId: string | null = null;
-    
-    const shiftSetting = await tx.systemSetting.findUnique({
-      where: { key: 'shiftManagementEnabled' },
-    });
-    const shiftEnabled = shiftSetting ? shiftSetting.value === 'true' : true;
-
-    if (shiftEnabled) {
-      const activeShift = await tx.cashierShift.findFirst({
-        where: { cashierId: recordedById, status: 'OPEN' },
-      });
-      
-      if (activeShift) {
-        shiftId = activeShift.id;
-      } else if (method === PaymentMethod.CASH) {
-        // CASH still requires a shift if management is enabled
-        throw new ValidationError(
-          'CASH settlements require an active cashier shift. Please open a shift first.',
-          'method'
-        );
-      }
-    }
-    
     let settlement;
     try {
       settlement = await tx.settlement.create({
@@ -239,7 +205,7 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
           reference,
           note,
           recordedById,
-          shiftId,
+          shiftId: activeShiftId,
           idempotencyKey,
         },
       });
@@ -247,28 +213,19 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
       // Handle unique constraint violation on idempotencyKey
       if (error.code === 'P2002' && error.meta?.target?.includes('idempotencyKey')) {
         // If we hit this, it means a concurrent request succeeded between our check and our create.
-        // We fetch the existing record to return it, making this operation truly idempotent.
-        const existing = await tx.settlement.findUnique({
-          where: { idempotencyKey: idempotencyKey! },
-          include: { order: true },
-        });
-        if (existing) {
-          return {
-            settlement: existing,
-            order: existing.order,
-          };
-        }
-        // If for some reason we can't find it, throw the concurrent modification error
+        // We cannot use tx.settlement.findUnique here because the transaction is already aborted.
+        // Throw a ConcurrentModificationError to return a 409 and let the frontend retry.
+        // On retry, the pre-check outside the transaction will return the existing record.
         throw new ConcurrentModificationError('Settlement request is already in progress');
       }
       throw error;
     }
 
     // 4.5. Auto-create CASH_SETTLEMENT ledger entry if CASH
-    if (method === PaymentMethod.CASH && shiftId) {
+    if (method === PaymentMethod.CASH && activeShiftId) {
       await tx.cashDrawerEvent.create({
         data: {
-          shiftId,
+          shiftId: activeShiftId,
           type: CashDrawerEventType.CASH_SETTLEMENT,
           amountMinor,
           referenceType: 'Settlement',
@@ -353,6 +310,11 @@ export async function getOrderSettlements(orderId: string) {
       recordedBy: {
         select: { id: true, name: true, role: true },
       },
+      order: {
+        select: {
+          waiter: { select: { id: true, name: true, role: true } }
+        }
+      }
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -365,7 +327,11 @@ export async function getSettlementById(settlementId: string) {
   return prisma.settlement.findUnique({
     where: { id: settlementId },
     include: {
-      order: true,
+      order: {
+        include: {
+          waiter: { select: { id: true, name: true, role: true } }
+        }
+      },
       recordedBy: {
         select: { id: true, name: true, role: true },
       },
