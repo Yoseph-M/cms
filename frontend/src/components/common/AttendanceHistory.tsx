@@ -9,6 +9,16 @@ import { Badge } from '../ui/Badge';
 import { AlertCircle, BarChart3 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
+// Add custom styles for smaller tracker bars
+const trackerStyles = `
+  .attendance-tracker > div {
+    height: 8px !important;
+  }
+  .attendance-tracker > div > div {
+    border-radius: 2px;
+  }
+`;
+
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
 
 interface AttendanceRecord {
@@ -142,6 +152,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
 
   return (
     <div className="space-y-4">
+      <style>{trackerStyles}</style>
       <Card>
         <CardContent className="p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
@@ -198,12 +209,13 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
                       {s.rate}%
                     </span>
                   </div>
-                  <Tracker data={s.blocks} className="hidden w-full sm:flex" />
-                  <Tracker data={s.blocks.slice(30, 90)} className="mt-2 hidden w-full md:flex lg:hidden" />
-                  <Tracker data={s.blocks.slice(60, 90)} className="mt-2 flex w-full md:hidden" />
+                  <Tracker data={s.blocks} className="hidden w-full lg:flex attendance-tracker" />
+                  <Tracker data={s.blocks.slice(30, 90)} className="mt-2 hidden w-full sm:flex lg:hidden attendance-tracker" />
+                  <Tracker data={s.blocks.slice(60, 90)} className="mt-2 flex w-full sm:hidden attendance-tracker" />
                   <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-                    <span className="hidden md:inline">{DAYS} days ago</span>
-                    <span className="hidden md:hidden">30 days ago</span>
+                    <span className="hidden lg:inline">{DAYS} days ago</span>
+                    <span className="hidden sm:inline lg:hidden">60 days ago</span>
+                    <span className="sm:hidden">30 days ago</span>
                     <span>Today</span>
                   </div>
                 </div>

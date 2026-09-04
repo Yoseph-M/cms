@@ -448,10 +448,8 @@ export const CashierTicketsPage: React.FC = () => {
         setPhase('printed');
         setTimeout(() => {
           setPhase('idle');
-          const next =
-            sortedActiveOrders.filter((o) => o.id !== orderId && o.status === 'SERVED')[0] ??
-            sortedActiveOrders.filter((o) => o.id !== orderId)[0];
-          setSelectedOrderId(next?.id ?? null);
+          // Auto-close the order detail card after the settled ticket is acknowledged.
+          setSelectedOrderId(null);
         }, 1400);
       }, 500);
     } catch (err: any) {
@@ -552,6 +550,10 @@ export const CashierTicketsPage: React.FC = () => {
       setOrders((prev) => prev.map((o) => (o.id === selectedOrderId ? res.data : o)));
       setCancelledOrderLabel(orderLabel);
       setCancellationState('complete');
+      // Auto-close the order detail card once the order has been cancelled.
+      // The CancelModal remains on top to show the success state until the
+      // cashier dismisses it.
+      setSelectedOrderId(null);
     } catch (err: any) {
       setCancellationState('idle');
       addToast({

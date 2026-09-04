@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
-import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle, ClipboardCheck, Receipt } from 'lucide-react';
+import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle, ClipboardCheck, Receipt, LayoutDashboard, UsersRound } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
@@ -33,13 +33,14 @@ const ManagerLayoutInner: React.FC = () => {
   }
 
   const MANAGER_NAV = [
-    { to: '/manager/people', label: t('nav.people', { defaultValue: 'People' }), icon: Users, end: false, group: 'core' },
+    { to: '/manager', label: t('nav.dashboard', { defaultValue: 'Dashboard' }), icon: LayoutDashboard, end: true, group: 'core' },
+    { to: '/manager/staff', label: t('nav.staff', { defaultValue: 'Staff' }), icon: UsersRound, end: false, group: 'core' },
+    { to: '/manager/attendance', label: t('nav.attendance', { defaultValue: 'Attendance' }), icon: CalendarCheck, end: false, group: 'people' },
+    { to: '/manager/payroll', label: t('nav.payroll', { defaultValue: 'Payroll' }), icon: DollarSign, end: false, group: 'people' },
     { to: '/manager/menu', label: t('nav.menu', { defaultValue: 'Menu Catalog' }), icon: UtensilsCrossed, end: false, group: 'ops' },
     { to: '/manager/reconciliation', label: t('nav.reconciliation', { defaultValue: 'End of Day' }), icon: ClipboardCheck, end: false, group: 'ops' },
     { to: '/manager/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, end: false, group: 'ops' },
     { to: '/manager/expenses', label: t('nav.expenses', { defaultValue: 'Expenses' }), icon: Wallet, end: false, group: 'ops' },
-    { to: '/manager/attendance', label: t('nav.attendance', { defaultValue: 'Attendance' }), icon: CalendarCheck, end: false, group: 'people' },
-    { to: '/manager/payroll', label: t('nav.payroll', { defaultValue: 'Payroll' }), icon: DollarSign, end: false, group: 'people' },
   ] as const;
 
   const SYSTEM_SETTINGS = {
@@ -49,7 +50,7 @@ const ManagerLayoutInner: React.FC = () => {
   };
 
   const GROUP_LABELS: Record<string, string> = {
-    core: t('nav.groups.core', { defaultValue: 'Insights' }),
+    core: t('nav.groups.core', { defaultValue: 'Overview' }),
     people: t('nav.groups.people', { defaultValue: 'People & HR' }),
     ops: t('nav.groups.ops', { defaultValue: 'Operations' }),
   };
@@ -125,7 +126,7 @@ const ManagerLayoutInner: React.FC = () => {
         <nav className="flex-1 px-4 py-6 overflow-y-auto space-y-6 overflow-x-hidden">
           {grouped.map(({ group, items }) => (
             <div key={group}>
-              {!collapsed && GROUP_LABELS[group] !== 'Insights' && (
+              {!collapsed && GROUP_LABELS[group] !== 'Overview' && (
                 <p className="px-4 mb-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                   {GROUP_LABELS[group]}
                 </p>

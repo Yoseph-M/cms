@@ -108,7 +108,7 @@ export const Header: React.FC = () => {
     <header
       className={cn(
         'relative h-[72px] sm:h-[80px] px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4',
-        'border-b border-border bg-card/80 backdrop-blur-md z-30 shrink-0',
+        'border-b border-border bg-card/80 backdrop-blur-md z-40 shrink-0',
       )}
     >
       {/* Subtle accent strip — soft brand gradient on the bottom edge */}
