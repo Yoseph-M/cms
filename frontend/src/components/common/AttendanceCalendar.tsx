@@ -1,5 +1,4 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
-import { exportRowsCSV } from "../../utils/csvExport";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -10,8 +9,10 @@ import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
+import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle, BarChart3, Info } from 'lucide-react';
+import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle, BarChart3, Info, Grid3X3, History } from 'lucide-react';
+import { AttendanceHistory } from './AttendanceHistory';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
 
@@ -68,7 +69,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
   );
   const [markingAll, setMarkingAll] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
-  const [workOnSundays, setWorkOnSundays] = useState(false);
+  const [view, setView] = useState<'grid' | 'history'>('grid');
   
   const todayLocal = today.toISOString().split('T')[0];
 
@@ -229,15 +230,6 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
     }
   };
 
-  const exportCSV = () => {
-    exportRowsCSV(
-      ['Staff', 'Role', ...dayNumbers.map(d => `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`)],
-      filteredStaff.map(s => [s.name, s.role, ...dayNumbers.map(d => getRecord(s.id, d)?.status || '-')]),
-      `attendance-${year}-${month}`,
-      { title: `Attendance — ${monthName} ${year}`, meta: [`Generated: ${new Date().toLocaleString()}`] }
-    );
-  };
-
   // ── Analytics summary for the current month ──
   const analyticsSummary = React.useMemo(() => {
     const counts: Record<AttendanceStatus, number> = {
@@ -277,6 +269,26 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-0.5">
+            <button
+              onClick={() => setView('grid')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                view === 'grid' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Grid3X3 className="w-3.5 h-3.5" /> Grid
+            </button>
+            <button
+              onClick={() => setView('history')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                view === 'history' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <History className="w-3.5 h-3.5" /> History
+            </button>
+          </div>
           {!isReadOnlyOwner && (
             <div className="flex items-center gap-2 flex-wrap">
               <Button 
@@ -287,11 +299,6 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                 <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
                 {markingAll ? 'Marking...' : 'Mark all Present'}
               </Button>
-              <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                <input type="checkbox" checked={workOnSundays} onChange={e => setWorkOnSundays(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
-                Work on Sundays
-              </label>
-              <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
             </div>
           )}
         </div>
@@ -307,6 +314,8 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           <p className="text-destructive font-medium">{error}</p>
           <Button variant="outline" size="sm" onClick={fetchData}>Retry</Button>
         </div>
+      ) : view === 'history' ? (
+        <AttendanceHistory isOwner={isOwner} />
       ) : filteredStaff.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">No staff to display.</div>
       ) : (
@@ -348,7 +357,6 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
         <div className="relative mb-4">
           <Button variant="outline" size="sm" onClick={() => setShowLegend(!showLegend)}>
             <Info className="w-3.5 h-3.5 mr-1.5" />
-            Status Legend
           </Button>
           <AnimatePresence>
             {showLegend && (
