@@ -1,8 +1,8 @@
 /**
  * Money Utility Tests
  * 
- * Tests for the money utility to ensure safe financial operations
- * using integer minor units.
+ * Tests for the money utility to ensure safe financial operations.
+ * Amounts are stored as entered (ETB major units).
  */
 
 import {
@@ -28,15 +28,10 @@ import {
 
 describe('Money Utility', () => {
   describe('toMinor', () => {
-    it('should convert major to minor units', () => {
-      expect(toMinor(10.00)).toBe(1000);
-      expect(toMinor(10.50)).toBe(1050);
-      expect(toMinor(0.99)).toBe(99);
-    });
-
-    it('should round correctly', () => {
-      expect(toMinor(10.999)).toBe(1100); // Rounds up
-      expect(toMinor(10.001)).toBe(1000); // Rounds down
+    it('should return the amount unchanged (stored as entered)', () => {
+      expect(toMinor(10.00)).toBe(10);
+      expect(toMinor(10.50)).toBe(10.5);
+      expect(toMinor(0.99)).toBe(0.99);
     });
 
     it('should handle zero', () => {
@@ -49,21 +44,21 @@ describe('Money Utility', () => {
   });
 
   describe('toMajor', () => {
-    it('should convert minor to major units', () => {
-      expect(toMajor(1000)).toBe(10);
-      expect(toMajor(1050)).toBe(10.5);
-      expect(toMajor(99)).toBe(0.99);
+    it('should return the amount unchanged (stored as entered)', () => {
+      expect(toMajor(1000)).toBe(1000);
+      expect(toMajor(1050)).toBe(1050);
+      expect(toMajor(99)).toBe(99);
     });
 
     it('should handle large numbers', () => {
-      expect(toMajor(1000000)).toBe(10000);
+      expect(toMajor(1000000)).toBe(1000000);
     });
   });
 
   describe('parseMinor', () => {
-    it('should parse string to minor units', () => {
-      expect(parseMinor('10.00')).toBe(1000);
-      expect(parseMinor('10.50')).toBe(1050);
+    it('should parse string to a number (ETB as entered)', () => {
+      expect(parseMinor('10.00')).toBe(10);
+      expect(parseMinor('10.50')).toBe(10.5);
     });
 
     it('should throw on invalid string', () => {
@@ -158,13 +153,14 @@ describe('Money Utility', () => {
   });
 
   describe('formatMinor', () => {
-    it('should format minor units for display', () => {
-      expect(formatMinor(1000)).toBe('10.00');
-      expect(formatMinor(1050)).toBe('10.50');
+    it('should format amounts for display', () => {
+      expect(formatMinor(1000)).toBe('1000.00');
+      expect(formatMinor(1050)).toBe('1050.00');
+      expect(formatMinor(10.5)).toBe('10.50');
     });
 
     it('should include currency when provided', () => {
-      expect(formatMinor(1000, 2, 'ETB')).toBe('ETB 10.00');
+      expect(formatMinor(1000, 2, 'ETB')).toBe('ETB 1000.00');
     });
   });
 
@@ -196,17 +192,17 @@ describe('Money Utility', () => {
   // Invariant tests - these are the critical ones for financial correctness
   describe('financial invariants', () => {
     it('should maintain invariant: sum(settlements) <= totalAmount', () => {
-      const totalAmount = 10000; // 100.00
-      const settlements = [3000, 2000, 4000]; // 30.00 + 20.00 + 40.00 = 90.00
+      const totalAmount = 100; // 100.00 ETB
+      const settlements = [30, 20, 40]; // 30.00 + 20.00 + 40.00 = 90.00 ETB
       
       const sum = sumAmounts(settlements);
       expect(sum <= totalAmount).toBe(true);
     });
 
     it('should detect over-settlement attempt', () => {
-      const totalAmount = 5000; // 50.00
-      const existingSettlements = [4000]; // 40.00
-      const newSettlement = 2000; // 20.00 attempt
+      const totalAmount = 50; // 50.00 ETB
+      const existingSettlements = [40]; // 40.00 ETB
+      const newSettlement = 20; // 20.00 ETB attempt
       
       const existingSum = sumAmounts(existingSettlements);
       const wouldExceed = (existingSum + newSettlement) > totalAmount;
@@ -215,13 +211,13 @@ describe('Money Utility', () => {
     });
 
     it('should correctly calculate remaining amount', () => {
-      const totalAmount = 10000;
-      const settlements = [3000, 2000];
+      const totalAmount = 100;
+      const settlements = [30, 20];
       
       const totalSettled = sumAmounts(settlements);
       const remaining = subtract(totalAmount, totalSettled);
       
-      expect(remaining).toBe(5000); // 100 - 30 - 20 = 50
+      expect(remaining).toBe(50); // 100 - 30 - 20 = 50
     });
   });
 });
