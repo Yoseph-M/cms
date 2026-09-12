@@ -20,21 +20,21 @@ router.use(requireAuth);
 // Validation schemas
 const payoutSchema = z.object({
   shiftId: z.string().min(1, 'shiftId is required'),
-  amountMinor: z.number().int().positive('Amount must be positive'),
+  amountMinor: z.number().positive('Amount must be positive'),
   reason: z.string().min(1, 'Reason is required'),
   reference: z.string().optional(),
 });
 
 const pettyCashSchema = z.object({
   shiftId: z.string().min(1, 'shiftId is required'),
-  amountMinor: z.number().int().positive('Amount must be positive'),
+  amountMinor: z.number().positive('Amount must be positive'),
   reason: z.string().min(1, 'Reason is required'),
   category: z.string().optional(),
 });
 
 const adjustmentSchema = z.object({
   shiftId: z.string().min(1, 'shiftId is required'),
-  amountMinor: z.number().int().refine(val => val !== 0, 'Amount cannot be zero'),
+  amountMinor: z.number().refine(val => val !== 0, 'Amount cannot be zero'),
   reason: z.string().min(1, 'Reason is required'),
 });
 
