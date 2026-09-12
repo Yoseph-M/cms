@@ -23,7 +23,6 @@ export async function getMenuItems(req: AuthenticatedRequest, res: Response) {
   const cacheKey = menuCacheKey(category as string | undefined, isAvailable as string | undefined);
   const cached = getCached<unknown[]>(cacheKey);
   if (cached) {
-    res.setHeader('Cache-Control', 'private, max-age=60');
     return res.json(cached);
   }
 
@@ -42,24 +41,27 @@ export async function getMenuItems(req: AuthenticatedRequest, res: Response) {
   });
 
   setCache(cacheKey, items, MENU_CACHE_TTL_MS);
-  res.setHeader('Cache-Control', 'private, max-age=60');
+  // No browser HTTP caching: with max-age in place the browser kept serving a
+  // pre-toggle snapshot for up to 60s, and our post-toggle reconcile refetch
+  // received stale data that visually reverted availability switches.
   return res.json(items);
 }
 
 /**
  * Create a new menu item.
  * 
- * @param price - Price in minor units (cents). E.g., 1599 for $15.99
+ * @param price - Price in ETB as entered. E.g., 15.99 for 15.99 ETB
  */
 export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
-  const { name, category, price, isAvailable, imageUrl } = req.body;
+  const { name, nameAmharic, category, price, isAvailable, imageUrl } = req.body;
   const actorId = req.user!.userId;
 
   const newItem = await prisma.menuItem.create({
     data: {
       name,
+      nameAmharic: nameAmharic ?? null,
       category,
-      price, // Already in cents from frontend
+      price, // Already in ETB from frontend
       isAvailable: isAvailable !== undefined ? isAvailable : true,
       imageUrl,
     },
@@ -81,7 +83,7 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
 /**
  * Update an existing menu item.
  * 
- * @param price - Price in minor units (cents) if provided. E.g., 1599 for $15.99
+ * @param price - Price in ETB as entered if provided. E.g., 15.99 for 15.99 ETB
  */
 export async function updateMenuItem(req: AuthenticatedRequest, res: Response) {
   const { id } = req.params;
@@ -96,8 +98,11 @@ export async function updateMenuItem(req: AuthenticatedRequest, res: Response) {
     where: { id },
     data: {
       name: req.body.name,
+      // Send null explicitly to clear the Amharic name (validated schema only
+      // forwards defined keys, so an absent key leaves the stored value alone).
+      ...(req.body.nameAmharic !== undefined ? { nameAmharic: req.body.nameAmharic } : {}),
       category: req.body.category,
-      price: req.body.price, // Already in cents from frontend
+      price: req.body.price, // Already in ETB from frontend
       isAvailable: req.body.isAvailable,
       imageUrl: req.body.imageUrl,
     },
@@ -121,48 +126,61 @@ export async function toggleAvailability(req: AuthenticatedRequest, res: Respons
   const { isAvailable } = req.body;
   const actorId = req.user!.userId;
 
-  const existing = await prisma.menuItem.findUnique({ where: { id } });
-  if (!existing) {
-    return res.status(404).json({ error: 'Menu item not found.' });
-  }
+  // Single conditional write — no pre-read, no transaction, no retry loop.
+  // This is what makes toggling feel instant even on a busy database.
+  const result = await prisma.menuItem.updateMany({
+    where: { id },
+    data: { isAvailable },
+  });
 
-  // Retry up to 3 times on P2034 write-conflict / deadlock (MongoDB)
-  let updatedItem;
-  const MAX_RETRIES = 3;
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      updatedItem = await prisma.menuItem.update({
-        where: { id },
-        data: { isAvailable },
-      });
-      break; // success — exit loop
-    } catch (err: any) {
-      if (err?.code === 'P2034' && attempt < MAX_RETRIES) {
-        // Exponential backoff: 50ms, 100ms
-        await new Promise((r) => setTimeout(r, 50 * attempt));
-        continue;
-      }
-      throw err; // re-throw on non-conflict errors or exhausted retries
-    }
+  if (result.count === 0) {
+    return res.status(404).json({ error: 'Menu item not found.' });
   }
 
   invalidateMenuCache();
 
-  emitToLiveOrders('menu:availabilityChanged', {
-    id: updatedItem!.id,
-    name: updatedItem!.name,
-    isAvailable: updatedItem!.isAvailable,
-  });
+  emitToLiveOrders('menu:availabilityChanged', { id, isAvailable });
 
-  await recordAudit({
+  // Fire-and-forget: audit persistence must never block the toggle response.
+  void recordAudit({
     actorId,
     actionType: 'MENU_AVAILABILITY_CHANGED',
     targetType: 'MenuItem',
     targetId: id,
-    details: { name: updatedItem!.name, isAvailable: updatedItem!.isAvailable },
+    details: { isAvailable },
   });
 
-  return res.json(updatedItem);
+  return res.json({ id, isAvailable });
+}
+
+/**
+ * Bulk availability update for select-mode (Mark Available / Mark Unavailable).
+ * One conditional write for the whole set instead of N round-trips.
+ */
+export async function bulkToggleAvailability(req: AuthenticatedRequest, res: Response) {
+  const { ids, isAvailable } = req.body;
+  const actorId = req.user!.userId;
+
+  const result = await prisma.menuItem.updateMany({
+    where: { id: { in: ids } },
+    data: { isAvailable },
+  });
+
+  invalidateMenuCache();
+
+  for (const id of ids) {
+    emitToLiveOrders('menu:availabilityChanged', { id, isAvailable });
+  }
+
+  void recordAudit({
+    actorId,
+    actionType: 'MENU_AVAILABILITY_CHANGED',
+    targetType: 'MenuItem',
+    targetId: ids.join(','),
+    details: { ids, isAvailable, count: result.count },
+  });
+
+  return res.json({ updated: result.count, ids, isAvailable });
 }
 
 export async function deleteMenuItem(req: AuthenticatedRequest, res: Response) {
