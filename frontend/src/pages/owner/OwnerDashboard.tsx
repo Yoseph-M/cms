@@ -237,7 +237,7 @@ export const OwnerDashboard: React.FC = () => {
       ? monthly.slice(-12)
       : monthly; // smaller windows keep the data the analytics API returned
     const labels = slicedMonthly.map((m) => m.month);
-    const income = slicedMonthly.map((m) => Math.round(m.revenue / 100));
+    const income = slicedMonthly.map((m) => Math.round(m.revenue));
     const totalExpenses = profitLoss
       ? profitLoss.payrollCost + profitLoss.otherExpenses
       : 0;
@@ -366,7 +366,7 @@ export const OwnerDashboard: React.FC = () => {
                 },
               ]}
               yFormat={(v) => v.toLocaleString('en-US')}
-              tooltipFormat={(v) => formatCurrency(v * 100)}
+              tooltipFormat={(v) => formatCurrency(v)}
             />
           </SectionCard>
 
