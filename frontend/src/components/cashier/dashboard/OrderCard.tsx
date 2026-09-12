@@ -8,7 +8,6 @@ import {
   CircleDot,
   X,
   Timer,
-  Flame,
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { formatCurrency } from '../../../utils/currency';
@@ -118,8 +117,23 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
           {!selectMode && <StatusBadge status={status} />}
         </div>
         <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
-          <div className="min-w-0 text-[11px] text-slate-500"><p>{itemCount} {itemCount === 1 ? 'item' : 'items'}{order.waiter && <span className="ml-1.5 inline-flex items-center gap-1 truncate"><CircleDot className="w-2.5 h-2.5" />{order.waiter.name}</span>}</p><div className="mt-1"><WaitChip elapsed={elapsed} /></div></div>
-          <p className="font-display text-lg font-bold tabular-nums leading-none text-slate-950">{formatCurrency(order.totalAmount)}</p>
+          <div className="min-w-0 text-[11px] text-slate-500">
+            <p>
+              {itemCount} {itemCount === 1 ? 'item' : 'items'}
+            </p>
+            <div className="mt-1"><WaitChip elapsed={elapsed} /></div>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {order.waiter && (
+              <span className="inline-flex max-w-full items-center gap-1 text-[11px] text-slate-500 truncate">
+                <CircleDot className="w-2.5 h-2.5 shrink-0" />
+                <span className="truncate">{order.waiter.name}</span>
+              </span>
+            )}
+            <p className="font-display text-lg font-bold tabular-nums leading-none text-slate-950">
+              {formatCurrency(order.totalAmount)}
+            </p>
+          </div>
         </div>
       </motion.div>
     );
@@ -130,15 +144,11 @@ OrderCard.displayName = 'OrderCard';
 const StatusBadge: React.FC<{ status: ReturnType<typeof getOrderStatus> }> = ({ status }) => {
   const accent = statusAccent(status);
   const Icon =
-    status === 'ready'
+    status === 'ready' || status === 'paid'
       ? CheckCircle2
-      : status === 'cooking'
-        ? Flame
-        : status === 'paid'
-          ? CheckCircle2
-          : status === 'cancelled'
-            ? X
-            : AlertTriangle;
+      : status === 'cancelled'
+        ? X
+        : null;
   return (
     <span
       className={cn(
@@ -146,7 +156,11 @@ const StatusBadge: React.FC<{ status: ReturnType<typeof getOrderStatus> }> = ({ 
         accent.badge,
       )}
     >
-      <Icon className="w-3 h-3" />
+      {Icon ? (
+        <Icon className="w-3 h-3" />
+      ) : (
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
+      )}
       <span className="hidden sm:inline">{STATUS_LABEL[status]}</span>
     </span>
   );
