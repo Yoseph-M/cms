@@ -53,10 +53,10 @@ export const SettingsGroup = React.forwardRef<HTMLElement, SettingsGroupProps>(
       ref={ref}
       id={id}
       className={cn(
-        'scroll-mt-24 rounded-2xl border border-border/50 bg-card text-card-foreground',
+        'scroll-mt-24 rounded-xl border border-border/60 bg-card text-card-foreground transition-all duration-200',
         flat
-          ? 'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-18px_rgba(15,23,42,0.18)]'
-          : 'shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-14px_rgba(15,23,42,0.10),0_4px_12px_-8px_rgba(249,115,22,0.08)] transition-all duration-200 hover:-translate-y-0.5',
+          ? 'shadow-sm hover:shadow-md hover:border-border'
+          : 'shadow-sm hover:-translate-y-0.5 hover:shadow-md hover:border-border',
         className,
       )}
     >
@@ -66,7 +66,7 @@ export const SettingsGroup = React.forwardRef<HTMLElement, SettingsGroupProps>(
             <span
               aria-hidden
               className={cn(
-                'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset ring-black/[0.04] dark:ring-white/[0.06]',
+                'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ring-black/[0.08] dark:ring-white/[0.1] shadow-sm',
                 iconBgClassName,
               )}
             >
