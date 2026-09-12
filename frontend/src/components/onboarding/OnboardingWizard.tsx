@@ -347,7 +347,7 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
         axiosClient.post('/menu', {
           name: item.name,
           category: item.category,
-          price: Math.round(parseFloat(item.price) * 100) // Convert dollars to cents
+          price: parseFloat(item.price) // Store as entered (ETB)
         })
       ));
       addToast({ type: 'success', title: `Added ${validItems.length} items` });
