@@ -137,7 +137,7 @@ export const CancellationReview: React.FC = () => {
 
   // Format currency
   const formatAmount = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'ETB' }).format(amount / 100);
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'ETB' }).format(amount);
   };
 
   const formatDate = (dateStr: string) => {
