@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User } from '../types';
 import { axiosClient } from '../api/axiosClient';
 import { postAuthChannelMessage, subscribeToAuthChannel, type AuthChannelMessage } from './authChannel';
+import { applyUserLanguage, resetToNeutralLanguage } from '../i18nUserPrefs';
 
 interface AuthState {
   user: User | null;
@@ -16,7 +17,8 @@ interface AuthState {
   /** Local-only sign-out: clears this tab's session without revoking the server-side token family. */
   clearSession: () => void;
   bootstrapSession: () => Promise<void>;
-  refreshSession: () => Promise<string | null>;
+  /** `force` bypasses the already-authenticated short-circuit — used by the proactive refresh timer to rotate the access token before it expires. */
+  refreshSession: (force?: boolean) => Promise<string | null>;
 }
 
 // Only persist user for UI display (NOT for auth decisions)
@@ -56,12 +58,15 @@ export const useAuthStore = create<AuthState>((set, get) => {
         debugLog('received SESSION_LOGGED_OUT from another tab');
         clearLocalAuth(set);
         set({ isLoading: false, isRefreshing: false });
+        void resetToNeutralLanguage();
       } else if (message.type === 'SESSION_REFRESHED') {
         const { user, accessToken } = message;
         debugLog('received SESSION_REFRESHED from another tab');
         if (user && accessToken) {
           localStorage.setItem('pos_user', JSON.stringify(user));
           set({ user, accessToken, isAuthenticated: true, isLoading: false, isRefreshing: false });
+          // Another tab signed in as a different user — follow their language.
+          void applyUserLanguage(user);
         } else if (accessToken) {
           set({ accessToken, isAuthenticated: true, isRefreshing: false });
         }
@@ -80,6 +85,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
       localStorage.setItem('pos_user', JSON.stringify(user));
       set({ user, accessToken, isAuthenticated: true, isLoading: false, isRefreshing: false });
       postAuthChannelMessage({ type: 'SESSION_REFRESHED', accessToken, user });
+      // Session identity changed — switch the UI to THIS user's language.
+      void applyUserLanguage(user);
     },
 
     setAccessToken: (accessToken) => {
@@ -105,6 +112,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
       clearLocalAuth(set);
       set({ isLoading: false, isRefreshing: false });
+      // Leave the UI in a neutral (device) language so the next user — and the
+      // login screen — never inherit the previous account's language.
+      void resetToNeutralLanguage();
     },
 
     clearSession: () => {
@@ -116,6 +126,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
       // signs out the same user everywhere else.
       clearLocalAuth(set);
       set({ isLoading: false, isRefreshing: false });
+      // Session is gone from this tab — return to the neutral device language
+      // for the login screen (never keep the signed-out user's language).
+      void resetToNeutralLanguage();
     },
 
     bootstrapSession: async () => {
@@ -136,7 +149,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
     },
 
-    refreshSession: async () => {
+    refreshSession: async (force = false) => {
       // 1. If there's an active refresh in this tab, return it
       if (activeRefreshPromise) {
         return activeRefreshPromise;
@@ -146,7 +159,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
       const performRefresh = async (): Promise<string | null> => {
         try {
           // 3. Double-check auth inside the lock to handle cross-tab or concurrent calls
-          if (get().accessToken && get().isAuthenticated) {
+          // (bypassed when `force` — the proactive timer wants a fresh token
+          // even though the current one is still technically valid)
+          if (!force && get().accessToken && get().isAuthenticated) {
             return get().accessToken;
           }
 
@@ -180,6 +195,10 @@ export const useAuthStore = create<AuthState>((set, get) => {
                   isLoading: false,
                 });
                 postAuthChannelMessage({ type: 'SESSION_REFRESHED', accessToken, user: serverUser });
+                // Covers hard reloads and silent refreshes: re-apply THIS
+                // user's language so another account's cached choice (or the
+                // neutral login-screen language) never leaks into the session.
+                void applyUserLanguage(serverUser);
                 return accessToken;
               }
 
