@@ -33,6 +33,8 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+import { MemoryRouter } from 'react-router-dom';
+
 // Phase 14, §1.3 — the dashboard now reads `cashierOrderingEnabled` via
 // useSystemSettingQuery and uses useQueryClient for the live socket update.
 // Tests need a QueryClientProvider or those hooks throw.
@@ -40,7 +42,11 @@ const renderWithQueryClient = (ui: React.ReactElement) => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 0 } },
   });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>
+  );
 };
 
 describe('CashierDashboard', () => {
