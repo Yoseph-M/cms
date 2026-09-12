@@ -1,24 +1,54 @@
-import React, { useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CircleDollarSign, Clock3, ListTodo, ReceiptText, Sparkles, TrendingUp } from 'lucide-react';
+import {
+  ArrowRight,
+  Banknote,
+  CheckCircle2,
+  ChefHat,
+  CircleDollarSign,
+  Clock3,
+  CreditCard,
+  ShoppingCart,
+  Ticket,
+} from 'lucide-react';
 import type { Order } from '../../types';
 import { formatCurrency } from '../../utils/currency';
+import { axiosClient } from '../../api/axiosClient';
 import { useHeaderStore } from '../../store/headerStore';
-import { useOrdersQuery } from '../../hooks/useCachedQueries';
+import { useSocketStore } from '../../store/socketStore';
+import { useElapsedTime } from '../../components/cashier/dashboard/hooks/useElapsedTime';
+import { cn } from '../../lib/utils';
 
-/** A calm starting point for a cashier shift. Ticket processing lives in /tickets. */
+// Shared island-UI dashboard building blocks
+import { KpiCard } from '../../components/owner/dashboard/KpiCards';
+import { SectionCard } from '../../components/owner/dashboard/SectionCard';
+import { RevenueDonut } from '../../components/owner/dashboard/RevenueDonut';
+import {
+  RecentOrdersTable,
+  type RecentOrder,
+  type OrderStatusKey,
+} from '../../components/owner/dashboard/RecentOrdersTable';
+
+interface SettlementRow {
+  id: string;
+  amountMinor: number;
+  method: 'CASH' | 'CARD' | 'MOBILE';
+  createdAt: string;
+}
+
+const METHOD_COLOR: Record<string, string> = {
+  CASH: 'hsl(152 63% 40%)',
+  CARD: 'hsl(221 83% 53%)',
+  MOBILE: 'hsl(262 83% 58%)',
+};
+const METHOD_LABEL: Record<string, string> = { CASH: 'Cash', CARD: 'Card', MOBILE: 'Mobile' };
+
+/** A calm, glanceable dashboard for an open cashier shift. */
 export const CashierDashboard: React.FC = () => {
+  const { socket } = useSocketStore();
+  const queryClient = useQueryClient();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
-  const ordersQuery = useOrdersQuery();
-
-  const orders: Order[] = useMemo(() => {
-    const raw = ordersQuery.data;
-    if (!raw) return [];
-    const list = raw?.data ?? raw;
-    return Array.isArray(list) ? list : [];
-  }, [ordersQuery.data]);
-  const loading = ordersQuery.isLoading;
 
   useEffect(() => {
     setPageTitle({ title: 'Cashier dashboard', subtitle: 'Live shift overview' });
@@ -29,52 +59,293 @@ export const CashierDashboard: React.FC = () => {
     };
   }, [setPageTitle, setShowDateRange]);
 
-  const stats = useMemo(() => {
-    const active = orders.filter((order) => order.status !== 'PAID' && order.status !== 'CANCELLED');
-    const ready = active.filter((order) => order.status === 'SERVED');
-    const paid = orders.filter((order) => order.status === 'PAID');
-    return {
-      active: active.length,
-      ready: ready.length,
-      revenue: paid.reduce((sum, order) => sum + order.totalAmount, 0),
-      recent: active.slice(0, 4),
+  /* ── Live orders (mirrors the tickets queue window) ── */
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchOrders = async () => {
+    try {
+      const res = await axiosClient.get('/orders');
+      setOrders(res.data.data || res.data);
+    } catch {
+      // The ShiftManager already surfaced auth/network errors; stay quiet here.
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onNew = (o: Order) => setOrders((prev) => [o, ...prev.filter((x) => x.id !== o.id)]);
+    const onUpdate = (o: Order) => {
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)));
+      // A freshly settled ticket means new money hit today's collection totals.
+      if (o.status === 'PAID') {
+        queryClient.invalidateQueries({ queryKey: ['settlements', 'today-dashboard'] });
+      }
     };
+    const onCancel = (o: Order) =>
+      setOrders((prev) => prev.map((x) => (x.id === o.id ? o : x)));
+    socket.on('order:new', onNew);
+    socket.on('order:updated', onUpdate);
+    socket.on('order:cancelled', onCancel);
+    return () => {
+      socket.off('order:new', onNew);
+      socket.off('order:updated', onUpdate);
+      socket.off('order:cancelled', onCancel);
+    };
+  }, [socket, queryClient]);
+
+  /* ── Today's collections (from the settlement ledger) ── */
+  const todayWindow = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return { from: start.toISOString(), to: now.toISOString() };
+  }, []);
+
+  const settlementsQuery = useQuery<{ data: SettlementRow[] }>({
+    queryKey: ['settlements', 'today-dashboard', todayWindow.from],
+    queryFn: async () => {
+      const res = await axiosClient.get('/settlements', {
+        params: { from: todayWindow.from, to: todayWindow.to, page: 1, limit: 100 },
+      });
+      return res.data;
+    },
+    staleTime: 15_000,
+  });
+
+  const settlements = settlementsQuery.data?.data ?? [];
+
+  /* ── Derived stats ── */
+  const stats = useMemo(() => {
+    const active = orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED');
+    const ready = active.filter((o) => o.status === 'SERVED');
+    const cooking = active.filter((o) => o.status === 'SUBMITTED' || o.status === 'IN_KITCHEN');
+    const collectedMinor = settlements.reduce((sum, s) => sum + (s.amountMinor || 0), 0);
+    const byMethod = settlements.reduce<Record<string, number>>((acc, s) => {
+      acc[s.method] = (acc[s.method] || 0) + (s.amountMinor || 0);
+      return acc;
+    }, {});
+    const readySorted = [...ready].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    return {
+      ready: ready.length,
+      cooking: cooking.length,
+      readyOrders: readySorted.slice(0, 5),
+      collectedMinor,
+      settledCount: settlements.length,
+      byMethod,
+      avgMinor: settlements.length > 0 ? Math.round(collectedMinor / settlements.length) : 0,
+    };
+  }, [orders, settlements]);
+
+  const donutSegments = useMemo(
+    () =>
+      (['CASH', 'CARD', 'MOBILE'] as const)
+        .filter((m) => (stats.byMethod[m] ?? 0) > 0)
+        .map((m) => ({
+          label: METHOD_LABEL[m],
+          value: stats.byMethod[m] ?? 0,
+          color: METHOD_COLOR[m],
+        })),
+    [stats.byMethod],
+  );
+
+  const recentRows = useMemo<RecentOrder[]>(() => {
+    const STATUS_MAP: Record<string, OrderStatusKey> = {
+      PAID: 'paid',
+      CANCELLED: 'cancelled',
+      SERVED: 'pending',
+      SUBMITTED: 'pending',
+      IN_KITCHEN: 'pending',
+    };
+    return orders.slice(0, 10).map((o) => ({
+      id: o.id,
+      shortId: (o.clientOrderId ?? o.id).slice(0, 4).padStart(4, '0'),
+      type: o.tableNumber ? `Dine-in · T${o.tableNumber}` : 'Takeaway',
+      attendant: o.waiter?.name ?? o.cashier?.name ?? '—',
+      time: o.createdAt,
+      status: STATUS_MAP[o.status] ?? 'pending',
+      price: o.totalAmount,
+    }));
   }, [orders]);
 
   return (
-    <div className="h-full overflow-y-auto bg-white p-5 sm:p-8 lg:p-10">
-      <div className="mx-auto max-w-6xl">
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden rounded-3xl bg-slate-950 px-6 py-8 text-white sm:px-9">
-          <span className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-primary/30 blur-3xl" />
-          <div className="relative flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
-            <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Cashier workspace</p><h1 className="mt-2 font-display text-3xl font-bold tracking-tight sm:text-4xl">A clearer shift, from first ticket to close.</h1><p className="mt-3 max-w-xl text-sm text-slate-300">Use the Tickets workspace for focused payment collection and live service flow.</p></div>
-            <Link to="/cashier/tickets" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-slate-100">Open tickets <ArrowRight className="w-4 h-4" /></Link>
-          </div>
-        </motion.div>
-
-        <section className="mt-7 grid gap-4 sm:grid-cols-3">
-          <OverviewStat label="Ready to collect" value={loading ? '—' : stats.ready} note="Tickets awaiting payment" icon={<CircleDollarSign className="w-5 h-5" />} tone="emerald" />
-          <OverviewStat label="Active tickets" value={loading ? '—' : stats.active} note="Currently on the floor" icon={<ListTodo className="w-5 h-5" />} tone="blue" />
-          <OverviewStat label="Sales recorded" value={loading ? '—' : formatCurrency(stats.revenue)} note="From settled tickets" icon={<TrendingUp className="w-5 h-5" />} tone="violet" />
-        </section>
-
-        <section className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_0.8fr]">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6">
-            <div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">At a glance</p><h2 className="mt-1 font-display text-xl font-bold text-slate-950">Recent activity</h2></div><Link to="/cashier/tickets" className="text-sm font-semibold text-primary hover:underline">View tickets</Link></div>
-            <div className="mt-5 divide-y divide-slate-100">
-              {stats.recent.length ? stats.recent.map((order) => <div key={order.id} className="flex items-center justify-between gap-4 py-3"><div className="flex items-center gap-3 min-w-0"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-slate-700">{order.tableNumber || 'TO'}</span><div className="min-w-0"><p className="font-semibold text-slate-900">{order.tableNumber ? `Table ${order.tableNumber}` : 'Takeout'}</p><p className="text-xs text-slate-500">{order.status === 'SERVED' ? 'Ready to collect' : 'In progress'}</p></div></div><p className="font-display font-bold tabular-nums text-slate-950">{formatCurrency(order.totalAmount)}</p></div>) : <p className="py-10 text-center text-sm text-slate-500">No active tickets right now.</p>}
-            </div>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 sm:p-6"><ReceiptText className="w-6 h-6 text-primary" /><h2 className="mt-5 font-display text-xl font-bold text-slate-950">Ticket-first checkout</h2><p className="mt-2 text-sm leading-6 text-slate-600">The Tickets page keeps the payment workflow in one distraction-free place.</p><div className="mt-6 space-y-3 text-sm text-slate-600"><p className="flex gap-2"><Sparkles className="mt-0.5 w-4 h-4 text-primary" />Live queue grouping</p><p className="flex gap-2"><Clock3 className="mt-0.5 w-4 h-4 text-primary" />Wait-time visibility</p></div><Link to="/cashier/tickets" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-slate-950">Go to tickets <ArrowRight className="w-4 h-4" /></Link></div>
-        </section>
+    <div className="h-full overflow-y-auto px-5 sm:px-6 py-6 space-y-5 sm:space-y-6 animate-fade-in">
+      {/* KPI islands */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
+        <KpiCard
+          label="Ready to collect"
+          value={stats.ready}
+          kind="number"
+          icon={CheckCircle2}
+          tone="mint"
+        />
+        <KpiCard
+          label="In progress"
+          value={stats.cooking}
+          kind="number"
+          icon={ChefHat}
+          tone="blush"
+        />
+        <KpiCard
+          label="Collected today"
+          value={stats.collectedMinor}
+          kind="currency"
+          icon={CircleDollarSign}
+          tone="cream"
+        />
+        <KpiCard
+          label="Avg. ticket today"
+          value={stats.avgMinor}
+          kind="currency"
+          icon={Banknote}
+          tone="rose"
+        />
       </div>
+
+      {/* Ready-to-pay queue + payment method mix */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+        <SectionCard
+          className="lg:col-span-2"
+          title="Ready to collect"
+          description="Payments waiting at the counter"
+          rightAccessory={
+            <Link
+              to="/cashier/tickets"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-secondary/60"
+            >
+              <Ticket className="w-4 h-4 text-muted-foreground" />
+              Open tickets
+              <ArrowRight className="w-4 h-4 text-muted-foreground" />
+            </Link>
+          }
+        >
+          {isLoading ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">Loading tickets…</p>
+          ) : stats.readyOrders.length === 0 ? (
+            <div className="py-12 text-center">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-foreground">Queue is clear</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Orders that are ready for payment will appear here.
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border/40">
+              {stats.readyOrders.map((order) => (
+                <li key={order.id}>
+                  <Link
+                    to="/cashier/tickets"
+                    className="group flex items-center justify-between gap-4 py-3 transition-colors rounded-lg"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 font-display text-sm font-bold text-emerald-700">
+                        {order.tableNumber ? order.tableNumber : <ShoppingCart className="w-4 h-4 text-emerald-600" />}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {order.tableNumber ? `Table ${order.tableNumber}` : 'Takeout'}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          #{order.clientOrderId.slice(0, 6).toUpperCase()} ·{' '}
+                          {(order.items || []).reduce((n, i) => n + i.quantity, 0)} items
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <WaitChip createdAt={order.createdAt} />
+                      <p className="font-display text-base font-bold tabular-nums text-foreground">
+                        {formatCurrency(order.totalAmount)}
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Payments today"
+          description={`${stats.settledCount} ${stats.settledCount === 1 ? 'payment' : 'payments'} recorded`}
+        >
+          {donutSegments.length > 0 ? (
+            <>
+              <RevenueDonut segments={donutSegments} />
+              <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border/40 pt-4">
+                {(['CASH', 'CARD', 'MOBILE'] as const).map((m) => {
+                  const total = stats.byMethod[m] ?? 0;
+                  return (
+                    <div key={m} className="min-w-0 text-center">
+                      <p className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: METHOD_COLOR[m] }}
+                        />
+                        {METHOD_LABEL[m]}
+                      </p>
+                      <p className="mt-1 truncate text-sm font-bold tabular-nums text-foreground">
+                        {formatCurrency(total)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="py-14 text-center text-sm text-muted-foreground">
+              <CreditCard className="mx-auto h-8 w-8 opacity-40" />
+              <p className="mt-3 font-medium text-foreground">No payments yet today</p>
+              <p className="mt-1 text-xs">Collections will appear here as you settle tickets.</p>
+            </div>
+          )}
+        </SectionCard>
+      </div>
+
+      {/* Recent tickets */}
+      <SectionCard
+        title="Recent tickets"
+        description="Latest activity across the floor"
+        flush
+      >
+        <div className="px-5 sm:px-6 py-5">
+          <RecentOrdersTable orders={recentRows} />
+        </div>
+      </SectionCard>
+
+      {(isLoading || settlementsQuery.isLoading) && (
+        <p className="text-center text-[11px] text-muted-foreground">Refreshing…</p>
+      )}
     </div>
   );
 };
 
-const OverviewStat: React.FC<{ label: string; value: React.ReactNode; note: string; icon: React.ReactNode; tone: 'emerald' | 'blue' | 'violet' }> = ({ label, value, note, icon, tone }) => {
-  const tones = { emerald: 'bg-emerald-50 text-emerald-700', blue: 'bg-blue-50 text-blue-700', violet: 'bg-violet-50 text-violet-700' };
-  return <motion.div whileHover={{ y: -3 }} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone]}`}>{icon}</div><p className="mt-5 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{label}</p><p className="mt-1 font-display text-3xl font-bold tabular-nums text-slate-950">{value}</p><p className="mt-1 text-xs text-slate-500">{note}</p></motion.div>;
+const WaitChip: React.FC<{ createdAt: string }> = ({ createdAt }) => {
+  const elapsed = useElapsedTime(createdAt);
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-mono font-semibold tabular-nums',
+        elapsed.tone === 'danger'
+          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+          : elapsed.tone === 'warning'
+            ? 'border-warning/30 bg-warning/10 text-[hsl(var(--warning))]'
+            : 'border-transparent bg-secondary/60 text-muted-foreground',
+      )}
+    >
+      <Clock3 className="w-3 h-3" />
+      {elapsed.display}
+    </span>
+  );
 };
 
 export default CashierDashboard;
