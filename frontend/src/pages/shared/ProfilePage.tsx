@@ -1,242 +1,138 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  AtSign,
+  BadgeCheck,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Lock,
+  Pencil,
+  Phone,
+  Save,
+  Shield,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  UserRound,
+} from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useToastStore } from '../../store/toastStore';
 import { useHeaderStore } from '../../store/headerStore';
 import { axiosClient } from '../../api/axiosClient';
 import { useMeQuery } from '../../hooks/useCachedQueries';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
+
 import { Input } from '../../components/ui/Input';
-import { LoadingState } from '../../components/common/LoadingState';
-import {
-  User as UserIcon,
-  Lock,
-  Mail,
-  Phone,
-  Crown,
-  Briefcase,
-  Calculator,
-  Copy,
-  Check,
-  Eye,
-  EyeOff,
-  Sparkles,
-  BadgeCheck,
-  KeyRound,
-  AlertCircle,
-  Pencil,
-  X,
-  Camera,
-} from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Button } from '../../components/ui/Button';
 import { cn } from '../../lib/utils';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { fileToCompressedDataUrl } from '../../utils/imageResize';
 import type { Role } from '../../types';
 
-/* ─── Role-themed config ─── */
-type RoleMeta = {
-  icon: React.FC<{ className?: string }>;
-  label: string;
-  tagline: string;
-  cta: string;
-  ctaTo: string;
-  tone: 'violet' | 'blue' | 'cyan';
-  gradient: string;
-};
-
-const ROLE_META: Record<Role, RoleMeta> = {
+/* ─── Role presentation metadata ─── */
+const ROLE_META: Record<
+  Role,
+  { label: string; description: string; className: string; gradient: string }
+> = {
   OWNER: {
-    icon: Crown,
     label: 'Owner',
-    tagline: 'You run the whole business: money, people, and settings.',
-    cta: 'Open owner console',
-    ctaTo: '/owner',
-    tone: 'violet',
-    gradient: 'from-brand-700 via-brand-500 to-cyan-500',
+    description: 'Full administrative, financial & operational privileges across all venues.',
+    className: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30',
+    gradient: 'from-amber-500 via-orange-500 to-rose-500',
   },
   MANAGER: {
-    icon: Briefcase,
     label: 'Manager',
-    tagline: 'Run the floor, menu catalog, staff and shifts.',
-    cta: 'Open workbench',
-    ctaTo: '/manager',
-    tone: 'blue',
-    gradient: 'from-brand-600 via-brand-500 to-cyan-400',
+    description: 'Store operations, staff scheduling & menu catalog management.',
+    className: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-violet-500/30',
+    gradient: 'from-violet-500 via-purple-500 to-fuchsia-500',
   },
   CASHIER: {
-    icon: Calculator,
     label: 'Cashier',
-    tagline: 'Take payments and clear the live order queue.',
-    cta: 'Open live queue',
-    ctaTo: '/cashier',
-    tone: 'cyan',
-    gradient: 'from-cyan-500 via-brand-500 to-brand-700',
+    description: 'Front-of-house order management & POS terminal checkout access.',
+    className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30',
+    gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
   },
-  // Safe fallbacks for other roles that may share this route
-  WAITER:  { icon: UserIcon,  label: 'Waiter',  tagline: 'Service-side access.', cta: 'Back to floor',  ctaTo: '/waiter',  tone: 'blue',  gradient: 'from-brand-600 via-brand-500 to-cyan-400' },
-  COOKER:  { icon: UserIcon,  label: 'Cooker',  tagline: 'Kitchen-side access.', cta: 'Open kitchen',  ctaTo: '/kitchen', tone: 'blue',  gradient: 'from-brand-600 via-brand-500 to-cyan-400' },
-  BARISTA: { icon: UserIcon,  label: 'Barista', tagline: 'Bar-side access.',    cta: 'Open bar',      ctaTo: '/bar',     tone: 'blue',  gradient: 'from-brand-600 via-brand-500 to-cyan-400' },
+  WAITER: {
+    label: 'Waiter',
+    description: 'Table order placement & dining floor guest service.',
+    className: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-sky-500/30',
+    gradient: 'from-sky-500 via-blue-500 to-indigo-500',
+  },
+  COOKER: {
+    label: 'Cook',
+    description: 'Kitchen order fulfillment & food preparation status tracking.',
+    className: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 ring-rose-500/30',
+    gradient: 'from-rose-500 via-red-500 to-orange-500',
+  },
+  BARISTA: {
+    label: 'Barista',
+    description: 'Beverage bar orders & drink preparation fulfillment.',
+    className: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 ring-orange-500/30',
+    gradient: 'from-orange-500 via-amber-500 to-yellow-500',
+  },
 };
 
-/* ─── Helpers ─── */
-const firstNameOf = (name: string) => name.trim().split(' ')[0] || '?';
-
-const passwordStrength = (pwd: string): { score: 0 | 1 | 2 | 3; label: string; color: string } => {
-  if (!pwd) return { score: 0, label: 'Empty', color: 'bg-border' };
-  let s = 0;
-  if (pwd.length >= 6) s++;
-  if (pwd.length >= 10) s++;
-  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) s++;
-  if (/\d/.test(pwd) && /[^A-Za-z0-9]/.test(pwd)) s++;
-  if (s <= 1) return { score: 1, label: 'Weak',   color: 'bg-destructive' };
-  if (s === 2) return { score: 2, label: 'Fair',   color: 'bg-[hsl(var(--warning))]' };
-  return { score: 3, label: 'Strong', color: 'bg-emerald-500' };
-};
-
-/* ─── Small reusable bits ─── */
-const FieldRow: React.FC<{
-  icon: React.ReactNode;
-  label: string;
-  value: string | null | undefined;
-  copyable?: boolean;
-}> = ({ icon, label, value, copyable }) => {
-  const [copied, setCopied] = useState(false);
-  const text = value || '—';
-  const handleCopy = async () => {
-    if (!value) return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    } catch {
-      /* ignore */
-    }
-  };
-  return (
-    <div className="group flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/40 border border-border/60 hover:border-primary/30 hover:bg-secondary/60 transition-all">
-      <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary border border-primary/20 flex items-center justify-center shrink-0">
-        {icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-        <p className="text-sm font-medium text-foreground truncate">{text}</p>
-      </div>
-      {copyable && value && (
-        <button
-          onClick={handleCopy}
-          className={cn(
-            'p-1.5 rounded-md border border-transparent text-muted-foreground transition-all',
-            'hover:border-primary/30 hover:text-primary hover:bg-primary/5',
-            copied && 'border-emerald-500/30 text-emerald-600 bg-emerald-500/5',
-          )}
-          aria-label={`Copy ${label}`}
-          title={copied ? 'Copied!' : 'Copy'}
-        >
-          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-        </button>
-      )}
-    </div>
-  );
-};
-
-const PasswordInput: React.FC<{
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  autoComplete?: string;
-  minLength?: number;
-  required?: boolean;
-}> = ({ value, onChange, placeholder, autoComplete, minLength, required }) => {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="relative">
-      <Input
-        type={show ? 'text' : 'password'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        minLength={minLength}
-        required={required}
-        leftIcon={<KeyRound className="w-4 h-4" />}
-        className="pr-12"
-      />
-      <button
-        type="button"
-        onClick={() => setShow((s) => !s)}
-        tabIndex={-1}
-        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-        aria-label={show ? 'Hide password' : 'Show password'}
-      >
-        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-      </button>
-    </div>
-  );
-};
-
-/* Ethiopian phone input: locked +251 prefix, 9 digit payload */
+/* Ethiopian phone: +251 prefix, 9 digits */
 const ET_PHONE_PREFIX = '+251';
 const ET_PHONE_DIGITS = 9;
 
-const EthiopiaPhoneInput: React.FC<{
-  /** Just the 9 digits (no prefix). */
-  digits: string;
-  onDigitsChange: (digits: string) => void;
-  required?: boolean;
-  autoComplete?: string;
-}> = ({ digits, onDigitsChange, required, autoComplete }) => {
-  return (
-    <div
-      className={cn(
-        'group flex items-center rounded-xl',
-        'bg-secondary/50 border border-input transition-all',
-        'hover:border-primary/40 focus-within:border-primary focus-within:bg-background',
-        'focus-within:shadow-[0_0_0_4px_hsl(217_91%_60%/0.14)]',
-      )}
-    >
-      <span className="pl-3 pr-1 flex items-center gap-1.5 text-sm select-none">
-        <Phone className="w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-        <span className="font-semibold text-foreground tabular-nums">{ET_PHONE_PREFIX}</span>
-      </span>
-      <span aria-hidden className="h-6 w-px bg-border/70" />
-      <input
-        type="tel"
-        inputMode="numeric"
-        autoComplete={autoComplete}
-        value={digits}
-        onChange={(e) => onDigitsChange(e.target.value.replace(/\D/g, '').slice(0, ET_PHONE_DIGITS))}
-        placeholder="9X XXX XXXX"
-        required={required}
-        maxLength={ET_PHONE_DIGITS}
-        className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground/70 text-sm h-11 px-3 outline-none border-0 disabled:opacity-50 tabular-nums"
-      />
-    </div>
-  );
+const firstNameOf = (name: string) => name.trim().split(' ')[0] || '?';
+const initialsOf = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join('') || '?';
+
+const dateFmt = new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' });
+const fmtDate = (iso?: string) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : dateFmt.format(d);
 };
 
-const SectionTitle: React.FC<{
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-  badge?: React.ReactNode;
-}> = ({ icon, title, subtitle, badge }) => (
-  <div className="flex items-start justify-between gap-3 mb-4">
-    <div className="flex items-center gap-3">
-      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center shadow-sm">
-        {icon}
-      </div>
-      <div>
-        <h3 className="font-display text-lg font-semibold text-foreground leading-tight">{title}</h3>
-        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
-      </div>
-    </div>
-    {badge}
-  </div>
-);
+/* ─── Password strength meter helper ─── */
+const evaluatePassword = (pw: string) => {
+  const hasMinLength = pw.length >= 6;
+  const hasLongLength = pw.length >= 10;
+  const hasMixedCase = /[A-Z]/.test(pw) && /[a-z]/.test(pw);
+  const hasSpecialOrDigit = /\d/.test(pw) || /[^A-Za-z0-9]/.test(pw);
 
-/* ─── Page ─── */
+  let score = 0;
+  if (hasMinLength) score++;
+  if (hasLongLength) score++;
+  if (hasMixedCase) score++;
+  if (hasSpecialOrDigit) score++;
+
+  let label = 'Weak';
+  let color = 'bg-destructive';
+  if (score === 2) {
+    label = 'Fair';
+    color = 'bg-warning';
+  } else if (score === 3) {
+    label = 'Good';
+    color = 'bg-primary';
+  } else if (score >= 4) {
+    label = 'Strong';
+    color = 'bg-[hsl(var(--success))]';
+  }
+
+  return {
+    score,
+    label,
+    color,
+    criteria: [
+      { met: hasMinLength, label: 'At least 6 characters' },
+      { met: hasMixedCase, label: 'Uppercase & lowercase letters' },
+      { met: hasSpecialOrDigit, label: 'Includes number or symbol' },
+    ],
+  };
+};
+
 export const ProfilePage: React.FC = () => {
   const { user } = useAuthStore();
   const { addToast } = useToastStore();
@@ -244,9 +140,8 @@ export const ProfilePage: React.FC = () => {
   const meQuery = useMeQuery();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
 
-  // Reflect the current section in the global header.
   useEffect(() => {
-    setPageTitle({ title: 'Profile', subtitle: 'Your account, security, and personal details' });
+    setPageTitle({ title: 'Account Profile', subtitle: 'Manage your credentials, personal identity, and security' });
     setShowDateRange(false);
     return () => {
       setPageTitle({ title: 'Overview', subtitle: '' });
@@ -254,53 +149,57 @@ export const ProfilePage: React.FC = () => {
     };
   }, [setPageTitle, setShowDateRange]);
 
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const me = meQuery.data;
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [draftName, setDraftName] = useState('');
-  const [draftUsername, setDraftUsername] = useState('');
+  /* ─── Profile form state ─── */
+  const [draftName, setDraftName] = useState(user?.name ?? '');
+  const [draftUsername, setDraftUsername] = useState(user?.username ?? '');
   const [draftPhone, setDraftPhone] = useState('');
-  const [draftAvatar, setDraftAvatar] = useState<string | null>(null);
+  const [draftAvatar, setDraftAvatar] = useState<string | null | undefined>(undefined);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  const role = user?.role as Role | undefined;
-  const meta = role ? ROLE_META[role] : undefined;
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (!me || hydratedRef.current) return;
+    hydratedRef.current = true;
+    setDraftName(me.name ?? user?.name ?? '');
+    setDraftUsername(me.username ?? user?.username ?? '');
+    setDraftPhone((me.phone ?? user?.phone ?? '').toString().replace(/\D/g, '').slice(-ET_PHONE_DIGITS));
+  }, [me, user]);
 
-  const me = meQuery.data;
-  const strength = useMemo(() => passwordStrength(newPassword), [newPassword]);
-  const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
-  const passwordFormValid =
-    currentPassword.length > 0 && newPassword.length >= 6 && passwordsMatch;
+  /* ─── Password form state ─── */
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
-  if (!user || !meta) return null;
+  if (!user) return null;
 
-  const displayName = isEditing ? draftName || user.name : user.name;
-  const displayUsername = isEditing ? draftUsername || '' : (me?.username ?? user.username ?? '');
-  const displayPhone = isEditing
-    ? (draftPhone ? `${ET_PHONE_PREFIX} ${draftPhone}` : '')
-    : (me?.phone ?? user.phone ?? '');
-  const avatarSrc = isEditing ? draftAvatar : (me?.avatarUrl ?? user.avatarUrl ?? null);
-  /* Avatar fallback: the first word of the user's name (e.g. "Girm" for "Girm Tsegaye"). */
-  const firstName = firstNameOf(displayName);
-
-  const startEditing = () => {
-    setDraftName(me?.name ?? user.name);
-    setDraftUsername(me?.username ?? user.username ?? '');
-    // Pull the last 9 digits so a stored value like "+251 91 234 5678" or "0911234567" works.
-    const storedPhone = (me?.phone ?? user.phone ?? '').toString();
-    const phoneDigits = storedPhone.replace(/\D/g, '').slice(-ET_PHONE_DIGITS);
-    setDraftPhone(phoneDigits);
-    setDraftAvatar(me?.avatarUrl ?? user.avatarUrl ?? null);
-    setIsEditing(true);
+  const role = user.role as Role;
+  const meta = ROLE_META[role] ?? {
+    label: role,
+    description: 'System user profile.',
+    className: 'bg-secondary text-foreground ring-border',
+    gradient: 'from-brand-600 via-brand-500 to-cyan-400',
   };
 
-  const cancelEditing = () => {
-    setIsEditing(false);
-  };
+  const avatarSrc = draftAvatar !== undefined ? draftAvatar : (me?.avatarUrl ?? user.avatarUrl ?? null);
+  const firstName = firstNameOf(draftName || user.name);
+  const initials = initialsOf(draftName || user.name);
+  const joined = fmtDate(user.createdAt ?? (me?.createdAt as string | undefined));
+  const profileFormValid = draftName.trim().length >= 2 && draftPhone.length === ET_PHONE_DIGITS;
+  const passwordFormValid = currentPassword.length > 0 && newPassword.length >= 6;
+  const pwEvaluation = evaluatePassword(newPassword);
+
+  /* Dirty field tracking */
+  const isNameDirty = draftName.trim() !== (me?.name ?? user.name ?? '');
+  const isUsernameDirty = draftUsername.trim() !== (me?.username ?? user.username ?? '');
+  const isPhoneDirty =
+    draftPhone !== (me?.phone ?? user?.phone ?? '').toString().replace(/\D/g, '').slice(-ET_PHONE_DIGITS);
+  const isAvatarDirty = draftAvatar !== undefined;
+  const hasDirtyFields = isNameDirty || isUsernameDirty || isPhoneDirty || isAvatarDirty;
 
   const handleAvatarFile = async (file?: File | null) => {
     if (!file) return;
@@ -312,25 +211,17 @@ export const ProfilePage: React.FC = () => {
       const dataUrl = await fileToCompressedDataUrl(file);
       setDraftAvatar(dataUrl);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Could not read image', message: extractErrorMessage(err, 'Please try a different image.') });
+      addToast({
+        type: 'error',
+        title: 'Could not read image',
+        message: extractErrorMessage(err, 'Please try a different image.'),
+      });
     }
   };
 
-  const openAvatarPicker = () => {
-    if (!isEditing) setIsEditing(true);
-    // Wait a tick so the file picker can open after the re-render.
-    requestAnimationFrame(() => avatarInputRef.current?.click());
-  };
-
-  const removeAvatarPhoto = () => {
-    if (!isEditing) setIsEditing(true);
-    setDraftAvatar(null);
-  };
-
-  const handleSaveProfile = async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
     const name = draftName.trim();
-    // Re-assemble the full Ethiopia phone number from the 9 digit payload.
     const phone = draftPhone ? `${ET_PHONE_PREFIX}${draftPhone}` : '';
     if (name.length < 2) {
       addToast({ type: 'error', title: 'Invalid name', message: 'Full name must be at least 2 characters.' });
@@ -346,13 +237,12 @@ export const ProfilePage: React.FC = () => {
         name,
         username: draftUsername.trim() || null,
         phone,
-        avatarUrl: draftAvatar,
+        avatarUrl: avatarSrc ?? null,
       });
       const updated = res.data;
       queryClient.setQueryData(['me'], updated);
       useAuthStore.getState().setUser({ ...user, ...updated });
-      addToast({ type: 'success', title: 'Profile updated', message: 'Your profile changes have been saved.' });
-      setIsEditing(false);
+      addToast({ type: 'success', title: 'Profile updated', message: 'Your personal changes have been saved.' });
     } catch (err: any) {
       addToast({ type: 'error', title: 'Update failed', message: extractErrorMessage(err) });
     } finally {
@@ -362,10 +252,6 @@ export const ProfilePage: React.FC = () => {
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!passwordsMatch) {
-      addToast({ type: 'error', title: 'Password mismatch', message: 'New passwords do not match.' });
-      return;
-    }
     if (newPassword.length < 6) {
       addToast({ type: 'error', title: 'Too short', message: 'Password must be at least 6 characters.' });
       return;
@@ -373,10 +259,9 @@ export const ProfilePage: React.FC = () => {
     setIsSavingPassword(true);
     try {
       await axiosClient.patch('/users/me/password', { currentPassword, newPassword });
-      addToast({ type: 'success', title: 'Password updated', message: 'Your password has been changed.' });
+      addToast({ type: 'success', title: 'Password updated', message: 'Your password has been changed successfully.' });
       setCurrentPassword('');
       setNewPassword('');
-      setConfirmPassword('');
     } catch (err: any) {
       addToast({
         type: 'error',
@@ -389,330 +274,447 @@ export const ProfilePage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in pb-10">
-      {/* ─── Hero card ─── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative rounded-2xl border border-border/40 bg-card overflow-hidden shadow-[0_4px_24px_-12px_rgba(59,130,246,0.25),0_1px_2px_rgba(15,23,42,0.04)]"
-      >
-        {/* Gradient header */}
-        <div className={cn('relative h-32 bg-gradient-to-br', meta.gradient)}>
-          <div
-            aria-hidden
-            className="absolute inset-0 opacity-30 mix-blend-soft-light"
-            style={{
-              backgroundImage:
-                'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)',
-              backgroundSize: '16px 16px',
-            }}
-          />
-          <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-white/20" />
-          <span aria-hidden className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
-          <span aria-hidden className="absolute -bottom-12 -left-6 w-32 h-32 rounded-full bg-cyan-300/20 blur-2xl" />
-        </div>
+    <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-fade-in">
+      {/* ═══════════ Executive Bento Cover & Identity Station ═══════════ */}
+      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6 shadow-sm sm:p-8">
+        {/* Ambient Glow Aura */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-primary/15 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-16 left-1/4 h-56 w-56 rounded-full bg-cyan-500/10 blur-3xl"
+        />
 
-        {/* Body */}
-        <div className="px-6 sm:px-8 pb-6 -mt-14">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5">
-            <div className="flex flex-col sm:flex-row sm:items-end gap-5 min-w-0">
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            {/* Avatar Station — display only; photo changes live in Personal Details */}
+            <div className="relative shrink-0">
               <div
-                role="button"
-                tabIndex={0}
-                onClick={openAvatarPicker}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openAvatarPicker();
-                  }
-                }}
-                aria-label={avatarSrc ? 'Change photo' : 'Add photo'}
-                title={avatarSrc ? 'Change photo' : 'Add photo'}
-                className="group relative shrink-0 rounded-2xl cursor-pointer focus:outline-none"
-              >
-                <div className={cn(
-                  'w-28 h-28 rounded-2xl bg-gradient-to-br text-white flex items-center justify-center',
-                  'font-display text-4xl font-bold shadow-2xl overflow-hidden',
+                className={cn(
+                  'flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-xl ring-4 ring-background overflow-hidden',
+                  'font-display text-3xl font-bold',
                   meta.gradient,
-                )}>
-                  {avatarSrc ? (
-                    <img src={avatarSrc} alt={firstName} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="leading-none">{firstName.charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
-                {/* Camera icon — sits on top of the avatar box (overlapping the top edge), fades in on hover */}
-                <span
-                  aria-hidden
-                  className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-slate-900/90 text-white shadow-lg flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity ring-2 ring-card"
-                >
-                  <Camera className="w-4 h-4" />
-                </span>
-                {role !== 'OWNER' && (
-                  <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-card border-2 border-card flex items-center justify-center shadow-md pointer-events-none">
-                    <span className="w-full h-full rounded-full bg-emerald-500 flex items-center justify-center">
-                      <BadgeCheck className="w-3.5 h-3.5 text-white" />
-                    </span>
-                  </span>
                 )}
-                {avatarSrc && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeAvatarPhoto();
-                    }}
-                    className="absolute bottom-2 right-2 w-7 h-7 rounded-full bg-destructive/90 text-white shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity hover:bg-destructive"
-                    aria-label="Remove photo"
-                    title="Remove photo"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+              >
+                {avatarSrc ? (
+                  <img src={avatarSrc} alt={firstName} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="leading-none">{initials}</span>
                 )}
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    handleAvatarFile(e.target.files?.[0]);
-                    e.target.value = '';
-                  }}
-                />
               </div>
-              <div className="min-w-0 pb-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="font-display text-2xl sm:text-3xl font-bold text-foreground leading-tight truncate">
-                    {firstName}
-                  </h1>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1 max-w-md">{meta.tagline}</p>
-                <div className="flex items-center gap-2 mt-3 flex-wrap">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Active
+            </div>
+
+            {/* Profile Info Details */}
+            <div className="space-y-1.5 min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                  {draftName || user.name}
+                </h1>
+                <span className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 text-xs font-bold ring-1 ring-inset', meta.className)}>
+                  <BadgeCheck className="h-3.5 w-3.5" />
+                  {meta.label}
+                </span>
+              </div>
+
+              <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1">
+                {draftPhone && (
+                  <span className="inline-flex items-center gap-1">
+                    <Phone className="h-3.5 w-3.5 text-primary" />
+                    +251 {draftPhone}
                   </span>
-                </div>
+                )}
+                {joined && (
+                  <span className="hidden sm:inline-flex items-center gap-1 text-muted-foreground">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Member since {joined}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Right Status Badges & Quick Indicator */}
+          <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end">
+            {hasDirtyFields && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/15 px-3 py-1 text-xs font-bold text-warning ring-1 ring-inset ring-warning/30 animate-pulse">
+                <Sparkles className="h-3 w-3" />
+                Unsaved modifications
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          handleAvatarFile(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+
+      {/* ═══════════ Two-Column Executive Studio Layout ═══════════ */}
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:gap-8">
+        {/* Left Column: Account Snapshot & Security Health */}
+        <aside className="space-y-6">
+          {/* Role & Privileges Card */}
+          <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm space-y-4">
+            <div className="flex items-center gap-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <Shield className="h-4 w-4 text-primary" />
+              <span>Role & Privileges</span>
+            </div>
+
+            <div className="rounded-xl bg-secondary/40 p-4 border border-border/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-foreground">{meta.label} Access</span>
+                <span className="text-[11px] font-bold text-primary">Level 1</span>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {meta.description}
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Identity status</span>
+                <span className="font-semibold text-foreground flex items-center gap-1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--success))]" />
+                  Verified
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Country format</span>
+                <span className="font-semibold text-foreground">Ethiopia (+251)</span>
               </div>
             </div>
           </div>
-        </div>
-      </motion.div>
 
-      {meQuery.isLoading ? (
-        <LoadingState message="Loading profile..." />
-      ) : (
-        <>
-          {/* ─── Account details + Security side-by-side ─── */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Account details */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.05 }}
-              className="lg:col-span-3"
-            >
-              <Card className="p-6 h-full">
-                <SectionTitle
-                  icon={<UserIcon className="w-5 h-5" />}
-                  title="Account details"
-                  subtitle={isEditing ? 'Update your details, then save.' : 'Your contact info, at a glance.'}
-                  badge={
-                    isEditing ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={cancelEditing}
-                          disabled={isSavingProfile}
-                          className="w-9 h-9 rounded-full bg-secondary text-foreground hover:bg-secondary/80 border border-border shadow-sm flex items-center justify-center transition-colors disabled:opacity-50"
-                          aria-label="Cancel editing"
-                          title="Cancel"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSaveProfile()}
-                          disabled={isSavingProfile}
-                          className="w-9 h-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm flex items-center justify-center transition-colors disabled:opacity-60"
-                          aria-label="Apply changes"
-                          title="Apply changes"
-                        >
-                          {isSavingProfile ? (
-                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          ) : (
-                            <Check className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
+          {/* Security Recommendations Card */}
+          <div className="rounded-2xl border border-border/60 bg-secondary/30 p-5 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-foreground">
+              <ShieldCheck className="h-4 w-4 text-[hsl(var(--success))]" />
+              <span>Security Standards</span>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Your password protects critical restaurant operations, orders, and financial data. Always use a strong, unique passkey.
+            </p>
+          </div>
+        </aside>
+
+        {/* Right Column: Personal Details & Password Forms */}
+        <main className="space-y-6">
+          {/* Card 1: Personal Details Studio */}
+          <section className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md sm:p-7">
+            <div className="flex items-start justify-between gap-4 border-b border-border/50 pb-5 mb-6">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 shadow-sm">
+                  <UserRound className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight text-foreground">
+                    Personal Details
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Update your public display name, username, and Ethiopian mobile number.
+                  </p>
+                </div>
+              </div>
+
+              {isSavingProfile && (
+                <span className="text-xs font-medium text-primary animate-pulse">Saving changes...</span>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="space-y-6">
+              {/* Photo Change Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/60 bg-secondary/30 p-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn(
+                      'flex h-12 w-12 items-center justify-center rounded-xl text-white font-bold shadow-sm overflow-hidden shrink-0',
+                      meta.gradient,
+                    )}
+                  >
+                    {avatarSrc ? (
+                      <img src={avatarSrc} alt={firstName} className="h-full w-full object-cover" />
                     ) : (
+                      <span>{initials}</span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Profile Picture</p>
+                    <p className="text-xs text-muted-foreground">
+                      Visible to team members across orders and shifts.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => avatarInputRef.current?.click()}
+                    leftIcon={<Pencil className="h-3.5 w-3.5" />}
+                  >
+                    Upload photo
+                  </Button>
+                  {avatarSrc && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setDraftAvatar(null)}
+                      leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Form Input Fields */}
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <UserRound className="h-3.5 w-3.5 text-primary" />
+                      Full Name
+                    </span>
+                    {isNameDirty && (
+                      <span className="rounded-full bg-warning/15 px-2 py-0.2 text-[10px] font-bold uppercase tracking-wide text-warning">
+                        Edited
+                      </span>
+                    )}
+                  </label>
+                  <Input
+                    type="text"
+                    id="full-name"
+                    value={draftName}
+                    onChange={(e) => setDraftName(e.target.value)}
+                    placeholder="e.g. Abebe Bikila"
+                    minLength={2}
+                    required
+                    leftIcon={<UserRound className="h-4 w-4 text-muted-foreground" />}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <AtSign className="h-3.5 w-3.5 text-primary" />
+                      Username Handle
+                    </span>
+                    {isUsernameDirty && (
+                      <span className="rounded-full bg-warning/15 px-2 py-0.2 text-[10px] font-bold uppercase tracking-wide text-warning">
+                        Edited
+                      </span>
+                    )}
+                  </label>
+                  <Input
+                    type="text"
+                    id="username"
+                    value={draftUsername}
+                    onChange={(e) => setDraftUsername(e.target.value)}
+                    placeholder="e.g. abebe@cafeflow.com"
+                    leftIcon={<AtSign className="h-4 w-4 text-muted-foreground" />}
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">Used for workspace mentions.</p>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5 text-primary" />
+                      Phone Number (+251)
+                    </span>
+                    <span className="text-[10px] font-semibold text-muted-foreground">
+                      {draftPhone.length}/{ET_PHONE_DIGITS}
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type="tel"
+                      inputMode="numeric"
+                      id="phone"
+                      value={draftPhone}
+                      onChange={(e) =>
+                        setDraftPhone(e.target.value.replace(/\D/g, '').slice(0, ET_PHONE_DIGITS))
+                      }
+                      placeholder="9X XXX XXXX"
+                      maxLength={ET_PHONE_DIGITS}
+                      required
+                      leftIcon={<Phone className="h-4 w-4 text-muted-foreground" />}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">9 digits following the Ethiopian +251 country code.</p>
+                </div>
+              </div>
+
+              {/* Save Bar */}
+              <div className="flex items-center justify-end gap-3 border-t border-border/50 pt-4">
+                <Button
+                  type="submit"
+                  disabled={!profileFormValid || isSavingProfile || !hasDirtyFields}
+                  leftIcon={<Save className="h-4 w-4" />}
+                >
+                  {isSavingProfile ? 'Saving…' : 'Save changes'}
+                </Button>
+              </div>
+            </form>
+          </section>
+
+          {/* Card 2: Security & Password Station */}
+          <section className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md sm:p-7">
+            <div className="flex items-start justify-between gap-4 border-b border-border/50 pb-5 mb-6">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 ring-1 ring-inset ring-violet-500/20 shadow-sm">
+                  <KeyRound className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight text-foreground">
+                    Password & Security
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Change your sign-in password and view password strength metrics.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handlePasswordChange} className="space-y-6">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <Lock className="h-3.5 w-3.5 text-primary" />
+                    Current Password
+                  </label>
+                  <Input
+                    type={showCurrentPw ? 'text' : 'password'}
+                    id="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    required
+                    leftIcon={<Lock className="h-4 w-4 text-muted-foreground" />}
+                    rightAdornment={
                       <button
                         type="button"
-                        onClick={startEditing}
-                        className="w-9 h-9 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm flex items-center justify-center transition-colors"
-                        aria-label="Edit profile"
-                        title="Edit profile"
+                        onClick={() => setShowCurrentPw((v) => !v)}
+                        aria-label={showCurrentPw ? 'Hide password' : 'Show password'}
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
                       >
-                        <Pencil className="w-4 h-4" />
+                        {showCurrentPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
-                    )
-                  }
-                />
-                {isEditing ? (
-                  <form onSubmit={handleSaveProfile} className="space-y-3.5">
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                        Full name
-                      </label>
-                      <Input
-                        leftIcon={<UserIcon className="w-4 h-4" />}
-                        value={draftName}
-                        onChange={(e) => setDraftName(e.target.value)}
-                        placeholder="Your full name"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                        Username
-                      </label>
-                      <Input
-                        type="text"
-                        leftIcon={<Mail className="w-4 h-4" />}
-                        value={draftUsername}
-                        onChange={(e) => setDraftUsername(e.target.value)}
-                        placeholder="you@restaurant.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                        Phone
-                      </label>
-                      <EthiopiaPhoneInput
-                        digits={draftPhone}
-                        onDigitsChange={setDraftPhone}
-                        autoComplete="tel"
-                      />
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <div className="space-y-2.5">
-                      <FieldRow icon={<UserIcon className="w-4 h-4" />} label="Full name" value={displayName} />
-                      <FieldRow icon={<Mail className="w-4 h-4" />}    label="Username"    value={displayUsername} copyable={!!displayUsername} />
-                      <FieldRow icon={<Phone className="w-4 h-4" />}    label="Phone"    value={displayPhone} copyable={!!displayPhone} />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-4 flex items-start gap-1.5">
-                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                      <span>
-                        Use the edit icon above to update your name, contact details, or profile photo.
-                      </span>
-                    </p>
-                  </>
-                )}
-              </Card>
-            </motion.div>
+                    }
+                  />
+                </div>
 
-            {/* Security */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-              className="lg:col-span-2"
-            >
-              <Card className="p-6 h-full">
-                <SectionTitle
-                  icon={<Lock className="w-5 h-5" />}
-                  title="Security"
-                  subtitle="Change your password regularly."
-                />
-                <form onSubmit={handlePasswordChange} className="space-y-3.5">
-                  <div>
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                      Current password
-                    </label>
-                    <PasswordInput
-                      value={currentPassword}
-                      onChange={setCurrentPassword}
-                      autoComplete="current-password"
-                      required
-                    />
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <KeyRound className="h-3.5 w-3.5 text-primary" />
+                    New Password
+                  </label>
+                  <Input
+                    type={showNewPw ? 'text' : 'password'}
+                    id="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    minLength={6}
+                    required
+                    leftIcon={<KeyRound className="h-4 w-4 text-muted-foreground" />}
+                    rightAdornment={
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPw((v) => !v)}
+                        aria-label={showNewPw ? 'Hide password' : 'Show password'}
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      >
+                        {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Interactive Strength Meter */}
+              {newPassword.length > 0 && (
+                <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-muted-foreground">Password strength</span>
+                    <span
+                      className={cn(
+                        'font-bold',
+                        pwEvaluation.score <= 1 && 'text-destructive',
+                        pwEvaluation.score === 2 && 'text-warning',
+                        pwEvaluation.score === 3 && 'text-primary',
+                        pwEvaluation.score >= 4 && 'text-[hsl(var(--success))]',
+                      )}
+                    >
+                      {pwEvaluation.label}
+                    </span>
                   </div>
-                  <div>
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                      New password
-                    </label>
-                    <PasswordInput
-                      value={newPassword}
-                      onChange={setNewPassword}
-                      autoComplete="new-password"
-                      minLength={6}
-                      required
-                    />
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
-                        <motion.div
-                          className={cn('h-full rounded-full', strength.color)}
-                          initial={false}
-                          animate={{ width: `${(strength.score / 3) * 100}%` }}
-                          transition={{ duration: 0.25, ease: 'easeOut' }}
-                        />
+
+                  {/* 4-segment progress bar */}
+                  <div className="flex gap-1.5">
+                    {[0, 1, 2, 3].map((i) => (
+                      <span
+                        key={i}
+                        className={cn(
+                          'h-1.5 flex-1 rounded-full transition-all duration-300',
+                          i < pwEvaluation.score ? pwEvaluation.color : 'bg-border/60',
+                        )}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Criteria Checklist */}
+                  <div className="grid gap-1.5 sm:grid-cols-3 pt-1">
+                    {pwEvaluation.criteria.map((c, i) => (
+                      <div key={i} className="flex items-center gap-1.5 text-[11px]">
+                        <span
+                          className={cn(
+                            'flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] font-bold',
+                            c.met
+                              ? 'bg-[hsl(var(--success))] text-white'
+                              : 'bg-muted-foreground/30 text-muted-foreground',
+                          )}
+                        >
+                          {c.met ? <Check className="h-2.5 w-2.5 stroke-[3]" /> : '•'}
+                        </span>
+                        <span className={c.met ? 'font-medium text-foreground' : 'text-muted-foreground'}>
+                          {c.label}
+                        </span>
                       </div>
-                      <span className={cn(
-                        'text-[10px] font-bold uppercase tracking-wider tabular-nums w-12 text-right',
-                        strength.score === 1 && 'text-destructive',
-                        strength.score === 2 && 'text-[hsl(var(--warning))]',
-                        strength.score === 3 && 'text-emerald-600',
-                      )}>
-                        {strength.label}
-                      </span>
-                    </div>
+                    ))}
                   </div>
-                  <div>
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
-                      Confirm new password
-                    </label>
-                    <PasswordInput
-                      value={confirmPassword}
-                      onChange={setConfirmPassword}
-                      autoComplete="new-password"
-                      minLength={6}
-                      required
-                    />
-                    {confirmPassword.length > 0 && (
-                      <p className={cn(
-                        'mt-1.5 text-[11px] font-medium flex items-center gap-1',
-                        passwordsMatch ? 'text-emerald-600' : 'text-destructive',
-                      )}>
-                        {passwordsMatch
-                          ? <><Check className="w-3 h-3" /> Passwords match</>
-                          : <><AlertCircle className="w-3 h-3" /> Passwords do not match</>}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    type="submit"
-                    className="w-full shadow-brand"
-                    disabled={!passwordFormValid || isSavingPassword}
-                  >
-                    {isSavingPassword ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Updating…
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-2">
-                        <Sparkles className="w-4 h-4" />
-                        Update password
-                      </span>
-                    )}
-                  </Button>
-                </form>
-              </Card>
-            </motion.div>
-          </div>
-        </>
-      )}
+                </div>
+              )}
+
+              {/* Password Action Bar */}
+              <div className="flex items-center justify-end gap-3 border-t border-border/50 pt-4">
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={!passwordFormValid || isSavingPassword}
+                  leftIcon={<ShieldCheck className="h-4 w-4" />}
+                >
+                  {isSavingPassword ? 'Updating…' : 'Update password'}
+                </Button>
+              </div>
+            </form>
+          </section>
+        </main>
+      </div>
     </div>
   );
 };
