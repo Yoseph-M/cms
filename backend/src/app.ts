@@ -227,6 +227,7 @@ export async function seedInitialData() {
           { name: 'Artisanal Iced Matcha Latte', category: MenuCategory.DRINK, price: 65.0, isAvailable: true },
           { name: 'Fresh Sparkling Lemonade', category: MenuCategory.DRINK, price: 45.0, isAvailable: true },
           { name: 'Espresso Double Shot', category: MenuCategory.DRINK, price: 38.0, isAvailable: true },
+          { name: 'Bottled Water 1L', category: MenuCategory.DRINK, price: 120.0, isAvailable: true },
           { name: 'Molten Chocolate Lava Cake', category: MenuCategory.DESSERT, price: 85.0, isAvailable: true },
           { name: 'Classic Tiramisu', category: MenuCategory.DESSERT, price: 75.0, isAvailable: true },
         ],
