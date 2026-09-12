@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { axiosClient } from '../../api/axiosClient';
 import { useSocketStore } from '../../store/socketStore';
 import { useAuthStore } from '../../store/authStore';
+import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { formatDate } from '../../utils/calendar';
 
 interface NotificationItem {
@@ -52,6 +53,17 @@ export const NotificationBell: React.FC = () => {
   const role = user?.role || 'OWNER';
   const show = role === 'OWNER' || role === 'MANAGER';
 
+  // The owner can switch off their own ability to record attendance. With it
+  // off, "please mark their attendance" alerts aren't theirs to act on, so the
+  // owner's bell withholds them (managers keep theirs — recording today's
+  // attendance is still their job).
+  const ownerCanEditQuery = useSystemSettingQuery('ownerCanEditAttendance', show);
+  const hideAttendanceAlerts = role === 'OWNER' && ownerCanEditQuery.data?.value === 'false';
+  const visibleItems = useMemo(
+    () => (hideAttendanceAlerts ? items.filter((i) => i.type !== 'MISSING_ATTENDANCE') : items),
+    [items, hideAttendanceAlerts],
+  );
+
   const fetchItems = useCallback(async () => {
     try {
       const res = await axiosClient.get('/notifications');
@@ -88,7 +100,7 @@ export const NotificationBell: React.FC = () => {
 
   if (!show) return null;
 
-  const unread = items.filter((i) => !i.isRead).length;
+  const unread = visibleItems.filter((i) => !i.isRead).length;
 
   const markRead = async (id: string) => {
     try {
@@ -112,7 +124,7 @@ export const NotificationBell: React.FC = () => {
     MISSING_ATTENDANCE: 'Attendance', PRINTER_FAILURE: 'Printers',
     PAYROLL_PERIOD_DUE: 'Payroll', MENU_ITEM_UNAVAILABLE: 'Menu', SYSTEM_OVERRIDE: 'System',
   };
-  const grouped = items.reduce<Record<string, NotificationItem[]>>((groups, item) => {
+  const grouped = visibleItems.reduce<Record<string, NotificationItem[]>>((groups, item) => {
     const group = typeLabel[item.type] || 'System';
     (groups[group] ||= []).push(item);
     return groups;
@@ -149,7 +161,7 @@ export const NotificationBell: React.FC = () => {
             )}
           </div>
           <div className="overflow-y-auto flex-1">
-            {items.length === 0 ? (
+            {visibleItems.length === 0 ? (
               <p className="p-6 text-sm text-muted-foreground text-center">No notifications yet.</p>
             ) : (
               <>
