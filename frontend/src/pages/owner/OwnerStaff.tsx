@@ -117,7 +117,7 @@ export const OwnerStaff: React.FC = () => {
 
   const openEdit = (user: User) => {
     setEditingUser(user);
-    setForm({ name: user.name, role: user.role, username: user.username || '', phone: user.phone, salaryAmount: String(user.salaryAmount / 100), credential: '' }); // Convert cents to dollars for display
+    setForm({ name: user.name, role: user.role, username: user.username || '', phone: user.phone, salaryAmount: String(user.salaryAmount), credential: '' });
     setShowCredential(false);
     setSlideOverOpen(true);
   };
@@ -138,7 +138,7 @@ export const OwnerStaff: React.FC = () => {
         role: form.role,
         username: form.username || undefined,
         phone: form.phone.trim(),
-        salaryAmount: Math.round(parseFloat(form.salaryAmount) * 100) || 0, // Convert dollars to cents
+        salaryAmount: parseFloat(form.salaryAmount) || 0,
       };
       if (!editingUser && form.credential) {
         payload.password = form.credential;
