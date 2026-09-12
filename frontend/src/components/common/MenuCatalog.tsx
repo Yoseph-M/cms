@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { z } from 'zod';
+import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { fileToCompressedDataUrl } from '../../utils/imageResize';
@@ -42,8 +43,9 @@ import {
   Layers,
   CircleCheck,
   EyeOff,
+  Languages,
 } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '../../utils/currency';
 import { useMenuQuery } from '../../hooks/useCachedQueries';
 import { cn } from '../../lib/utils';
@@ -51,6 +53,7 @@ import { cn } from '../../lib/utils';
 interface MenuItem {
   id: string;
   name: string;
+  nameAmharic?: string | null;
   category: 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER';
   price: number;
   isAvailable: boolean;
@@ -76,14 +79,24 @@ const SORT_OPTIONS = [
 
 type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 
-const menuFormSchema = z.object({
+const menuFormBaseSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
+  nameAmharic: z.string().trim().max(200, 'Amharic name is too long.'),
   category: z.enum(['FOOD', 'DRINK', 'DESSERT', 'OTHER'], { message: 'Category is required.' }),
   price: z.coerce.number().positive('Price must be a positive number.'),
 });
 
+// While the UI language is Amharic, ONLY the Amharic name field is shown in
+// the form — so the hidden English name becomes optional there. Its stored
+// value still round-trips untouched; brand-new items are seeded at save time.
+const menuFormAmharicSchema = menuFormBaseSchema.extend({
+  name: z.string().trim().optional(),
+  nameAmharic: z.string().trim().min(1, 'Amharic name is required.').max(200, 'Amharic name is too long.'),
+});
+
 const EMPTY_FORM = {
   name: '',
+  nameAmharic: '',
   category: 'FOOD' as MenuItem['category'],
   price: '',
   imageUrl: '',
@@ -119,6 +132,19 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
+  const { i18n } = useTranslation();
+
+  // The Amharic UI shows ONLY the Amharic name — never the English one.
+  // Every other language shows the English `name`. Items that have no
+  // Amharic name yet surface as an em dash so the gap stays visible.
+  const isAmharic = i18n.language?.startsWith('am');
+  const displayName = useCallback(
+    (item: Pick<MenuItem, 'name' | 'nameAmharic'>) =>
+      (isAmharic ? item.nameAmharic : item.name) || '',
+    [isAmharic]
+  );
+  // In the Amharic UI the Amharic name is required in the add/edit form.
+  const menuFormSchema = isAmharic ? menuFormAmharicSchema : menuFormBaseSchema;
 
   // Reflect the current section in the global header.
   useEffect(() => {
@@ -154,9 +180,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkActioning, setBulkActioning] = useState(false);
 
   const pendingDeletes = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Overlay ONLY for deletions (hidden until the 6s undo window elapses).
+  // Availability toggles deliberately do NOT use this overlay — they patch the
+  // shared query cache directly, which is both faster (no double render from a
+  // local copy syncing) and race-proof across simultaneous toggles.
   const [localItems, setLocalItems] = useState<MenuItem[] | null>(null);
 
   const displayItems: MenuItem[] = localItems ?? items;
@@ -169,19 +198,43 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     void queryClient.invalidateQueries({ queryKey: ['menu'] });
   }, [queryClient]);
 
-  useEffect(() => {
-    setLocalItems(null);
-  }, [items]);
-
   const { socket } = useSocketStore();
+
+  // Patch one item's availability across every cached menu-list variant
+  // ('all/all', category-filtered copies, etc.), used by toggles, bulk
+  // actions, and socket broadcasts.
+  const patchAvailability = useCallback(
+    (id: string, isAvailable: boolean) => {
+      // Query.setData both updates the data and re-stamps dataUpdatedAt, so
+      // the 5-minute staleTime restarts — otherwise a refetchOnMount/Focus/
+      // Reconnect (or an unrelated invalidate) fires a background GET that
+      // can race this optimistic state and visually revert the switch.
+      for (const query of queryClient.getQueryCache().findAll({ queryKey: ['menu'] })) {
+        if (!Array.isArray(query.state.data)) continue;
+        if (!query.state.data.some((i) => i.id === id)) continue;
+        query.setData(query.state.data.map((i) => (i.id === id ? { ...i, isAvailable } : i)));
+      }
+      setLocalItems((prevList) =>
+        prevList ? prevList.map((i) => (i.id === id ? { ...i, isAvailable } : i)) : prevList
+      );
+    },
+    [queryClient]
+  );
+
   useEffect(() => {
     if (!socket) return;
-    const onAvailability = () => invalidateMenu();
+    // Apply another client's change straight to the cache. A broadcast must
+    // never wipe THIS client's other in-flight optimistic toggles — the old
+    // full-invalidate handler did exactly that (toggling one item reverted
+    // another whose request was still in flight).
+    const onAvailability = (payload: { id: string; isAvailable: boolean }) => {
+      if (payload?.id) patchAvailability(payload.id, payload.isAvailable);
+    };
     socket.on('menu:availabilityChanged', onAvailability);
     return () => {
       socket.off('menu:availabilityChanged', onAvailability);
     };
-  }, [socket, invalidateMenu]);
+  }, [socket, patchAvailability]);
 
   const stats = useMemo(() => {
     const availableCount = displayItems.filter((i) => i.isAvailable).length;
@@ -205,18 +258,22 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     () =>
       displayItems.filter((item) => {
         const matchesCategory = categoryFilter === 'All' || item.category === categoryFilter;
-        const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
+        // Match against the name the user actually sees (Amharic name in the
+        // Amharic UI), so searching "ቡና" finds items whose English name is
+        // "Coffee" and vice versa.
+        const matchesSearch = displayName(item).toLowerCase().includes(search.toLowerCase());
         return matchesCategory && matchesSearch;
       }),
-    [displayItems, categoryFilter, search]
+    [displayItems, categoryFilter, search, displayName]
   );
 
   const visibleItems = useMemo(() => {
     const list = [...filteredItems];
     if (sortBy === 'price-asc') return list.sort((a, b) => a.price - b.price);
     if (sortBy === 'price-desc') return list.sort((a, b) => b.price - a.price);
-    return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [filteredItems, sortBy]);
+    // Sort by the displayed name so A–Z is correct in the Amharic UI too.
+    return list.sort((a, b) => displayName(a).localeCompare(displayName(b)));
+  }, [filteredItems, sortBy, displayName]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -267,8 +324,11 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     setEditingItem(item);
     setForm({
       name: item.name,
+      // Always prefill the stored value so an Amharic-UI user saving the form
+      // never silently wipes the English name (and vice versa).
+      nameAmharic: item.nameAmharic || '',
       category: item.category,
-      price: String(item.price / 100),
+      price: String(item.price),
       imageUrl: item.imageUrl || '',
       isAvailable: item.isAvailable,
     });
@@ -283,9 +343,15 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     try {
       const parsed = menuFormSchema.parse(form);
       const payload = {
-        name: parsed.name,
+        // The English field is hidden in the Amharic UI: its prefilled value
+        // round-trips for existing items, while a brand-new item (empty
+        // English name) is seeded with the Amharic text so the API's required
+        // `name` passes.
+        name: parsed.name?.trim() || parsed.nameAmharic,
+        // Empty string clears the stored Amharic name (sent as null).
+        nameAmharic: parsed.nameAmharic || null,
         category: parsed.category,
-        price: Math.round(parsed.price * 100),
+        price: parsed.price,
         imageUrl: form.imageUrl || null,
         isAvailable: form.isAvailable,
       };
@@ -305,15 +371,53 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     }
   };
 
-  const handleAvailabilityToggle = async (item: MenuItem) => {
-    const prev = item.isAvailable;
-    try {
-      await axiosClient.patch(`/menu/${item.id}/availability`, { isAvailable: !prev });
-      invalidateMenu();
-    } catch (err: unknown) {
+  // Availability toggles are optimistic mutations against the SHARED query
+  // cache. Each toggle flips only its own item and rolls back only its own
+  // item, so a failing toggle can never revert a different item that is
+  // mid-flight (the old shared-overlay version did exactly that).
+  const toggleAvailabilityMutation = useMutation({
+    mutationKey: ['menu', 'toggleAvailability'],
+    mutationFn: async (vars: { id: string; isAvailable: boolean }) => {
+      await axiosClient.patch(`/menu/${vars.id}/availability`, { isAvailable: vars.isAvailable });
+    },
+    onMutate: async (vars) => {
+      // Stop an in-flight menu fetch from landing over the optimistic flip.
+      await queryClient.cancelQueries({ queryKey: ['menu'] });
+      patchAvailability(vars.id, vars.isAvailable);
+    },
+    onError: (err, vars) => {
+      // Roll back ONLY this item — restoring a whole-list snapshot could
+      // revert a different toggle that committed while this request failed.
+      patchAvailability(vars.id, !vars.isAvailable);
       addToast({ type: 'error', title: 'Availability update failed', message: extractErrorMessage(err, 'Failed to update availability.') });
-    }
-  };
+    },
+    onSettled: () => {
+      // Silent reconciliation: refetch only queries with no mounted observer
+      // (background copies owned by other pages). The caller's cache was just
+      // patched optimistically, so an active refetch here adds a needless
+      // GET (and a window where a mid-flight response can flash old state).
+      void queryClient.invalidateQueries({
+        queryKey: ['menu'],
+        refetchType: 'none',
+      });
+    },
+  });
+
+  const inFlightToggles = useRef<Set<string>>(new Set());
+
+  const handleAvailabilityToggle = useCallback(
+    (item: MenuItem) => {
+      // Ignore clicks on an item whose toggle request is still in flight —
+      // two racing requests for one item could land out of order.
+      if (inFlightToggles.current.has(item.id)) return;
+      inFlightToggles.current.add(item.id);
+      toggleAvailabilityMutation.mutate(
+        { id: item.id, isAvailable: !item.isAvailable },
+        { onSettled: () => inFlightToggles.current.delete(item.id) }
+      );
+    },
+    [toggleAvailabilityMutation]
+  );
 
   const handleDelete = useCallback((item: MenuItem) => {
     const existing = pendingDeletes.current.get(item.id);
@@ -354,41 +458,60 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       });
       addToast({
         type: 'info',
-        title: `Removed — ${item.name} restored to menu`,
+        title: `Removed — ${displayName(item)} restored to menu`,
       });
     };
 
     addToast({
       type: 'success',
-      title: `${item.name} removed from menu`,
+      title: `${displayName(item)} removed from menu`,
       message: 'Item is no longer visible in the catalog.',
       undo: { label: 'Undo', onClick: undo },
     });
-  }, [items, addToast, invalidateMenu]);
+  }, [items, addToast, invalidateMenu, displayName]);
 
-  const handleBulkAvailability = useCallback(async (nextAvailable: boolean) => {
-    if (selectedIds.size === 0) return;
-    setBulkActioning(true);
-    const ids = Array.from(selectedIds);
-    try {
-      await Promise.all(
-        ids.map((id) => axiosClient.patch(`/menu/${id}/availability`, { isAvailable: nextAvailable }))
-      );
+  const bulkAvailabilityMutation = useMutation({
+    mutationKey: ['menu', 'bulkAvailability'],
+    mutationFn: async (vars: { ids: string[]; isAvailable: boolean }) => {
+      await axiosClient.patch('/menu/availability/bulk', vars);
+    },
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: ['menu'] });
+      for (const id of vars.ids) patchAvailability(id, vars.isAvailable);
+    },
+    onSuccess: (_data, vars) => {
       addToast({
         type: 'success',
-        title: nextAvailable
-          ? `${ids.length} item${ids.length > 1 ? 's' : ''} marked available`
-          : `${ids.length} item${ids.length > 1 ? 's' : ''} marked unavailable`,
+        title: vars.isAvailable
+          ? `${vars.ids.length} item${vars.ids.length > 1 ? 's' : ''} marked available`
+          : `${vars.ids.length} item${vars.ids.length > 1 ? 's' : ''} marked unavailable`,
       });
       clearSelection();
       setSelectMode(false);
-      invalidateMenu();
-    } catch (err: unknown) {
+    },
+    onError: (err, vars) => {
+      // Roll back only the affected items, never the whole list.
+      for (const id of vars.ids) patchAvailability(id, !vars.isAvailable);
       addToast({ type: 'error', title: 'Bulk update failed', message: extractErrorMessage(err, 'Failed to update items.') });
-    } finally {
-      setBulkActioning(false);
-    }
-  }, [selectedIds, addToast, invalidateMenu]);
+    },
+    onSettled: () => {
+      // Same rationale as the single toggle: silent invalidate — other pages
+      // refetch on their next mount, the active page keeps its optimistic
+      // state with no extra round-trip.
+      void queryClient.invalidateQueries({
+        queryKey: ['menu'],
+        refetchType: 'none',
+      });
+    },
+  });
+
+  const handleBulkAvailability = useCallback(
+    (nextAvailable: boolean) => {
+      if (selectedIds.size === 0 || bulkAvailabilityMutation.isPending) return;
+      bulkAvailabilityMutation.mutate({ ids: Array.from(selectedIds), isAvailable: nextAvailable });
+    },
+    [selectedIds, bulkAvailabilityMutation]
+  );
 
   const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -417,7 +540,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
         toCreate.push({
           name,
           category,
-          price: Math.round(priceDollars * 100),
+          price: priceDollars,
         });
       }
       if (toCreate.length === 0) throw new Error('No valid rows found.');
@@ -537,6 +660,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
   const renderGridCard = (item: MenuItem, selected: boolean) => {
     const meta = CATEGORY_META[item.category];
+    const name = displayName(item);
     return (
       <Card
         className={cn(
@@ -552,8 +676,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               src={item.imageUrl}
               alt={item.name}
               className={cn(
-                'w-full h-full object-cover transition-transform duration-500 group-hover:scale-105',
-                !item.isAvailable && 'grayscale'
+                'w-full h-full object-cover transition-transform duration-150 ease-out group-hover:scale-105',
+                !item.isAvailable && 'grayscale' // no filter transition — instant snap
               )}
             />
           ) : (
@@ -573,8 +697,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
           )}
         </div>
         <CardContent className="p-3 pt-3 flex flex-col gap-2 flex-1">
-          <p className="font-semibold text-sm text-foreground truncate" title={item.name}>
-            {item.name}
+          <p className={cn('font-semibold text-sm truncate', name ? 'text-foreground' : 'text-muted-foreground')} title={name}>
+            {name || '—'}
           </p>
           <p className="text-base font-mono font-bold text-primary tracking-tight">
             {formatCurrency(item.price)}
@@ -607,6 +731,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
   const renderListRow = (item: MenuItem, selected: boolean) => {
     const meta = CATEGORY_META[item.category];
+    const name = displayName(item);
     return (
       <Card className={cn('overflow-hidden group', selectMode && 'pointer-events-none')}>
         <div className="flex items-center gap-3 p-3">
@@ -614,7 +739,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
           {renderThumb(item, 'w-16 h-16 rounded-xl')}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="font-semibold text-sm text-foreground truncate">{item.name}</p>
+              <p className={cn('font-semibold text-sm truncate', name ? 'text-foreground' : 'text-muted-foreground')}>{name || '—'}</p>
               {!item.isAvailable && (
                 <Badge variant="destructive" className="text-[10px] px-1.5 py-0 shrink-0 gap-1">
                   <EyeOff className="w-2.5 h-2.5" />
@@ -786,10 +911,10 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               </Button>
               {showAvailability && (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => handleBulkAvailability(true)} disabled={selectedIds.size === 0 || bulkActioning}>
+                  <Button size="sm" variant="outline" onClick={() => handleBulkAvailability(true)} disabled={selectedIds.size === 0 || bulkAvailabilityMutation.isPending}>
                     Mark Available
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={() => handleBulkAvailability(false)} disabled={selectedIds.size === 0 || bulkActioning}>
+                  <Button size="sm" variant="destructive" onClick={() => handleBulkAvailability(false)} disabled={selectedIds.size === 0 || bulkAvailabilityMutation.isPending}>
                     Mark Unavailable
                   </Button>
                 </>
@@ -972,10 +1097,10 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={view}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0 } }}
+            transition={{ duration: 0 }}
             className={cn(
               view === 'grid'
                 ? 'grid grid-cols-4 max-[767px]:grid-cols-2 gap-4'
@@ -988,7 +1113,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                 return (
                   <motion.div
                     key={item.id}
-                    exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
+                    exit={{ opacity: 0, scale: 0.96, transition: { duration: 0 } }}
                     className={cn(
                       'relative rounded-2xl',
                       selectMode && 'cursor-pointer',
@@ -1076,20 +1201,43 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
           </div>
 
-          <div>
-            <label htmlFor="form-name" className="text-sm font-medium text-foreground block mb-1.5">
-              Name <span className="text-destructive">*</span>
-            </label>
-            <Input
-              id="form-name"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. Wagyu Gourmet Burger"
-              leftIcon={<UtensilsCrossed className="w-4 h-4" />}
-              invalid={!!formErrors.name}
-            />
-            {formErrors.name && <p className="text-destructive text-xs mt-1">{formErrors.name}</p>}
-          </div>
+          {/* Each UI language edits ONLY its own name field: the English UI
+              shows the English name, the Amharic UI shows the Amharic one.
+              The hidden language's stored value still round-trips on save. */}
+          {!isAmharic && (
+            <div>
+              <label htmlFor="form-name" className="text-sm font-medium text-foreground block mb-1.5">
+                Name <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="form-name"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Wagyu Gourmet Burger"
+                leftIcon={<UtensilsCrossed className="w-4 h-4" />}
+                invalid={!!formErrors.name}
+              />
+              {formErrors.name && <p className="text-destructive text-xs mt-1">{formErrors.name}</p>}
+            </div>
+          )}
+
+          {isAmharic && (
+            <div>
+              <label htmlFor="form-name-amharic" className="text-sm font-medium text-foreground block mb-1.5">
+                Name (Amharic) <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="form-name-amharic"
+                value={form.nameAmharic}
+                onChange={(e) => setForm((f) => ({ ...f, nameAmharic: e.target.value }))}
+                placeholder="ለምሳሌ፦ ዋጉዩ በርገር"
+                dir="auto"
+                leftIcon={<Languages className="w-4 h-4" />}
+                invalid={!!formErrors.nameAmharic}
+              />
+              {formErrors.nameAmharic && <p className="text-destructive text-xs mt-1">{formErrors.nameAmharic}</p>}
+            </div>
+          )}
 
           <div>
             <label className="text-sm font-medium text-foreground block mb-1.5">
