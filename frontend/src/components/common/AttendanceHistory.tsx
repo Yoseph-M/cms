@@ -1,23 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, CardContent } from '../ui/Card';
-import { Tracker } from '@tremor/react';
+import { Card, Tracker } from '@tremor/react';
+import { RiCheckboxCircleFill } from '@remixicon/react';
 import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { Button } from '../ui/Button';
-import { Avatar, AvatarFallback } from '../ui/Avatar';
-import { Badge } from '../ui/Badge';
-import { AlertCircle, BarChart3 } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
-
-// Add custom styles for smaller tracker bars
-const trackerStyles = `
-  .attendance-tracker > div {
-    height: 8px !important;
-  }
-  .attendance-tracker > div > div {
-    border-radius: 2px;
-  }
-`;
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
 
@@ -36,49 +24,48 @@ interface StaffMember {
   role: string;
 }
 
-const DAYS = 90;
+/** Selectable look-back windows for the status tracker. */
+const RANGE_OPTIONS = [7, 14, 30, 90] as const;
+type RangeDays = (typeof RANGE_OPTIONS)[number];
 
-const TRACKER_COLOR: Record<AttendanceStatus, string> = {
+/** Logged status → Tremor tracker colour. */
+const COLOR_MAPPING: Record<AttendanceStatus, string> = {
   PRESENT: 'emerald-500',
   ABSENT: 'red-500',
   HALF_DAY: 'amber-500',
   LEAVE: 'cyan-500',
-  HOLIDAY: 'slate-300',
+  HOLIDAY: 'gray-400',
 };
 
-const LEGEND_COLOR: Record<AttendanceStatus, string> = {
-  PRESENT: 'bg-emerald-500',
-  ABSENT: 'bg-red-500',
-  HALF_DAY: 'bg-amber-500',
-  LEAVE: 'bg-cyan-500',
-  HOLIDAY: 'bg-slate-300',
-};
-
-const STATUS_BADGE: Record<AttendanceStatus, string> = {
-  PRESENT: 'bg-emerald-500/15 text-emerald-600',
-  ABSENT: 'bg-red-500/15 text-red-600',
-  HALF_DAY: 'bg-amber-500/15 text-amber-600',
-  LEAVE: 'bg-cyan-500/15 text-cyan-600',
-  HOLIDAY: 'bg-slate-400/15 text-slate-500',
-};
+/** No record logged on a working day. */
+const COLOR_MISSING = 'gray-300';
+/** Weekend with no record — lightest, so the working week reads first. */
+const COLOR_WEEKEND = 'gray-100';
 
 interface AttendanceHistoryProps {
   isOwner?: boolean;
 }
 
+/**
+ * Attendance at a glance — one tracker row per staff member, one block per day,
+ * modelled on the Tremor uptime-tracker pattern: green present, red absent,
+ * grey for days with nothing logged.
+ */
 export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = false }) => {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [rangeDays, setRangeDays] = useState<RangeDays>(90);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dateRange = useMemo(() => {
     const to = new Date();
     const from = new Date();
-    from.setDate(from.getDate() - (DAYS - 1));
+    from.setDate(from.getDate() - (rangeDays - 1));
     const iso = (d: Date) => d.toISOString().split('T')[0];
     return { from: iso(from), to: iso(to) };
-  }, []);
+  }, [rangeDays]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -99,6 +86,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
       setError(extractErrorMessage(err, 'Failed to load attendance history.'));
     } finally {
       setIsLoading(false);
+      setHasLoaded(true);
     }
   }, [isOwner, dateRange.from, dateRange.to]);
 
@@ -107,13 +95,13 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
   const days = useMemo(() => {
     const list: string[] = [];
     const start = new Date(dateRange.from);
-    for (let i = 0; i < DAYS; i++) {
+    for (let i = 0; i < rangeDays; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       list.push(d.toISOString().split('T')[0]);
     }
     return list;
-  }, [dateRange.from]);
+  }, [dateRange.from, rangeDays]);
 
   const staffHistory = useMemo(() => {
     return staff
@@ -126,103 +114,125 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
           const status = rec ? rec.status : null;
           const weekday = new Date(`${date}T00:00:00`).getDay();
           const isWeekend = weekday === 0 || weekday === 6;
+          const color = status
+            ? COLOR_MAPPING[status]
+            : isWeekend
+              ? COLOR_WEEKEND
+              : COLOR_MISSING;
           return {
-            color: status
-              ? TRACKER_COLOR[status]
-              : isWeekend
-                ? 'slate-200'
-                : 'slate-100',
+            key: date,
+            color,
             tooltip: `${date}${status ? ` — ${status.replace('_', ' ')}` : ' — No record'}`,
           };
         });
         const present = attendance.filter((a) => a.userId === s.id && a.status === 'PRESENT').length;
-        const rate = DAYS > 0 ? Math.round((present / DAYS) * 100) : 0;
-        const initials = s.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase();
-        return { ...s, blocks, present, rate, initials };
+        const rate = rangeDays > 0 ? Math.round((present / rangeDays) * 100) : 0;
+        return { ...s, blocks, present, rate };
       })
       .sort((a, b) => b.rate - a.rate);
-  }, [staff, attendance, days]);
+  }, [staff, attendance, days, rangeDays]);
 
   const counts = useMemo(() => {
     const present = staffHistory.reduce((acc, s) => acc + s.present, 0);
-    const total = staffHistory.length * DAYS;
+    const total = staffHistory.length * rangeDays;
     const overall = total > 0 ? Math.round((present / total) * 100) : 0;
     return { present, total, overall };
-  }, [staffHistory]);
+  }, [staffHistory, rangeDays]);
+
+  const overallTone =
+    counts.overall >= 90 ? 'bg-emerald-500' : counts.overall >= 75 ? 'bg-amber-500' : 'bg-red-500';
+
+  // Narrow screens show a shorter tail of the same window, like the reference.
+  const smDays = Math.min(rangeDays, 60);
+  const mobileDays = Math.min(rangeDays, 30);
+  const tail = (blocks: { key: string; color: string; tooltip: string }[], count: number) =>
+    count >= rangeDays ? blocks : blocks.slice(rangeDays - count);
+
+  // Keep the previous strip visible while a new range loads — a full skeleton
+  // on every filter click is jarring.
+  const showSkeleton = isLoading && !hasLoaded;
 
   return (
     <div className="space-y-4">
-      <style>{trackerStyles}</style>
-      <Card>
-        <CardContent className="p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              <h3 className="text-sm font-bold">Attendance history — last {DAYS} days</h3>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {counts.present}/{counts.total} present · <span className="font-semibold text-foreground">{counts.overall}%</span>
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 mb-6">
-            {(Object.keys(TRACKER_COLOR) as AttendanceStatus[]).map((status) => (
-              <span key={status} className="inline-flex items-center gap-1.5 rounded-full bg-secondary/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                <span className={cn('size-2 rounded-full', LEGEND_COLOR[status])} aria-hidden />
-                {status.replace('_', ' ')}
-              </span>
-            ))}
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-              <span className="size-2 rounded-full bg-slate-200" aria-hidden />
-              Weekend
-            </span>
-          </div>
-
-          {isLoading ? (
-            <div className="h-64 rounded-xl bg-secondary/40 animate-pulse" />
-          ) : error ? (
-            <div className="flex flex-col items-center gap-3 py-16 text-center">
-              <AlertCircle className="w-8 h-8 text-destructive" />
-              <p className="text-destructive font-medium">{error}</p>
-              <Button variant="outline" size="sm" onClick={fetchData}>Retry</Button>
-            </div>
-          ) : staffHistory.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">No staff to display.</div>
-          ) : (
-            <div className="space-y-5">
-              {staffHistory.map((s) => (
-                <div key={s.id} className="rounded-xl border border-border p-3 sm:p-4 bg-card">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Avatar className="w-8 h-8 ring-1 ring-border shrink-0">
-                        <AvatarFallback className="bg-primary/15 text-primary text-xs font-bold">{s.initials}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground truncate">{s.name}</p>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{s.role}</Badge>
-                          <span className="text-[10px] text-muted-foreground">{s.present}/{DAYS} days</span>
-                        </div>
-                      </div>
-                    </div>
-                    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold', STATUS_BADGE.PRESENT)}>
-                      {s.rate}%
-                    </span>
-                  </div>
-                  <Tracker data={s.blocks} className="hidden w-full lg:flex attendance-tracker" />
-                  <Tracker data={s.blocks.slice(30, 90)} className="mt-2 hidden w-full sm:flex lg:hidden attendance-tracker" />
-                  <Tracker data={s.blocks.slice(60, 90)} className="mt-2 flex w-full sm:hidden attendance-tracker" />
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-                    <span className="hidden lg:inline">{DAYS} days ago</span>
-                    <span className="hidden sm:inline lg:hidden">60 days ago</span>
-                    <span className="sm:hidden">30 days ago</span>
-                    <span>Today</span>
-                  </div>
-                </div>
+      {/* Tremor's own Card surface keeps the flat, hairline-ringed look. */}
+      <Card className="dark:bg-card dark:ring-border/40">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-tremor-title font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
+            Attendance history
+          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-0.5">
+              {RANGE_OPTIONS.map((daysOption) => (
+                <button
+                  key={daysOption}
+                  type="button"
+                  onClick={() => setRangeDays(daysOption)}
+                  aria-pressed={rangeDays === daysOption}
+                  className={cn(
+                    'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                    rangeDays === daysOption
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {daysOption}d
+                </button>
               ))}
             </div>
-          )}
-        </CardContent>
+            <span className="inline-flex items-center gap-2 rounded-tremor-full px-3 py-1 text-tremor-default text-tremor-content-emphasis ring-1 ring-inset ring-tremor-ring dark:text-dark-tremor-content-emphasis dark:ring-dark-tremor-ring">
+              <span className={cn('-ml-0.5 size-2 rounded-tremor-full', overallTone)} aria-hidden={true} />
+              {counts.overall}% present
+            </span>
+          </div>
+        </div>
+
+        {showSkeleton ? (
+          <div className="mt-8 h-64 rounded-xl bg-secondary/40 animate-pulse" />
+        ) : error ? (
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <AlertCircle className="w-8 h-8 text-destructive" />
+            <p className="text-destructive font-medium">{error}</p>
+            <Button variant="outline" size="sm" onClick={fetchData}>Retry</Button>
+          </div>
+        ) : staffHistory.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground">No staff to display.</div>
+        ) : (
+          <div
+            aria-busy={isLoading}
+            className={cn('transition-opacity', isLoading && 'opacity-60')}
+          >
+            {staffHistory.map((s) => (
+              <div key={s.id} className="mt-8">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center space-x-2">
+                    <RiCheckboxCircleFill
+                      className="size-5 shrink-0 text-emerald-500"
+                      aria-hidden={true}
+                    />
+                    <p className="truncate text-tremor-default font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
+                      {s.name}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-tremor-default font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
+                    {s.rate}% present
+                  </p>
+                </div>
+                <Tracker data={s.blocks} className="mt-4 hidden w-full lg:flex" />
+                <Tracker
+                  data={tail(s.blocks, smDays)}
+                  className="mt-3 hidden w-full sm:flex lg:hidden"
+                />
+                <Tracker data={tail(s.blocks, mobileDays)} className="mt-3 flex w-full sm:hidden" />
+                <div className="mt-3 flex items-center justify-between text-tremor-default text-tremor-content dark:text-dark-tremor-content">
+                  <span className="hidden lg:block">{rangeDays} days ago</span>
+                  <span className="hidden sm:block lg:hidden">{smDays} days ago</span>
+                  <span className="sm:hidden">{mobileDays} days ago</span>
+                  <span>Today</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );
