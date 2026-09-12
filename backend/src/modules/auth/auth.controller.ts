@@ -337,6 +337,8 @@ export async function login(req: Request, res: Response) {
   logger.info({ userId: user.id, role: user.role, outcome: 'success' }, 'auth.login.success');
 
   // Refresh token is ONLY delivered via HttpOnly cookie — never in JSON
+  // preferredLanguage lets the SPA restore the signed-in user's own UI
+  // language (per-user preference, not a device-wide setting).
   return res.json({
     accessToken,
     user: {
@@ -345,6 +347,7 @@ export async function login(req: Request, res: Response) {
       role: user.role,
       username: user.username,
       phone: user.phone,
+      preferredLanguage: user.preferredLanguage,
     },
   });
 }
@@ -419,6 +422,8 @@ export async function refreshToken(req: Request, res: Response) {
     res.cookie(REFRESH_TOKEN_COOKIE, newRefreshToken, getRefreshCookieOptions(req));
 
     // Refresh token is ONLY delivered via HttpOnly cookie — never in JSON
+    // preferredLanguage lets the SPA restore the signed-in user's own UI
+    // language on hard reloads and silent session refreshes.
     return res.json({
       accessToken: newAccessToken,
       user: {
@@ -427,6 +432,7 @@ export async function refreshToken(req: Request, res: Response) {
         role: user.role,
         username: user.username,
         phone: user.phone,
+        preferredLanguage: user.preferredLanguage,
       },
     });
   } catch (error) {
