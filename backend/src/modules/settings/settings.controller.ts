@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
+import { clearFeatureFlagCache } from '../../middleware/feature.middleware';
 import { prisma } from '../../services/prisma.service';
 import { emitToLiveOrders } from '../../services/socket.service';
 
@@ -44,6 +45,12 @@ export async function patchSystemSetting(req: AuthenticatedRequest, res: Respons
     update: { value },
     create: { key, value },
   });
+
+  // Feature flags are cached in memory for 30s — refresh immediately so the
+  // new value is enforced on the very next request.
+  if (key.endsWith('Enabled')) {
+    clearFeatureFlagCache();
+  }
 
   if (key === 'cashierOrderingEnabled') {
     emitToLiveOrders('settings:cashierOrderingChanged', { value: setting.value });
