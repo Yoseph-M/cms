@@ -217,14 +217,14 @@ export const OperationalReconciliation: React.FC = () => {
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-muted-foreground">Cash Variance:</span>
                         <Badge variant={review.shift?.varianceMinor < 0 ? 'error' : 'warning'}>
-                          {formatCurrency(review.shift?.varianceMinor / 100)}
+                          {formatCurrency(review.shift?.varianceMinor)}
                         </Badge>
                       </div>
                       {(review.cardVarianceMinor !== 0) && (
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-muted-foreground">Card Variance:</span>
                           <span className={review.cardVarianceMinor < 0 ? 'text-destructive font-semibold' : 'text-amber-600 font-semibold'}>
-                            {formatCurrency(review.cardVarianceMinor / 100)}
+                            {formatCurrency(review.cardVarianceMinor)}
                           </span>
                         </div>
                       )}
@@ -232,7 +232,7 @@ export const OperationalReconciliation: React.FC = () => {
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-muted-foreground">Mobile Variance:</span>
                           <span className={review.mobileVarianceMinor < 0 ? 'text-destructive font-semibold' : 'text-amber-600 font-semibold'}>
-                            {formatCurrency(review.mobileVarianceMinor / 100)}
+                            {formatCurrency(review.mobileVarianceMinor)}
                           </span>
                         </div>
                       )}
@@ -326,11 +326,11 @@ export const OperationalReconciliation: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-bold">Total Sales</p>
-                      <p className="text-xl font-bold">{formatCurrency(dailyClose.totalSalesMinor / 100)}</p>
+                      <p className="text-xl font-bold">{formatCurrency(dailyClose.totalSalesMinor)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-bold">Cash Declared</p>
-                      <p className="text-xl font-bold text-primary">{formatCurrency(dailyClose.cashDeclaredMinor / 100)}</p>
+                      <p className="text-xl font-bold text-primary">{formatCurrency(dailyClose.cashDeclaredMinor)}</p>
                     </div>
                   </div>
                   <div>
