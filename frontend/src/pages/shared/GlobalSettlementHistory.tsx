@@ -9,10 +9,9 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useHeaderStore } from '../../store/headerStore';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
-import { ArrowLeft, ArrowRight, CreditCard, Banknote, Smartphone, ChevronDown, Calendar, Users, Hash, Table2, CircleDollarSign, X, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CreditCard, Banknote, Smartphone, Calendar, CircleDollarSign, AlertCircle, Receipt, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import {
   DropdownMenu,
@@ -30,6 +29,7 @@ interface SettlementRecord {
   reference: string;
   note: string;
   createdAt: string;
+  // Null when the settlement's order was deleted after payment was recorded.
   order: {
     id: string;
     clientOrderId: string;
@@ -41,12 +41,20 @@ interface SettlementRecord {
       name: string;
       role: string;
     };
-  };
+    createdAt?: string;
+    items: Array<{
+      menuItemId: string;
+      name: string;
+      unitPrice: number;
+      quantity: number;
+      notes: string;
+    }>;
+  } | null;
   recordedBy: {
     id: string;
     name: string;
     role: string;
-  };
+  } | null;
 }
 
 interface Pagination {
@@ -56,7 +64,7 @@ interface Pagination {
   totalPages: number;
 }
 
-type SortColumn = 'date' | 'amount' | 'method' | 'table' | 'total' | 'recordedBy';
+type SortColumn = 'date' | 'amount' | 'method' | 'status';
 type SortDirection = 'asc' | 'desc';
 
 const METHOD_ICONS: Record<string, React.ReactNode> = {
@@ -119,11 +127,187 @@ const DATE_PRESETS: Array<{ key: string; label: string; get: () => { from: strin
 
 const AMOUNT_PRESETS: Array<{ key: string; label: string; get: () => { min: string; max: string } }> = [
   { key: 'all', label: 'Any amount', get: () => ({ min: '', max: '' }) },
-  { key: 'lt50', label: 'Under 50', get: () => ({ min: '', max: '5000' }) },
-  { key: '50-200', label: '50 – 200', get: () => ({ min: '5000', max: '20000' }) },
-  { key: '200-1000', label: '200 – 1,000', get: () => ({ min: '20000', max: '100000' }) },
-  { key: 'gt1000', label: 'Over 1,000', get: () => ({ min: '100000', max: '' }) },
+  { key: 'lt50', label: 'Under 50', get: () => ({ min: '', max: '50' }) },
+  { key: '50-200', label: '50 – 200', get: () => ({ min: '50', max: '200' }) },
+  { key: '200-1000', label: '200 – 1,000', get: () => ({ min: '200', max: '1000' }) },
+  { key: 'gt1000', label: 'Over 1,000', get: () => ({ min: '1000', max: '' }) },
 ];
+
+const ORDER_STATUS_STYLES: Record<string, string> = {
+  SUBMITTED: 'bg-blue-50 text-blue-700 border-blue-200',
+  IN_KITCHEN: 'bg-amber-50 text-amber-700 border-amber-200',
+  SERVED: 'bg-violet-50 text-violet-700 border-violet-200',
+  PAID: 'bg-green-50 text-green-700 border-green-200',
+  CANCELLED: 'bg-red-50 text-red-700 border-red-200',
+};
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  SUBMITTED: 'Submitted',
+  IN_KITCHEN: 'In kitchen',
+  SERVED: 'Served',
+  PAID: 'Paid',
+  CANCELLED: 'Cancelled',
+};
+
+function StatusChip({ status }: { status: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+        ORDER_STATUS_STYLES[status] ?? 'bg-secondary/60 text-muted-foreground border-border'
+      )}
+    >
+      {ORDER_STATUS_LABELS[status] ?? status}
+    </span>
+  );
+}
+
+/* Thousands-separated money for the settlement tables — 1234567.5 → 1,234,567.50 */
+const amountFormatter = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const formatAmount = (amountMinor: number) =>
+  amountFormatter.format(Number.isFinite(amountMinor) ? amountMinor : 0);
+
+const formatDate = (iso: string) => new Date(iso).toLocaleString();
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-1">
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+      <span className="text-xs font-medium text-right break-words">{children}</span>
+    </div>
+  );
+}
+
+/** Floating card that shows the full order + payment details for one settlement. */
+function SettlementDetailsModal({
+  settlement: s,
+  onClose,
+}: {
+  settlement: SettlementRecord;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-2xl animate-fade-in">
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-card/95 px-5 py-4 backdrop-blur">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {METHOD_ICONS[s.method]}
+            <h3 className="font-display text-base font-bold truncate">
+              {METHOD_LABELS[s.method] || s.method} payment
+            </h3>
+            {s.order && <StatusChip status={s.order.status} />}
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <div className="font-mono text-lg font-bold leading-tight">
+                {formatAmount(s.amountMinor)}
+              </div>
+              <div className="text-[11px] text-muted-foreground">{formatDate(s.createdAt)}</div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close details"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-6 p-5 lg:grid-cols-2">
+          {/* Order items */}
+          <div className="min-w-0">
+            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <Receipt className="w-3.5 h-3.5" />
+              Order items
+            </h4>
+            {s.order && s.order.items?.length ? (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-muted-foreground border-b border-border/60">
+                    <th className="text-left py-1.5 pr-2 font-semibold">Item</th>
+                    <th className="text-right py-1.5 px-2 font-semibold">Qty</th>
+                    <th className="text-right py-1.5 px-2 font-semibold">Unit</th>
+                    <th className="text-right py-1.5 pl-2 font-semibold">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.order.items.map((item, idx) => (
+                    <tr key={`${item.menuItemId}-${idx}`} className="border-b border-border/40 last:border-0">
+                      <td className="py-1.5 pr-2">
+                        <span className="font-medium">{item.name}</span>
+                        {item.notes ? (
+                          <span className="block text-[11px] text-muted-foreground italic">{item.notes}</span>
+                        ) : null}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono">×{item.quantity}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{formatAmount(item.unitPrice)}</td>
+                      <td className="py-1.5 pl-2 text-right font-mono font-semibold">
+                        {formatAmount(item.unitPrice * item.quantity)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : s.order ? (
+              <p className="text-sm text-muted-foreground">No items recorded on this order.</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                This order was deleted after the payment was recorded, so its details are no longer
+                available.
+              </p>
+            )}
+          </div>
+
+          {/* Order & payment summary */}
+          <div className="space-y-5 min-w-0">
+            <div>
+              <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">Order</h4>
+              {s.order ? (
+                <div className="divide-y divide-border/40">
+                  <DetailRow label="Table">{s.order.tableNumber}</DetailRow>
+                  <DetailRow label="Status">
+                    <StatusChip status={s.order.status} />
+                  </DetailRow>
+                  <DetailRow label="Total">
+                    <span className="font-mono">{formatAmount(s.order.totalAmount)}</span>
+                  </DetailRow>
+                  <DetailRow label="Waiter">{s.order.waiter?.name || 'Unknown'}</DetailRow>
+                  {s.order.createdAt ? (
+                    <DetailRow label="Placed">{formatDate(s.order.createdAt)}</DetailRow>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Order no longer available.</p>
+              )}
+            </div>
+            <div>
+              <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment</h4>
+              <div className="divide-y divide-border/40">
+                <DetailRow label="Method">{METHOD_LABELS[s.method] || s.method}</DetailRow>
+                {s.reference ? <DetailRow label="Reference">{s.reference}</DetailRow> : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export const GlobalSettlementHistory: React.FC = () => {
   const [page, setPage] = useState(1);
@@ -134,11 +318,8 @@ export const GlobalSettlementHistory: React.FC = () => {
   const [amountPreset, setAmountPreset] = useState<string>('all');
   const [minAmount, setMinAmount] = useState<string>('');
   const [maxAmount, setMaxAmount] = useState<string>('');
-  const [tableFilter, setTableFilter] = useState<string>('');
-  const [orderFilter, setOrderFilter] = useState<string>('');
-  const [totalFilter, setTotalFilter] = useState<string>('');
-  const [recordedByFilter, setRecordedByFilter] = useState<string>('');
   const [sortColumn, setSortColumn] = useState<SortColumn>('date');
+  const [selected, setSelected] = useState<SettlementRecord | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const { setPageTitle, setShowDateRange } = useHeaderStore();
 
@@ -159,6 +340,7 @@ export const GlobalSettlementHistory: React.FC = () => {
     isLoading,
     isFetching,
     error: queryError,
+    refetch,
   } = useQuery<{ data: SettlementRecord[]; pagination: Pagination }>({
     queryKey: [
       'settlements',
@@ -167,9 +349,6 @@ export const GlobalSettlementHistory: React.FC = () => {
       dateTo,
       minAmount,
       maxAmount,
-      tableFilter.trim(),
-      orderFilter.trim(),
-      recordedByFilter.trim(),
       page,
     ],
     queryFn: async () => {
@@ -180,11 +359,8 @@ export const GlobalSettlementHistory: React.FC = () => {
         const d = new Date(`${dateTo}T23:59:59.999`);
         params.to = d.toISOString();
       }
-      if (minAmount) params.minAmount = String(Math.round(parseFloat(minAmount) * 100));
-      if (maxAmount) params.maxAmount = String(Math.round(parseFloat(maxAmount) * 100));
-      if (tableFilter.trim()) params.table = tableFilter.trim();
-      if (orderFilter.trim()) params.order = orderFilter.trim();
-      if (recordedByFilter.trim()) params.recordedBy = recordedByFilter.trim();
+      if (minAmount) params.minAmount = String(parseFloat(minAmount));
+      if (maxAmount) params.maxAmount = String(parseFloat(maxAmount));
 
       const res = await axiosClient.get('/settlements', { params });
       return res.data;
@@ -199,19 +375,13 @@ export const GlobalSettlementHistory: React.FC = () => {
   const pagination = data?.pagination ?? { page, limit: 25, total: 0, totalPages: 0 };
   // Skeleton only while there is no cached page; background refetches stay silent.
   const loading = isLoading || (isFetching && !data);
+  const errorMessage =
+    queryError instanceof Error ? queryError.message : 'Failed to load settlement history.';
 
   // Any filter change starts over at page 1.
   useEffect(() => {
     setPage(1);
-  }, [methodFilter, dateFrom, dateTo, minAmount, maxAmount, tableFilter, orderFilter, recordedByFilter]);
-
-  const formatAmount = (amountMinor: number) => {
-    return (amountMinor / 100).toFixed(2);
-  };
-
-  const formatDate = (iso: string) => {
-    return new Date(iso).toLocaleString();
-  };
+  }, [methodFilter, dateFrom, dateTo, minAmount, maxAmount]);
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -222,24 +392,8 @@ export const GlobalSettlementHistory: React.FC = () => {
     }
   };
 
-  // Apply the table-side "Total" filter on the client because the API filters
-  // the settlement amount, not the parent order total.
-  const visibleSettlements = useMemo(() => {
-    if (!totalFilter.trim()) return settlements;
-    const q = totalFilter.trim();
-    const asNumber = Number(q);
-    return settlements.filter((s) => {
-      if (!s.order) return false;
-      const total = (s.order.totalAmount / 100).toString();
-      if (!Number.isNaN(asNumber) && /^\d+(\.\d+)?$/.test(q)) {
-        return Math.round(s.order.totalAmount / 100) === Math.round(asNumber);
-      }
-      return total.includes(q);
-    });
-  }, [settlements, totalFilter]);
-
   const sortedSettlements = useMemo(() => {
-    const sorted = [...visibleSettlements].sort((a, b) => {
+    const sorted = [...settlements].sort((a, b) => {
       let comparison = 0;
       switch (sortColumn) {
         case 'date':
@@ -251,20 +405,14 @@ export const GlobalSettlementHistory: React.FC = () => {
         case 'method':
           comparison = a.method.localeCompare(b.method);
           break;
-        case 'table':
-          comparison = (a.order?.tableNumber || '').localeCompare(b.order?.tableNumber || '');
-          break;
-        case 'total':
-          comparison = (a.order?.totalAmount || 0) - (b.order?.totalAmount || 0);
-          break;
-        case 'recordedBy':
-          comparison = (a.order?.waiter?.name || '').localeCompare(b.order?.waiter?.name || '');
+        case 'status':
+          comparison = (a.order?.status || '').localeCompare(b.order?.status || '');
           break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
     return sorted;
-  }, [visibleSettlements, sortColumn, sortDirection]);
+  }, [settlements, sortColumn, sortDirection]);
 
   const handleDatePreset = (preset: typeof DATE_PRESETS[number]) => {
     setDatePreset(preset.key);
@@ -432,98 +580,6 @@ export const GlobalSettlementHistory: React.FC = () => {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Table filter */}
-          <div className="relative">
-            <Table2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              value={tableFilter}
-              onChange={(e) => setTableFilter(e.target.value)}
-              placeholder="Table"
-              aria-label="Filter by table"
-              className="h-11 w-28 pl-9 pr-7"
-            />
-            {tableFilter && (
-              <button
-                type="button"
-                onClick={() => setTableFilter('')}
-                aria-label="Clear table filter"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Order filter */}
-          <div className="relative">
-            <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              value={orderFilter}
-              onChange={(e) => setOrderFilter(e.target.value)}
-              placeholder="Order"
-              aria-label="Filter by order"
-              className="h-11 w-32 pl-9 pr-7"
-            />
-            {orderFilter && (
-              <button
-                type="button"
-                onClick={() => setOrderFilter('')}
-                aria-label="Clear order filter"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Total filter */}
-          <div className="relative">
-            <CircleDollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              inputMode="decimal"
-              value={totalFilter}
-              onChange={(e) => setTotalFilter(e.target.value)}
-              placeholder="Total"
-              aria-label="Filter by order total"
-              className="h-11 w-28 pl-9 pr-7"
-            />
-            {totalFilter && (
-              <button
-                type="button"
-                onClick={() => setTotalFilter('')}
-                aria-label="Clear total filter"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Recorded By filter */}
-          <div className="relative">
-            <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              value={recordedByFilter}
-              onChange={(e) => setRecordedByFilter(e.target.value)}
-              placeholder="Waiter"
-              aria-label="Filter by waiter"
-              className="h-11 w-36 pl-9 pr-7"
-            />
-            {recordedByFilter && (
-              <button
-                type="button"
-                onClick={() => setRecordedByFilter('')}
-                aria-label="Clear waiter filter"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
         </div>
       </header>
 
@@ -532,6 +588,15 @@ export const GlobalSettlementHistory: React.FC = () => {
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : queryError ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <AlertCircle className="w-10 h-10 mb-3 opacity-60 text-red-500" />
+              <p className="font-medium text-foreground">Failed to load settlements</p>
+              <p className="text-sm mt-1 max-w-md text-center">{errorMessage}</p>
+              <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-4">
+                Try again
+              </Button>
             </div>
           ) : sortedSettlements.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -579,33 +644,11 @@ export const GlobalSettlementHistory: React.FC = () => {
                     </th>
                     <th className="text-left px-4 py-3">
                       <button
-                        onClick={() => handleSort('table')}
+                        onClick={() => handleSort('status')}
                         className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        Table
-                        {sortColumn === 'table' && (
-                          <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                        )}
-                      </button>
-                    </th>
-                    <th className="text-left px-4 py-3">
-                      <button
-                        onClick={() => handleSort('total')}
-                        className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Order Total
-                        {sortColumn === 'total' && (
-                          <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-                        )}
-                      </button>
-                    </th>
-                    <th className="text-left px-4 py-3">
-                      <button
-                        onClick={() => handleSort('recordedBy')}
-                        className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        Waiter
-                        {sortColumn === 'recordedBy' && (
+                        Status
+                        {sortColumn === 'status' && (
                           <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                         )}
                       </button>
@@ -613,37 +656,52 @@ export const GlobalSettlementHistory: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedSettlements.map((s) => (
-                    <tr key={s.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
-                        {formatDate(s.createdAt)}
-                      </td>
-                      <td className="px-4 py-3 font-mono font-semibold">
-                        {formatAmount(s.amountMinor)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1.5">
-                          {METHOD_ICONS[s.method]}
-                          {METHOD_LABELS[s.method] || s.method}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {s.order?.tableNumber || '—'}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-muted-foreground">
-                        {s.order ? formatAmount(s.order.totalAmount) : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {s.order?.waiter?.name || 'Unknown'}
-                      </td>
-                    </tr>
-                  ))}
+                  {sortedSettlements.map((s) => {
+                    const isCancelled = s.order?.status === 'CANCELLED';
+                    return (
+                      <tr
+                        key={s.id}
+                        onClick={() => setSelected(s)}
+                        className={cn(
+                          'border-b border-border/50 transition-colors cursor-pointer select-none',
+                          'hover:bg-muted/20',
+                          isCancelled && 'opacity-70'
+                        )}
+                        title="Click to view order details"
+                      >
+                        <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
+                          {formatDate(s.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-semibold">
+                          {formatAmount(s.amountMinor)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center gap-1.5">
+                            {METHOD_ICONS[s.method]}
+                            {METHOD_LABELS[s.method] || s.method}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {s.order ? (
+                            <StatusChip status={s.order.status} />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Floating details card */}
+      {selected && (
+        <SettlementDetailsModal settlement={selected} onClose={() => setSelected(null)} />
+      )}
 
       {/* Pagination */}
       {pagination.totalPages > 1 && (
