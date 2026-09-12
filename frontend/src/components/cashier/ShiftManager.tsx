@@ -162,9 +162,9 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
                   variant="default" 
                   className="w-full"
                   onClick={() => {
-                    const cashMinor = Math.round(parseFloat(closingCash || '0') * 100);
-                    const cardMinor = Math.round(parseFloat(closingCard || '0') * 100);
-                    const mobileMinor = Math.round(parseFloat(closingMobile || '0') * 100);
+                    const cashMinor = parseFloat(closingCash || '0');
+                    const cardMinor = parseFloat(closingCard || '0');
+                    const mobileMinor = parseFloat(closingMobile || '0');
                     closeShiftMutation.mutate({ 
                       declaredCashMinor: cashMinor, 
                       declaredCardMinor: cardMinor,
@@ -234,7 +234,7 @@ export const ShiftManager: React.FC<ShiftManagerProps> = ({ children }) => {
               size="lg"
               className="w-full h-14 text-lg font-bold shadow-brand"
               onClick={() => {
-                const amountMinor = Math.round(parseFloat(openingCash || '0') * 100);
+                const amountMinor = parseFloat(openingCash || '0');
                 openShiftMutation.mutate(amountMinor);
               }}
               disabled={openShiftMutation.isPending || !openingCash}
