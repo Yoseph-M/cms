@@ -5,6 +5,7 @@ import { useAuthStore } from './store/authStore';
 import { useSocketStore } from './store/socketStore';
 import { useOfflineSyncStore } from './store/offlineSyncStore';
 import { useSettingsStore } from './store/settingsStore';
+import { useThemeStore } from './store/themeStore';
 
 import { ToastContainer } from './components/common/ToastContainer';
 
@@ -181,7 +182,7 @@ const LoginRoute: React.FC = () => {
 
 /** Router-free app shell — use with MemoryRouter in tests, BrowserRouter in production. */
 export const AppRoutes: React.FC = () => {
-  const { isAuthenticated, isLoading, bootstrapSession } = useAuthStore();
+  const { isAuthenticated, isLoading, bootstrapSession, user } = useAuthStore();
   const { connect, disconnect } = useSocketStore();
   const { initListeners } = useOfflineSyncStore();
   const { settings, fetchSettings } = useSettingsStore();
@@ -191,11 +192,46 @@ export const AppRoutes: React.FC = () => {
     bootstrapSession();
   }, [bootstrapSession]);
 
+  // Proactive access-token rotation: the access token expires after 2h, and a
+  // request sent with an expired token gets a browser-logged 401 before the
+  // axios interceptor can silently refresh + retry. Refresh every 20 min —
+  // background tabs throttle timers, so a long interval can be skipped
+  // entirely and each skipped rotation guarantees a 401 later; the
+  // visibilitychange catch-up covers the gaps (e.g. a tablet that slept).
+  // Errors are swallowed: a failed proactive refresh must not log the user
+  // out — the on-demand 401 flow in axiosClient remains the source of truth.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let lastRotation = Date.now();
+    const rotate = () => {
+      lastRotation = Date.now();
+      void useAuthStore.getState().refreshSession(true).catch(() => {});
+    };
+    const interval = setInterval(rotate, 20 * 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastRotation >= 20 * 60 * 1000) {
+        rotate();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [isAuthenticated]);
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchSettings();
     }
   }, [isAuthenticated, fetchSettings]);
+
+  // Appearance is sandboxed per account: every signed-in user (and the login
+  // screen) keeps its own persisted theme, so a cashier switching to dark mode
+  // never repaints the owner's or manager's workspace.
+  useEffect(() => {
+    useThemeStore.getState().syncScopeToUser(user?.id ?? null);
+  }, [user?.id]);
 
   useEffect(() => {
     initListeners();
