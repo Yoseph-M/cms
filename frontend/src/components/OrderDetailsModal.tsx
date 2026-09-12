@@ -49,7 +49,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const [activeTab, setActiveTab] = useState<'details' | 'settlements'>('details');
 
   const formatAmount = (amountMinor: number) => {
-    return `$${(amountMinor / 100).toFixed(2)}`;
+    return `$${amountMinor.toFixed(2)}`;
   };
 
   const getStatusBadge = (status: string) => {
