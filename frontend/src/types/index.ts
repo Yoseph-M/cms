@@ -17,12 +17,15 @@ export interface User {
   avatarUrl?: string | null;
   salaryAmount: number;
   isActive: boolean;
+  /** UI language this account prefers ('en' | 'am') — restored on session start. */
+  preferredLanguage?: string | null;
   createdAt?: string;
 }
 
 export interface MenuItem {
   id: string;
   name: string;
+  nameAmharic?: string | null;
   category: MenuCategory;
   price: number;
   isAvailable: boolean;
