@@ -10,7 +10,8 @@
     "prisma:db-push": "prisma db push",
     "verify-indexes": "tsx scripts/verify-indexes.ts",
     "test": "jest --detectOpenHandles --forceExit",
-    "migrate": "tsx scripts/migrate-drop-password.ts"
+    "migrate": "tsx scripts/migrate-drop-password.ts",
+    "migrate:money-major-units": "tsx scripts/migrate-money-major-units.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
