@@ -108,7 +108,9 @@ export const ChartToggle: React.FC<ChartToggleProps> = ({ options, value, onChan
       index={index}
       onIndexChange={(i) => onChange(options[i]?.value ?? options[0].value)}
     >
-      <TabList variant="solid" className="h-7">
+      {/* `!overflow-visible` cancels Tremor's `overflow-x-clip`, which otherwise
+          slices the focus ring off the selected tab. */}
+      <TabList variant="solid" className="h-7 !overflow-visible">
         {options.map((o) => (
           <Tab key={o.value} className="text-xs px-2 py-0.5">
             {o.label}
