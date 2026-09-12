@@ -15,7 +15,7 @@ import { logger } from '../../utils/logger';
  *   - table: matches the related order's tableNumber (case-insensitive contains).
  *   - order: matches the related order's id or clientOrderId (contains).
  *   - minAmount, maxAmount: bounds on amountMinor.
- *   - recordedBy: matches the recorder's id or name (contains).
+ *   - recordedBy: matches the related order's waiter id or name (contains).
  */
 export async function getAllSettlements(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
@@ -68,11 +68,15 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
       }
     }
     if (recordedBy) {
+      // Only match `id` when the input looks like a Mongo ObjectId. Passing free
+      // text to Prisma's ObjectId `id` filter throws "Malformed ObjectID", which
+      // turns this endpoint into a 500 the moment a user types a waiter name.
+      const idMatch = /^[0-9a-fA-F]{24}$/.test(recordedBy) ? [{ id: recordedBy }] : [];
       const users = await prisma.user.findMany({
         where: {
           OR: [
             { name: { contains: recordedBy, mode: 'insensitive' } },
-            { id: recordedBy },
+            ...idMatch,
           ],
         },
         select: { id: true },
@@ -89,25 +93,49 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
 
     const settlements = await prisma.settlement.findMany({
       where,
-      include: {
-        order: {
-          select: { 
-            id: true, clientOrderId: true, tableNumber: true, totalAmount: true, status: true,
-            waiter: { select: { id: true, name: true, role: true } }
-          },
-        },
-        recordedBy: {
-          select: { id: true, name: true, role: true },
-        },
-      },
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
     });
 
+    // Resolve the related order & recorder with separate queries instead of
+    // `include`. A settlement can outlive its order (e.g. the order was hard
+    // deleted), and on MongoDB Prisma throws "Field order is required to return
+    // data, got `null` instead" for such orphaned rows — which 500s the entire
+    // settlement history. The frontend already renders a missing order as "—",
+    // so surface orphans instead of crashing on them.
+    const orderIds = [...new Set(settlements.map((s) => s.orderId))];
+    const recorderIds = [...new Set(settlements.map((s) => s.recordedById))];
+    const [orders, recorders] = await Promise.all([
+      prisma.order.findMany({
+        where: { id: { in: orderIds } },
+        select: {
+          id: true,
+          clientOrderId: true,
+          tableNumber: true,
+          totalAmount: true,
+          status: true,
+          createdAt: true,
+          items: true, // embedded OrderItem composite: name, quantity, unitPrice, notes
+          waiter: { select: { id: true, name: true, role: true } },
+        },
+      }),
+      prisma.user.findMany({
+        where: { id: { in: recorderIds } },
+        select: { id: true, name: true, role: true },
+      }),
+    ]);
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    const recorderById = new Map(recorders.map((u) => [u.id, u]));
+    const hydrated = settlements.map((s) => ({
+      ...s,
+      order: orderById.get(s.orderId) ?? null,
+      recordedBy: recorderById.get(s.recordedById) ?? null,
+    }));
+
     // Apply order-related filters as a post-filter so the page still respects pagination.
     const filtered = orderFilter
-      ? settlements.filter((s) => {
+      ? hydrated.filter((s) => {
           if (!s.order) return false;
           if (table && !(s.order.tableNumber || '').toLowerCase().includes(table.toLowerCase())) {
             return false;
@@ -119,7 +147,7 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
           }
           return true;
         })
-      : settlements;
+      : hydrated;
 
     const total = await prisma.settlement.count({ where });
 
