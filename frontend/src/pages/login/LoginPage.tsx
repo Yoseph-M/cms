@@ -6,7 +6,7 @@ import { axiosClient } from '../../api/axiosClient';
 import { Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
-import i18n from '../../i18n';
+import { applyUserLanguage } from '../../i18nUserPrefs';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -48,11 +48,10 @@ export const LoginPage: React.FC = () => {
       const res = await axiosClient.post('/auth/login', { username, password });
       const { user: authUser, accessToken } = res.data;
 
-      // Restore user's preferred language on login
-      if (authUser.preferredLanguage && authUser.preferredLanguage !== i18n.language) {
-        await i18n.changeLanguage(authUser.preferredLanguage);
-        document.documentElement.lang = authUser.preferredLanguage;
-      }
+      // Restore THIS user's preferred language on login (falls back to the
+      // device language when the account has no preference — never keep the
+      // previous user's choice).
+      await applyUserLanguage(authUser);
 
       setAuth(authUser, accessToken);
       addToast({ type: 'success', title: `Welcome back, ${authUser.name}!` });
