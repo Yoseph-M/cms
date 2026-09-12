@@ -75,7 +75,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
   };
 
   const formatAmount = (amountMinor: number) => {
-    return `$${(amountMinor / 100).toFixed(2)}`;
+    return `$${amountMinor.toFixed(2)}`;
   };
 
   const formatDate = (isoDate: string) => {
