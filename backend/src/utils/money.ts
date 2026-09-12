@@ -1,48 +1,47 @@
 /**
  * Money Utility
  * 
- * Provides safe financial operations using integer minor units.
- * All monetary values are stored and calculated in minor units (e.g., cents)
- * to avoid floating-point precision issues.
+ * Provides safe financial operations.
+ * All monetary values are stored and calculated as entered, in ETB major
+ * units (e.g., 120.00 for one hundred twenty birr). No unit conversion is
+ * performed — helper names are kept for API compatibility.
  */
 
 import { ValidationError } from './errors';
 
 /**
- * Convert a major unit amount (e.g., 10.00) to minor units (e.g., 1000)
+ * Validate an amount and return it unchanged (amounts are stored as entered).
+ * Kept for API compatibility with the previous minor-unit convention.
  */
-export function toMinor(amountMajor: number, decimals: number = 2): number {
+export function toMinor(amountMajor: number): number {
   if (isNaN(amountMajor)) {
     throw new ValidationError('Invalid amount', 'amount');
   }
-  
-  const multiplier = Math.pow(10, decimals);
-  return Math.round(amountMajor * multiplier);
+  return amountMajor;
 }
 
 /**
- * Convert minor units to major unit amount
+ * Validate an amount and return it unchanged (amounts are stored as entered).
+ * Kept for API compatibility with the previous minor-unit convention.
  */
-export function toMajor(amountMinor: number, decimals: number = 2): number {
+export function toMajor(amountMinor: number): number {
   if (isNaN(amountMinor)) {
     throw new ValidationError('Invalid amount', 'amount');
   }
-  
-  const divisor = Math.pow(10, decimals);
-  return amountMinor / divisor;
+  return amountMinor;
 }
 
 /**
- * Parse a string amount and convert to minor units
+ * Parse a string amount (ETB as entered)
  */
-export function parseMinor(amountString: string, decimals: number = 2): number {
+export function parseMinor(amountString: string): number {
   const parsed = parseFloat(amountString);
   
   if (isNaN(parsed)) {
     throw new ValidationError('Invalid amount format', 'amount');
   }
   
-  return toMinor(parsed, decimals);
+  return parsed;
 }
 
 /**
@@ -134,11 +133,10 @@ export function percentage(amount: number, percent: number): number {
 }
 
 /**
- * Format minor units as a display string
+ * Format an amount (ETB as entered) as a display string
  */
-export function formatMinor(amountMinor: number, decimals: number = 2, currency: string = ''): string {
-  const amountMajor = toMajor(amountMinor, decimals);
-  const formatted = amountMajor.toFixed(decimals);
+export function formatMinor(amount: number, decimals: number = 2, currency: string = ''): string {
+  const formatted = amount.toFixed(decimals);
   return currency ? `${currency} ${formatted}` : formatted;
 }
 
