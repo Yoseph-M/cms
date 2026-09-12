@@ -17,11 +17,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div
         className={cn(
-          'group relative flex items-center rounded-xl',
-          'bg-secondary/50 border border-input transition-all',
-          'hover:border-primary/40 focus-within:border-primary focus-within:bg-background',
-          'focus-within:shadow-[0_0_0_4px_hsl(217_91%_60%/0.14)]',
-          invalid && 'border-destructive/70 focus-within:border-destructive focus-within:shadow-[0_0_0_4px_hsl(0_84%_60%/0.18)]',
+          'group relative flex items-center rounded-lg',
+          'bg-background border border-input transition-all duration-200 shadow-sm',
+          'hover:border-foreground/20 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary',
+          invalid && 'border-destructive focus-within:border-destructive focus-within:ring-destructive',
           className
         )}
       >
