@@ -70,7 +70,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: `Invalid quantity for item: ${dbItem.name}` });
     }
 
-    const unitPrice = dbItem.price; // Already minor units in DB
+    const unitPrice = dbItem.price; // Already in ETB as entered
     computedTotal += unitPrice * item.quantity;
     
     validatedItems.push({
@@ -168,7 +168,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
 }
 
 export async function getOrders(req: AuthenticatedRequest, res: Response) {
-  const { status, waiterId, date, page, limit } = req.query;
+  const { status, statuses, waiterId, date, page, limit } = req.query;
   const callerRole = req.user!.role as Role;
   const callerId = req.user!.userId;
 
@@ -183,6 +183,12 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
 
   if (status) {
     whereClause.status = status as OrderStatus;
+  } else if (statuses) {
+    // Comma-separated list, e.g. ?statuses=SUBMITTED,IN_KITCHEN,SERVED
+    const list = (statuses as string).split(',').map((s) => s.trim()).filter(Boolean);
+    if (list.length > 0) {
+      whereClause.status = { in: list };
+    }
   }
 
   if (date) {
