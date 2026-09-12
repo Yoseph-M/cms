@@ -43,7 +43,7 @@ export const ShiftCloseDialog: React.FC<ShiftCloseDialogProps> = ({
   }, [open]);
 
   const declaredNum = parseFloat(declared || '0') || 0;
-  const declaredMinor = Math.round(declaredNum * 100);
+  const declaredMinor = declaredNum;
   const varianceMinor = declaredMinor - expectedDrawerMinor;
   const hasVariance = Math.abs(varianceMinor) > 0;
 
