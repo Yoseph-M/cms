@@ -1,21 +1,58 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Users, UserCheck, UserX, UserMinus, TrendingUp, DollarSign } from 'lucide-react';
-import { axiosClient } from '../../api/axiosClient';
-import { useToastStore } from '../../store/toastStore';
+import { Activity, DollarSign, Receipt, ShoppingCart } from 'lucide-react';
 import { useHeaderStore } from '../../store/headerStore';
-import { User, Role } from '../../types';
-import { extractErrorMessage } from '../../utils/errorHandler';
+import {
+  useAnalyticsQuery,
+  useDailySalesQuery,
+  useStaffPerformanceQuery,
+  useApiQuery,
+} from '../../hooks/useCachedQueries';
 import { formatCurrency } from '../../utils/currency';
-import { useUsersQuery, useStaffPerformanceQuery, useApiQuery } from '../../hooks/useCachedQueries';
 
-// Use the owner dashboard components to match the UI perfectly
+// Shared island-UI dashboard building blocks (same kit as the owner dashboard)
 import { KpiCard } from '../../components/owner/dashboard/KpiCards';
 import { SectionCard } from '../../components/owner/dashboard/SectionCard';
 import { RevenueLineChart } from '../../components/owner/dashboard/RevenueLineChart';
 import { RevenueDonut } from '../../components/owner/dashboard/RevenueDonut';
+import {
+  RecentOrdersTable,
+  type RecentOrder,
+  type OrderStatusKey,
+} from '../../components/owner/dashboard/RecentOrdersTable';
+import {
+  OrderTypeBars,
+  type OrderTypeEntry,
+} from '../../components/owner/dashboard/OrderTypeBars';
 
+/* ─── API response shapes ─── */
+interface TrendRow {
+  date: string; // YYYY-MM-DD
+  revenue: number; // minor units
+  orderCount: number;
+}
+interface MethodRow {
+  method: 'CASH' | 'CARD' | 'MOBILE';
+  revenue: number; // minor units
+  count: number;
+}
+interface TopItemRow {
+  name: string;
+  totalQty: number;
+  totalRevenue: number; // minor units
+  imageUrl?: string;
+}
+interface RecentOrderRow {
+  id: string;
+  clientOrderId: string;
+  tableNumber?: string | null;
+  status: string;
+  totalAmount: number;
+  createdAt: string;
+  cashier?: { name: string } | null;
+  waiter?: { name: string } | null;
+}
 interface WaiterPerfRow {
   waiterId: string;
   name: string;
@@ -24,22 +61,28 @@ interface WaiterPerfRow {
   totalSales: number;
 }
 
-interface DashboardStats {
-  totalOrders: number;
-  totalRevenue: number;
-  activeStaff: number;
-}
+const METHOD_LABEL: Record<string, string> = { CASH: 'Cash', CARD: 'Card', MOBILE: 'Mobile' };
+const METHOD_COLOR: Record<string, string> = {
+  CASH: 'hsl(152 63% 40%)',
+  CARD: 'hsl(221 83% 53%)',
+  MOBILE: 'hsl(262 83% 58%)',
+};
 
 export const ManagerDashboard: React.FC = () => {
-  const { addToast } = useToastStore();
   const { t } = useTranslation('manager');
-  const { dateRange: headerDateRange, setDateRange: setHeaderDateRange, setShowDateRange, setPageTitle } = useHeaderStore();
+  const {
+    dateRange: headerDateRange,
+    setDateRange: setHeaderDateRange,
+    setShowDateRange,
+    setPageTitle,
+  } = useHeaderStore();
 
   useEffect(() => {
-    setPageTitle({ title: 'Dashboard', subtitle: 'Overview of operations and team performance' });
+    setPageTitle({ title: 'Dashboard', subtitle: 'Operations and revenue overview' });
     return () => setPageTitle({ title: 'Overview', subtitle: '' });
   }, [setPageTitle]);
 
+  // Date range — defaults to the last 30 days, driven by the global header chip.
   const today = new Date();
   const monthAgo = new Date(today);
   monthAgo.setDate(today.getDate() - 29);
@@ -62,7 +105,6 @@ export const ManagerDashboard: React.FC = () => {
     from: headerDateRange.from || defaultRange.from,
     to: headerDateRange.to || defaultRange.to,
   };
-  const setDateRange = setHeaderDateRange;
 
   useEffect(() => {
     setShowDateRange(true);
@@ -73,72 +115,110 @@ export const ManagerDashboard: React.FC = () => {
   const fromIso = useMemo(() => new Date(dateRange.from).toISOString(), [dateRange.from]);
   const toIso = useMemo(() => new Date(`${dateRange.to}T23:59:59.999`).toISOString(), [dateRange.to]);
 
-  const usersQuery = useUsersQuery();
+  const trendQuery = useAnalyticsQuery<TrendRow[]>('/analytics/sales/trend', {
+    startDate: fromIso,
+    endDate: toIso,
+  });
+  const methodsQuery = useAnalyticsQuery<MethodRow[]>('/analytics/payment-methods', {
+    from: fromIso,
+    to: toIso,
+  });
+  const topItemsQuery = useAnalyticsQuery<TopItemRow[]>('/analytics/top-items', {
+    from: fromIso,
+    to: toIso,
+    limit: '5',
+  });
+  const dailyQuery = useDailySalesQuery();
   const waiterPerfQuery = useStaffPerformanceQuery({ from: fromIso, to: toIso, role: 'WAITER' });
-  const ordersQuery = useApiQuery<unknown[]>(
-    ['orders', 'range', fromIso, toIso],
+  const recentOrdersQuery = useApiQuery<{ data: RecentOrderRow[] }>(
+    ['orders', 'recent', 'manager-dashboard'],
     '/orders',
-    { from: fromIso, to: toIso }
+    { limit: 8 },
   );
 
-  const allUsers: User[] = Array.isArray(usersQuery.data) ? usersQuery.data : [];
-  // Filter out OWNER and MANAGER roles for manager view
-  const staffList: User[] = allUsers.filter((user: User) => user.role !== 'OWNER' && user.role !== 'MANAGER');
-  const isLoadingStaff = usersQuery.isLoading;
+  const trend: TrendRow[] = Array.isArray(trendQuery.data) ? trendQuery.data : [];
+  const methods: MethodRow[] = Array.isArray(methodsQuery.data) ? methodsQuery.data : [];
+  const topItems: TopItemRow[] = Array.isArray(topItemsQuery.data) ? topItemsQuery.data : [];
+  const daily = dailyQuery.data ?? null;
   const waiterPerf: WaiterPerfRow[] = Array.isArray(waiterPerfQuery.data) ? waiterPerfQuery.data : [];
-  const isLoadingWaiterPerf = waiterPerfQuery.isLoading;
+  const recentOrders: RecentOrderRow[] = (() => {
+    const raw = recentOrdersQuery.data;
+    if (!raw) return [];
+    const list = raw?.data ?? raw;
+    return Array.isArray(list) ? list : [];
+  })();
 
-  const orders = Array.isArray(ordersQuery.data) ? ordersQuery.data : [];
-  const dashboardStats = {
-    totalOrders: orders.length,
-    totalRevenue: orders.reduce((sum: number, order: any) => sum + (order.totalAmount || 0), 0),
-    activeStaff: allUsers.filter(
-      (u: User) => u.isActive && u.role !== 'OWNER' && u.role !== 'MANAGER'
-    ).length,
-  };
+  const isLoading =
+    trendQuery.isLoading ||
+    methodsQuery.isLoading ||
+    topItemsQuery.isLoading ||
+    dailyQuery.isLoading ||
+    waiterPerfQuery.isLoading ||
+    recentOrdersQuery.isLoading;
 
-  // Derive KPIs from actual data
-  const kpis = useMemo(() => {
-    const totalStaff = staffList.length;
-    // Mock attendance data - in production this would come from an attendance API
-    const present = Math.round(totalStaff * 0.75);
-    const absent = Math.round(totalStaff * 0.1);
-    const onLeave = totalStaff - present - absent;
-    
+  /* ── Derived KPIs (all money kept in minor units until display) ── */
+  const rangeStats = useMemo(() => {
+    const revenueMinor = trend.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
+    const orderCount = trend.reduce((sum, row) => sum + (Number(row.orderCount) || 0), 0);
     return {
-      totalStaff,
-      present,
-      absent,
-      onLeave,
+      revenueMinor,
+      orderCount,
+      avgMinor: orderCount > 0 ? Math.round(revenueMinor / orderCount) : 0,
     };
-  }, [staffList]);
+  }, [trend]);
 
-  // Derive Donut Chart Data (Staff by Role) - EXCLUDE OWNER from the chart
-  const donutSegments = useMemo(() => {
-    // Filter out OWNER role before aggregating
-    const filteredStaff = staffList.filter(staff => staff.role !== 'OWNER');
-    
-    const roles = filteredStaff.reduce((acc, staff) => {
-      acc[staff.role] = (acc[staff.role] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+  const rangeLabel = `${dateRange.from} → ${dateRange.to}`;
 
-    const colors = ['hsl(24 60% 35%)', 'hsl(142 71% 45%)', 'hsl(30 80% 75%)', 'hsl(200 80% 60%)', 'hsl(280 65% 60%)'];
-    return Object.entries(roles).map(([role, count], i) => ({
-      label: role,
-      value: count,
-      color: colors[i % colors.length],
-    }));
-  }, [staffList]);
-
-  // Mock Line Chart Data (Attendance Trend) - based on staff count
+  /* ── Line chart: daily paid revenue across the range ── */
   const lineData = useMemo(() => {
-    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const staffCount = staffList.length;
-    const present = labels.map(() => Math.round(staffCount * (0.7 + Math.random() * 0.2)));
-    const absent = labels.map((_, i) => Math.max(0, Math.round(staffCount * 0.1) + Math.floor(Math.random() * 3)));
-    return { labels, present, absent };
-  }, [staffList.length]);
+    const labels = trend.map((row) => formatShortDate(row.date));
+    const income = trend.map((row) => Number(row.revenue) || 0);
+    return { labels, income };
+  }, [trend]);
+
+  /* ── Donut: revenue by payment method ── */
+  const donutSegments = useMemo(
+    () =>
+      methods
+        .filter((m) => METHOD_COLOR[m.method])
+        .map((m) => ({
+          label: METHOD_LABEL[m.method] ?? m.method,
+          value: m.revenue,
+          color: METHOD_COLOR[m.method],
+        })),
+    [methods],
+  );
+
+  /* ── Top items: best sellers by revenue share ── */
+  const orderTypeEntries = useMemo<OrderTypeEntry[]>(() => {
+    const total = topItems.reduce((sum, item) => sum + (Number(item.totalRevenue) || 0), 0) || 1;
+    return topItems.map((item, i) => ({
+      id: `${item.name}-${i}`,
+      name: item.name,
+      percent: Math.round(((Number(item.totalRevenue) || 0) / total) * 100),
+      total: Number(item.totalRevenue) || 0,
+    }));
+  }, [topItems]);
+
+  /* ── Recent orders table rows ── */
+  const recentRows = useMemo<RecentOrder[]>(() => {
+    const STATUS_MAP: Record<string, OrderStatusKey> = {
+      PAID: 'paid',
+      CANCELLED: 'cancelled',
+      SERVED: 'pending',
+      SUBMITTED: 'pending',
+      IN_KITCHEN: 'pending',
+    };
+    return recentOrders.map((o) => ({
+      id: o.id,
+      shortId: (o.clientOrderId ?? o.id).slice(0, 4).padStart(4, '0'),
+      type: o.tableNumber ? `Dine-in · T${o.tableNumber}` : 'Takeaway',
+      attendant: o.waiter?.name ?? o.cashier?.name ?? '—',
+      time: o.createdAt,
+      status: STATUS_MAP[o.status] ?? 'pending',
+      price: o.totalAmount,
+    }));
+  }, [recentOrders]);
 
   return (
     <motion.div
@@ -147,151 +227,173 @@ export const ManagerDashboard: React.FC = () => {
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="h-full flex flex-col"
     >
-      <div className="flex-1 overflow-y-auto max-w-7xl mx-auto w-full space-y-5 sm:space-y-6">
-        {/* KPI cards - Top row with 4 cards */}
+      <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-6 space-y-5 sm:space-y-6">
+        {/* KPI islands */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
-          <KpiCard 
-            label="Total Orders" 
-            value={dashboardStats.totalOrders} 
-            kind="number" 
-            icon={TrendingUp} 
-            tone="cream" 
-            trendDots={{ active: 3, total: 3, tone: 'green' }} 
+          <KpiCard
+            label="Revenue"
+            value={rangeStats.revenueMinor}
+            kind="currency"
+            icon={DollarSign}
+            tone="mint"
           />
-          <KpiCard 
-            label="Revenue" 
-            value={dashboardStats.totalRevenue} 
-            kind="currency" 
-            icon={DollarSign} 
-            tone="mint" 
-            trendDots={{ active: 3, total: 3, tone: 'green' }} 
-          />
-          <KpiCard 
-            label="Active Staff" 
-            value={dashboardStats.activeStaff} 
-            kind="number" 
-            icon={UserCheck} 
-            tone="blush" 
-            trendDots={{ active: 3, total: 3, tone: 'green' }} 
-          />
-          <KpiCard 
-            label="Present Today" 
-            value={kpis.present} 
-            kind="number" 
-            icon={Users} 
-            tone="rose" 
-            trendDots={{ active: 2, total: 3, tone: 'green' }} 
-          />
-        </div>
-
-        {/* Second row - Attendance metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
-          <KpiCard 
-            label="Total Staff" 
-            value={kpis.totalStaff} 
-            kind="number" 
-            icon={Users} 
+          <KpiCard
+            label="Orders"
+            value={rangeStats.orderCount}
+            kind="number"
+            icon={ShoppingCart}
             tone="cream"
           />
-          <KpiCard 
-            label="Absent Today" 
-            value={kpis.absent} 
-            kind="number" 
-            icon={UserX} 
+          <KpiCard
+            label="Avg. order value"
+            value={rangeStats.avgMinor}
+            kind="currency"
+            icon={Receipt}
             tone="blush"
           />
-          <KpiCard 
-            label="On Leave" 
-            value={kpis.onLeave} 
-            kind="number" 
-            icon={UserMinus} 
+          <KpiCard
+            label="Open orders"
+            value={daily?.activeOrdersCount ?? 0}
+            kind="number"
+            icon={Activity}
             tone="rose"
           />
         </div>
 
-        {/* Chart row */}
+        {/* Revenue trend + payment method mix */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
           <SectionCard
-            title="Attendance Trend"
-            filter={{ label: 'This Week', options: ['This Week', 'This Month'] }}
             className="lg:col-span-2"
+            title="Revenue trend"
+            description="Daily paid revenue in the selected range"
           >
-            <RevenueLineChart
-              labels={lineData.labels}
-              series={[
-                { key: 'present', label: 'Present', values: lineData.present, color: 'hsl(142 71% 45%)', fill: true },
-                { key: 'absent', label: 'Absent', values: lineData.absent, color: 'hsl(346 87% 60%)', fill: false },
-              ]}
-              yFormat={(v) => `${v}`}
-            />
-          </SectionCard>
-
-          <SectionCard
-            title="Staff by Role"
-            description="Distribution of your team (excluding owners)"
-            filter={{ label: 'All Roles', options: ['All Roles'] }}
-          >
-            <RevenueDonut
-              segments={donutSegments}
-            />
-          </SectionCard>
-        </div>
-
-        {/* Bottom row - Waiter Performance */}
-        <div className="grid grid-cols-1 gap-5 sm:gap-6">
-          <SectionCard
-            title="Waiter performance"
-            description="Orders and revenue per waiter in the selected period"
-            flush
-          >
-            {isLoadingWaiterPerf ? (
-              <p className="text-center text-[11px] text-muted-foreground py-4">Loading…</p>
-            ) : waiterPerf.length === 0 ? (
-              <div className="py-10 text-center text-sm text-muted-foreground">
-                No waiter data for this period.
-              </div>
+            {lineData.labels.length > 0 ? (
+              <RevenueLineChart
+                labels={lineData.labels}
+                series={[
+                  {
+                    key: 'income',
+                    label: 'Revenue',
+                    values: lineData.income,
+                    color: '#f97316',
+                    fill: false,
+                  },
+                ]}
+                yFormat={(v) => v.toLocaleString('en-US')}
+                tooltipFormat={(v) => formatCurrency(v)}
+              />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-border/50 text-muted-foreground">
-                      <th className="font-medium px-5 py-3">#</th>
-                      <th className="font-medium px-5 py-3">Waiter</th>
-                      <th className="font-medium px-5 py-3 text-right">Orders</th>
-                      <th className="font-medium px-5 py-3 text-right">Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/30">
-                    {waiterPerf.map((w, i) => {
-                      const maxOrders = waiterPerf[0]?.orderCount || 1;
-                      return (
-                        <tr key={w.waiterId} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{i + 1}</td>
-                          <td className="px-5 py-3">
-                            <div>
-                              <p className="font-medium text-foreground">{w.name}</p>
-                              <div className="mt-1 h-1 rounded-full bg-muted overflow-hidden" style={{ width: 80 }}>
-                                <div
-                                  className="h-full rounded-full bg-primary"
-                                  style={{ width: `${Math.round((w.orderCount / maxOrders) * 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums">{w.orderCount}</td>
-                          <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums text-primary">{formatCurrency(w.totalSales)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                No paid orders in this period.
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Payment methods"
+            description={`How revenue was collected · ${rangeLabel}`}
+          >
+            {donutSegments.length > 0 ? (
+              <RevenueDonut segments={donutSegments} />
+            ) : (
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                No settlements in this period.
               </div>
             )}
           </SectionCard>
         </div>
+
+        {/* Recent orders + top items */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+          <SectionCard
+            title="Recent orders"
+            description="Latest activity across the floor"
+            className="lg:col-span-2"
+            flush
+          >
+            <div className="px-5 sm:px-6 py-5">
+              <RecentOrdersTable orders={recentRows} />
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Top items"
+            description="Best sellers in the selected range"
+          >
+            {orderTypeEntries.length > 0 ? (
+              <OrderTypeBars entries={orderTypeEntries} />
+            ) : (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                No sales in this period.
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        {/* Waiter performance */}
+        <SectionCard
+          title="Waiter performance"
+          description="Orders and revenue per waiter in the selected period"
+        >
+          {waiterPerf.length === 0 ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              No waiter data for this period.
+            </div>
+          ) : (
+            <ul className="space-y-4" aria-label="Waiter performance by sales">
+              {waiterPerf.map((w) => {
+                const maxRevenue = waiterPerf[0]?.totalSales || 1;
+                const revenueWidth = Math.min(
+                  100,
+                  Math.max(2, Math.round((w.totalSales / maxRevenue) * 100)),
+                );
+                return (
+                  <li key={w.waiterId} className="group">
+                    <div className="min-w-0">
+                      <div className="mb-1.5 flex items-baseline justify-between">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-[14px] font-semibold text-foreground">
+                            {w.name}
+                          </span>
+                          <span className="text-[12px] font-medium text-muted-foreground tabular-nums">
+                            {w.role}
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-[14px] font-semibold text-foreground tabular-nums">
+                          {formatCurrency(w.totalSales)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-primary to-primary/60 transition-[width] duration-700"
+                            style={{ width: `${revenueWidth}%` }}
+                          />
+                        </div>
+                        <span className="shrink-0 text-[12px] font-medium text-muted-foreground tabular-nums">
+                          {w.orderCount} orders
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </SectionCard>
+
+        {isLoading && (
+          <p className="text-center text-[11px] text-muted-foreground">Refreshing…</p>
+        )}
       </div>
     </motion.div>
   );
 };
+
+function formatShortDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 export default ManagerDashboard;
