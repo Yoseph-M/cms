@@ -23,6 +23,10 @@ export interface TokenPayload {
   username?: string | null;
 }
 
+// Access tokens are short-lived by design — the frontend refreshes
+// proactively every 90 minutes (see App.tsx), so normal user requests should
+// never hit a 401 mid-session. If you change this TTL, keep it comfortably
+// longer than the frontend's refresh interval.
 export function generateAccessToken(payload: TokenPayload): string {
   return jwt.sign(payload, config.jwtSecret, { expiresIn: '2h' });
 }
