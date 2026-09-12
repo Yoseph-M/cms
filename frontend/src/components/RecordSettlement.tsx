@@ -24,7 +24,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
   onCancel,
 }) => {
   const { accessToken } = useAuthStore();
-  const [amount, setAmount] = useState<string>((remainingAmount / 100).toFixed(2));
+  const [amount, setAmount] = useState<string>(remainingAmount.toFixed(2));
   const [method, setMethod] = useState<'CASH' | 'CARD' | 'MOBILE'>('CASH');
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
@@ -40,7 +40,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
   };
 
   const submitSettlement = async (idempotencyKey: string) => {
-    const amountMinor = Math.round(parseFloat(amount) * 100);
+    const amountMinor = parseFloat(amount);
 
     try {
       await axiosClient.post(
@@ -106,7 +106,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
     retryCountRef.current = 0;
     isSubmittingRef.current = true;
 
-    const amountMinor = Math.round(parseFloat(amount) * 100);
+    const amountMinor = parseFloat(amount);
 
     if (amountMinor <= 0) {
       setError('Amount must be greater than zero');
@@ -116,7 +116,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
     if (amountMinor > remainingAmount) {
       setError(
-        `Amount cannot exceed remaining balance of $${(remainingAmount / 100).toFixed(2)}`
+        `Amount cannot exceed remaining balance of $${remainingAmount.toFixed(2)}`
       );
       isSubmittingRef.current = false;
       return;
@@ -129,7 +129,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
   const handleQuickAmount = (percentage: number) => {
     const quickAmount = (remainingAmount * percentage) / 100;
-    setAmount((quickAmount / 100).toFixed(2));
+    setAmount(quickAmount.toFixed(2));
   };
 
   return (
@@ -146,7 +146,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
       <div className="mb-4 bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-800">
         <p className="font-semibold">Remaining Balance</p>
         <p className="text-2xl font-bold mt-1">
-          ${(remainingAmount / 100).toFixed(2)}
+          ${remainingAmount.toFixed(2)}
         </p>
       </div>
 
@@ -162,7 +162,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
               type="number"
               step="0.01"
               min="0.01"
-              max={(remainingAmount / 100).toFixed(2)}
+              max={remainingAmount.toFixed(2)}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
