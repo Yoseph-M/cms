@@ -8,9 +8,10 @@ import { BarChart, LineChart, DONUT_COLORS } from '../../components/ui/Charts';
 import { RevenueDonut } from '../../components/owner/dashboard/RevenueDonut';
 import { PeakHoursHeatmap } from '../../components/ui/PeakHoursHeatmap';
 import { TremorWidget, ChartToggle, KpiMetricCard } from '../../components/ui/TremorWidgets';
+import { GrowthBadge } from '../../components/ui/GrowthBadge';
 import { motion } from 'framer-motion';
 import { TrendingUp } from 'lucide-react';
-import { formatCurrency } from '../../utils/currency';
+import { formatCurrency, formatCurrencyCompact } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
 import { useSocketStore } from '../../store/socketStore';
@@ -45,15 +46,23 @@ const DONUT_PALETTE = DONUT_COLORS;
 
 const fmtDate = (d: Date) => d.toISOString().split('T')[0];
 
-const Delta: React.FC<{ value: number | null | undefined }> = ({ value }) => {
-  if (value == null) return null;
-  const positive = value >= 0;
-  return (
-    <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${positive ? 'text-[hsl(var(--success))]' : 'text-destructive'}`}>
-      <TrendingUp className={`w-3 h-3 ${!positive ? 'rotate-180' : ''}`} />
-      {Math.abs(value).toFixed(1)}%
-    </span>
-  );
+/* ── Peak-hours heatmap range presets ── */
+type PeakRangePreset = 'today' | '7d' | '30d' | '90d' | 'page';
+
+const PEAK_RANGE_OPTIONS: Array<{ value: PeakRangePreset; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: '90d', label: 'Last 90 days' },
+  { value: 'page', label: 'Selected range' },
+];
+
+/** Days back from today for each preset (today = 0). */
+const PEAK_PRESET_OFFSET: Record<Exclude<PeakRangePreset, 'page'>, number> = {
+  today: 0,
+  '7d': 6,
+  '30d': 29,
+  '90d': 89,
 };
 
 export const OwnerFinance: React.FC = () => {
@@ -86,6 +95,7 @@ export const OwnerFinance: React.FC = () => {
   const [trendChart, setTrendChart] = useState<'line' | 'bar'>('line');
   const [trendOverlay, setTrendOverlay] = useState<'none' | 'wow' | 'mom' | 'yoy'>('none');
   const [topItemsMode, setTopItemsMode] = useState<'revenue' | 'qty'>('qty');
+  const [peakPreset, setPeakPreset] = useState<PeakRangePreset>('7d');
 
   const rangeDeps = useMemo(() => ({ from, to }), [from, to]);
   const daily = useWidget<{
@@ -116,9 +126,21 @@ export const OwnerFinance: React.FC = () => {
     rangeDeps
   );
 
+  // The heatmap gets its own range so it can be narrowed to today / the last
+  // week without disturbing the page-wide date range the other widgets share.
+  const peakDeps = useMemo(() => {
+    if (peakPreset === 'page') return rangeDeps;
+    const to = new Date();
+    to.setHours(23, 59, 59, 999);
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    from.setDate(from.getDate() - PEAK_PRESET_OFFSET[peakPreset]);
+    return { from: from.toISOString(), to: to.toISOString() };
+  }, [peakPreset, rangeDeps]);
+
   const peak = useWidget<{ hour: number; dayOfWeek: number; count: number }[]>(
     '/analytics/peak-hours',
-    rangeDeps
+    peakDeps
   );
 
   const payMth = useWidget<{ method: string; revenue: number; count: number }[]>(
@@ -223,6 +245,19 @@ export const OwnerFinance: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topItm.data, topItemsMode]);
 
+  // Compact currency ticks keep the amount labels on a single line inside the
+  // y-axis gutter instead of wrapping/clipping mid-number; tooltips still show
+  // the full, exact amount.
+  const topTickFormat = useCallback(
+    (v: number) => (topItemsMode === 'revenue' ? formatCurrencyCompact(v) : String(v)),
+    [topItemsMode],
+  );
+  const topTooltipFormat = useCallback(
+    (v: number) => (topItemsMode === 'revenue' ? formatCurrency(v) : String(v)),
+    [topItemsMode],
+  );
+  const moneyTickFormat = useCallback((v: number) => formatCurrencyCompact(v), []);
+
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       <Flex justifyContent="between" alignItems="center" className="flex-wrap gap-4">
@@ -244,7 +279,7 @@ export const OwnerFinance: React.FC = () => {
                 label={kpi.label}
                 value={kpi.value}
                 loading={daily.loading}
-                delta={<Delta value={kpi.delta} />}
+                delta={<GrowthBadge value={kpi.delta} />}
                 icon={
                   <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Icon className="w-4 h-4 text-primary" />
@@ -291,7 +326,9 @@ export const OwnerFinance: React.FC = () => {
                 { label: 'Other expenses', values: [pnl.data.otherExpenses] },
               ]}
               height={160}
-              yTickFormat={(v) => formatCurrency(v)}
+              yTickFormat={moneyTickFormat}
+              tooltipFormat={formatCurrency}
+              yAxisWidth={72}
             />
           </div>
         )}
@@ -326,9 +363,23 @@ export const OwnerFinance: React.FC = () => {
         }
       >
         {trendChart === 'line' ? (
-          <LineChart labels={trendLabels} values={trendValues} height={180} yTickFormat={(v) => formatCurrency(v)} />
+          <LineChart
+            labels={trendLabels}
+            values={trendValues}
+            height={180}
+            yTickFormat={moneyTickFormat}
+            tooltipFormat={formatCurrency}
+            yAxisWidth={72}
+          />
         ) : (
-          <BarChart labels={trendLabels} series={[{ label: 'Revenue', values: trendValues }]} height={180} yTickFormat={(v) => formatCurrency(v)} />
+          <BarChart
+            labels={trendLabels}
+            series={[{ label: 'Revenue', values: trendValues }]}
+            height={180}
+            yTickFormat={moneyTickFormat}
+            tooltipFormat={formatCurrency}
+            yAxisWidth={72}
+          />
         )}
       </TremorWidget>
 
@@ -353,7 +404,9 @@ export const OwnerFinance: React.FC = () => {
           labels={topChartData.labels}
           series={[{ label: topItemsMode, values: topChartData.values }]}
           height={180}
-          yTickFormat={(v) => (topItemsMode === 'revenue' ? formatCurrency(v) : String(v))}
+          yTickFormat={topTickFormat}
+          tooltipFormat={topTooltipFormat}
+          yAxisWidth={topItemsMode === 'revenue' ? 72 : 48}
         />
       </TremorWidget>
 
@@ -419,6 +472,20 @@ export const OwnerFinance: React.FC = () => {
         empty={!peak.data || (Array.isArray(peak.data) && peak.data.length === 0)}
         emptyTitle="No peak-hour data yet"
         emptyMsg="Orders placed during the selected window will populate this heatmap."
+        headerExtra={
+          <Select
+            value={peakPreset}
+            onChange={(e) => setPeakPreset(e.target.value as PeakRangePreset)}
+            className="h-7 w-36 text-xs"
+            aria-label="Peak hours time range"
+          >
+            {PEAK_RANGE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+        }
       >
         <PeakHoursHeatmap grid={heatmap} dayLabels={DAYS} />
       </TremorWidget>
