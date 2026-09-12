@@ -155,7 +155,7 @@ model User {
   phone        String
   avatarUrl    String?
   passwordHash String?
-  salaryAmount      Int      @default(0) // Stored in minor units (e.g. cents)
+  salaryAmount      Int      @default(0) // Stored in ETB as entered (major units)
   isActive          Boolean  @default(true)
   preferredLanguage String   @default("en")
   createdAt         DateTime @default(now())
@@ -194,8 +194,9 @@ model User {
 model MenuItem {
   id          String       @id @default(auto()) @map("_id") @db.ObjectId
   name        String
+  nameAmharic String?
   category    MenuCategory
-  price       Int      // Stored in minor units
+  price       Float    // Stored in ETB as entered (major units)
   isAvailable Boolean      @default(true)
   imageUrl    String?
   createdAt   DateTime     @default(now())
@@ -209,7 +210,7 @@ model MenuItem {
 type OrderItem {
   menuItemId String @db.ObjectId
   name       String // snapshot at sale time — never re-read from MenuItem later
-  unitPrice  Int // snapshot at sale time, stored in minor units
+  unitPrice  Float // snapshot at sale time, stored in ETB as entered
   quantity   Int
   notes      String @default("")
 }
@@ -223,7 +224,7 @@ model Order {
   cashierId          String?          @db.ObjectId
   cashier            User?            @relation("CashierOrders", fields: [cashierId], references: [id])
   items              OrderItem[]
-  totalAmount        Int
+  totalAmount        Float
   status             OrderStatus      @default(SUBMITTED)
   settlementStatus   SettlementStatus @default(UNSETTLED)
   isPaid             Boolean          @default(false) // Deprecated: use settlementStatus instead
@@ -251,7 +252,7 @@ model Settlement {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
   orderId         String        @db.ObjectId
   order           Order         @relation(fields: [orderId], references: [id])
-  amountMinor     Int           // Amount in minor units (e.g., cents)
+  amountMinor     Float         // Amount in ETB as entered (major units)
   method          PaymentMethod
   reference       String        @default("") // External transaction reference/receipt number
   note            String        @default("")
@@ -313,7 +314,7 @@ model UserPayment {
   periodMonth   Int // 1–12, validate in application layer
   periodYear    Int
   baseSalary    Int // reference figure only
-  paidAmount    Int // actual amount paid, minor units
+  paidAmount    Int // actual amount paid, ETB as entered
   note          String   @default("")
   processedById String   @db.ObjectId
   processedBy   User     @relation("PayrollProcessor", fields: [processedById], references: [id])
@@ -452,7 +453,7 @@ model PayrollAdjustment {
 model Expense {
   id           String          @id @default(auto()) @map("_id") @db.ObjectId
   category     ExpenseCategory
-  amount       Int
+  amount       Float
   description  String
   date         DateTime
   recordedById String          @db.ObjectId
@@ -495,15 +496,15 @@ model CashierShift {
   status            ShiftStatus  @default(OPEN)
   openedAt          DateTime     @default(now())
   closedAt          DateTime?
-  openingCashMinor  Int          // Initial cash in drawer
-  expectedCashMinor Int?         // CALCULATED from ledger: opening + sales - payouts ± adjustments
-  declaredCashMinor Int?         // PHYSICAL COUNT: what cashier actually counted
-  varianceMinor     Int?         // DERIVED: declaredCashMinor - expectedCashMinor
+  openingCashMinor  Float        // Initial cash in drawer (ETB as entered)
+  expectedCashMinor Float?       // CALCULATED from ledger: opening + sales - payouts ± adjustments
+  declaredCashMinor Float?       // PHYSICAL COUNT: what cashier actually counted
+  varianceMinor     Float?       // DERIVED: declaredCashMinor - expectedCashMinor
   
-  expectedCardMinor   Int?       // CALCULATED from settlements
-  declaredCardMinor   Int?       // PHYSICAL COUNT from cashier
-  expectedMobileMinor Int?       // CALCULATED from settlements
-  declaredMobileMinor Int?       // PHYSICAL COUNT from cashier
+  expectedCardMinor   Float?     // CALCULATED from settlements
+  declaredCardMinor   Float?     // PHYSICAL COUNT from cashier
+  expectedMobileMinor Float?     // CALCULATED from settlements
+  declaredMobileMinor Float?     // PHYSICAL COUNT from cashier
   
   openedById        String       @db.ObjectId
   openedBy          User         @relation("ShiftOpenedBy", fields: [openedById], references: [id])
@@ -530,7 +531,7 @@ model CashDrawerEvent {
   shiftId         String              @db.ObjectId
   shift           CashierShift        @relation(fields: [shiftId], references: [id])
   type            CashDrawerEventType
-  amountMinor     Int
+  amountMinor     Float
   referenceType   String?
   referenceId     String?
   performedById   String              @db.ObjectId
@@ -547,9 +548,9 @@ model VarianceReview {
   id              String                 @id @default(auto()) @map("_id") @db.ObjectId
   shiftId         String                 @db.ObjectId
   shift           CashierShift           @relation(fields: [shiftId], references: [id])
-  varianceMinor   Int                    // Cash variance
-  cardVarianceMinor   Int?               // Card variance
-  mobileVarianceMinor Int?               // Mobile variance
+  varianceMinor   Float                  // Cash variance (ETB as entered)
+  cardVarianceMinor   Float?             // Card variance
+  mobileVarianceMinor Float?             // Mobile variance
   classification  VarianceClassification
   cashierReason   String
   reviewStatus    VarianceReviewStatus   @default(PENDING)
@@ -568,15 +569,15 @@ model DailyClose {
   id                     String           @id @default(auto()) @map("_id") @db.ObjectId
   businessDate           String           @unique // "YYYY-MM-DD"
   status                 DailyCloseStatus @default(OPEN)
-  totalSalesMinor        Int              @default(0)
-  totalSettledMinor      Int              @default(0)
-  cashSettledMinor       Int              @default(0)
-  cardSettledMinor       Int              @default(0)
-  mobileSettledMinor     Int              @default(0)
-  otherSettledMinor      Int              @default(0)
-  cashExpectedMinor      Int              @default(0)
-  cashDeclaredMinor      Int              @default(0)
-  cashVarianceMinor      Int              @default(0)
+  totalSalesMinor        Float            @default(0)
+  totalSettledMinor      Float            @default(0)
+  cashSettledMinor       Float            @default(0)
+  cardSettledMinor       Float            @default(0)
+  mobileSettledMinor     Float            @default(0)
+  otherSettledMinor      Float            @default(0)
+  cashExpectedMinor      Float            @default(0)
+  cashDeclaredMinor      Float            @default(0)
+  cashVarianceMinor      Float            @default(0)
   unsettledOrderCount    Int              @default(0)
   partialSettlementCount Int              @default(0)
   cancelledOrderCount    Int              @default(0)
