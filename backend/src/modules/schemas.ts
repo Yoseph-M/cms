@@ -19,7 +19,7 @@ export const createUserSchema = z.object({
   username: z.string().min(3).optional().nullable(),
   phone: z.string().min(5, 'Valid phone number is required'),
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
-  salaryAmount: z.number().int('Salary must be an integer (cents)').nonnegative().default(0),
+  salaryAmount: z.number().nonnegative().default(0),
 });
 
 export const updateUserSchema = z.object({
@@ -71,21 +71,28 @@ const imageUrlSchema = z
 
 export const createMenuItemSchema = z.object({
   name: z.string().min(1, 'Item name is required'),
+  nameAmharic: z.string().trim().min(1).max(200).nullable().optional(),
   category: z.nativeEnum(MenuCategory),
-  price: z.number().int('Price must be an integer (cents)').positive('Price must be greater than 0'),
+  price: z.number().positive('Price must be greater than 0'),
   isAvailable: z.boolean().default(true),
   imageUrl: imageUrlSchema.nullable().optional(),
 });
 
 export const updateMenuItemSchema = z.object({
   name: z.string().min(1).optional(),
+  nameAmharic: z.string().trim().min(1).max(200).nullable().optional(),
   category: z.nativeEnum(MenuCategory).optional(),
-  price: z.number().int('Price must be an integer (cents)').positive('Price must be greater than 0').optional(),
+  price: z.number().positive('Price must be greater than 0').optional(),
   isAvailable: z.boolean().optional(),
   imageUrl: imageUrlSchema.nullable().optional(),
 });
 
 export const availabilitySchema = z.object({
+  isAvailable: z.boolean(),
+});
+
+export const bulkAvailabilitySchema = z.object({
+  ids: z.array(z.string().min(1)).min(1, 'At least one item id is required').max(200),
   isAvailable: z.boolean(),
 });
 
@@ -112,7 +119,7 @@ export const payOrderSchema = z.object({
 });
 
 export const createSettlementSchema = z.object({
-  amountMinor: z.number().int().positive('Amount must be greater than zero'),
+  amountMinor: z.number().positive('Amount must be greater than zero'),
   method: z.enum(['CASH', 'CARD', 'MOBILE'], {
     errorMap: () => ({ message: 'Payment method must be CASH, CARD, or MOBILE' }),
   }),
