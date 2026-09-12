@@ -26,13 +26,53 @@ export interface BarSeries {
   color?: string;
 }
 
+/**
+ * Shared tooltip for these wrappers. Recharts feeds the series payload in, so
+ * the caller can format values with more precision than the axis ticks use
+ * (e.g. axis "1.2k ETB" vs tooltip "1,234.50 ETB").
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const makeTooltip = (format: (v: number) => string) => (props: any) => {
+  const payload = props?.payload as
+    | Array<{ name?: string | number; value?: number; color?: string }>
+    | undefined;
+  if (!payload?.length) return null;
+  const label = props?.label;
+  return (
+    <div className="rounded-xl border border-border/60 bg-popover px-4 py-2 shadow-lg">
+      {label != null && <p className="text-xs text-muted-foreground mb-1">{label}</p>}
+      {payload.map((entry) => (
+        <div key={String(entry.name)} className="flex items-center gap-2 text-sm">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: entry.color }} />
+          <span className="text-muted-foreground">{entry.name}</span>
+          <span className="ml-auto font-bold tabular-nums text-popover-foreground">
+            {format(Number(entry.value ?? 0))}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const BarChart: React.FC<{
   labels: string[];
   series: BarSeries[];
   height?: number;
   yTickFormat?: (v: number) => string;
+  /** Tooltip value formatter — defaults to the axis formatter. */
+  tooltipFormat?: (v: number) => string;
+  /** Width reserved for the y-axis labels — widen it when the tick text is long. */
+  yAxisWidth?: number;
   className?: string;
-}> = ({ labels, series, height = 220, yTickFormat = (v) => v.toString(), className }) => {
+}> = ({
+  labels,
+  series,
+  height = 220,
+  yTickFormat = (v) => v.toString(),
+  tooltipFormat,
+  yAxisWidth = 60,
+  className,
+}) => {
   const data = useMemo(
     () =>
       labels.map((label, i) => {
@@ -58,10 +98,11 @@ export const BarChart: React.FC<{
         categories={categories}
         colors={colors}
         valueFormatter={yTickFormat}
+        customTooltip={tooltipFormat ? makeTooltip(tooltipFormat) : undefined}
         showLegend={series.length > 1}
         showGridLines={false}
         showAnimation
-        yAxisWidth={60}
+        yAxisWidth={yAxisWidth}
       />
     </div>
   );
@@ -150,6 +191,10 @@ export const LineChart: React.FC<{
   height?: number;
   color?: string;
   yTickFormat?: (v: number) => string;
+  /** Tooltip value formatter — defaults to the axis formatter. */
+  tooltipFormat?: (v: number) => string;
+  /** Width reserved for the y-axis labels — widen it when the tick text is long. */
+  yAxisWidth?: number;
   labels?: string[];
   className?: string;
 }> = ({
@@ -157,6 +202,8 @@ export const LineChart: React.FC<{
   height = 200,
   color = 'blue',
   yTickFormat = (v) => v.toString(),
+  tooltipFormat,
+  yAxisWidth = 60,
   labels,
   className,
 }) => {
@@ -177,7 +224,8 @@ export const LineChart: React.FC<{
         categories={['Revenue']}
         colors={[color]}
         valueFormatter={yTickFormat}
-        yAxisWidth={60}
+        customTooltip={tooltipFormat ? makeTooltip(tooltipFormat) : undefined}
+        yAxisWidth={yAxisWidth}
         onValueChange={() => {}}
         className={cn(CHART_CLASS, 'mt-2 hidden sm:block')}
         style={{ height }}
@@ -188,6 +236,7 @@ export const LineChart: React.FC<{
         categories={['Revenue']}
         colors={[color]}
         valueFormatter={yTickFormat}
+        customTooltip={tooltipFormat ? makeTooltip(tooltipFormat) : undefined}
         showYAxis={false}
         showLegend={false}
         startEndOnly
