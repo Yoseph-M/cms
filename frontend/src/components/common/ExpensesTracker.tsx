@@ -155,7 +155,7 @@ export const ExpensesTracker: React.FC = () => {
     setEditing(expense);
     setForm({
       category: expense.category,
-      amount: String(expense.amount / 100), // Convert cents to dollars for display
+      amount: String(expense.amount),
       description: expense.description,
       date: toDateInputValue(expense.date),
     });
@@ -177,7 +177,7 @@ export const ExpensesTracker: React.FC = () => {
     try {
       const payload = {
         category: form.category,
-        amount: Math.round(amountDollars * 100), // Convert dollars to cents
+        amount: amountDollars,
         description: form.description.trim(),
         date: form.date,
       };
