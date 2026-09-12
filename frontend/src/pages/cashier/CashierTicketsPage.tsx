@@ -45,6 +45,8 @@ import {
   Sparkles,
   Keyboard,
   ChevronRight,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react';
 
 const CashierOrderingPanel = lazy(() =>
@@ -266,6 +268,10 @@ export const CashierTicketsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /* ── Queue pagination ── */
+  const QUEUE_PAGE_SIZE = 20;
+  const [page, setPage] = useState(1);
+
   /* ── Payment / settlement state ── */
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [phase, setPhase] = useState<PaymentPhase>('idle');
@@ -335,24 +341,40 @@ export const CashierTicketsPage: React.FC = () => {
     return list;
   }, [sortedActiveOrders, sort, search]);
 
+  // Client-side slice of the sorted active queue — keeps the custom
+  // served-first/oldest-first ordering while capping rendered cards.
+  const queueTotalPages = Math.max(1, Math.ceil(sortedQueue.length / QUEUE_PAGE_SIZE));
+  const queueStart = (page - 1) * QUEUE_PAGE_SIZE;
+  const pagedQueue = sortedQueue.slice(queueStart, queueStart + QUEUE_PAGE_SIZE);
+
   const selectedOrder = useMemo(
     () => orders.find((o) => o.id === selectedOrderId) ?? null,
     [orders, selectedOrderId],
   );
 
+  // Only active tickets are fetched from the server — paid/cancelled history
+  // stays out of the queue (and out of every background poll).
+  const ACTIVE_STATUSES = 'SUBMITTED,IN_KITCHEN,SERVED';
+
   /* ─────────────────────────────────────────────────────────
    * Data loading + realtime
    * ───────────────────────────────────────────────────────── */
-  const fetchOrders = async () => {
-    setIsLoading(true);
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setError(null);
     try {
-      const res = await axiosClient.get('/orders');
-      setOrders(res.data.data || res.data);
+      const res = await axiosClient.get('/orders', {
+        params: { statuses: ACTIVE_STATUSES, limit: 100 },
+      });
+      const fetched = res.data.data || res.data;
+      setOrders(fetched);
+      // Clamp the queue page if the fetched set shrank below the current page.
+      const totalPages = Math.max(1, Math.ceil(fetched.length / QUEUE_PAGE_SIZE));
+      if (page > totalPages) setPage(totalPages);
     } catch (err: any) {
       setError(extractErrorMessage(err, 'Failed to fetch active queue'));
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -360,6 +382,21 @@ export const CashierTicketsPage: React.FC = () => {
     fetchOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Background refresh every 30s — new tickets show up without a manual
+  // refresh, even if the socket connection is ever interrupted. Silent: it
+  // never flashes the loading skeleton over an already-rendered queue.
+  const fetchOrdersRef = useRef(fetchOrders);
+  fetchOrdersRef.current = fetchOrders;
+  useEffect(() => {
+    const id = setInterval(() => void fetchOrdersRef.current(true), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Any filter/sort/search change restarts the queue at page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [sort, statusFilter, search]);
 
   /* Settings realtime */
   useEffect(() => {
@@ -707,7 +744,7 @@ export const CashierTicketsPage: React.FC = () => {
             onSearchChange={setSearch}
           />
           <OrderList
-            orders={sortedQueue}
+            orders={pagedQueue}
             selectedId={selectedOrderId}
             isLoading={isLoading}
             error={error}
@@ -720,6 +757,34 @@ export const CashierTicketsPage: React.FC = () => {
             onRetry={fetchOrders}
             searchActive={search.trim().length > 0}
           />
+          {sortedQueue.length > QUEUE_PAGE_SIZE && (
+            <div className="flex items-center justify-between gap-3 px-4 py-2 border-t border-slate-200 bg-white/60 shrink-0">
+              <p className="text-[11px] text-slate-500 font-medium">
+                Showing {queueStart + 1}–{Math.min(queueStart + QUEUE_PAGE_SIZE, sortedQueue.length)} of {sortedQueue.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  aria-label="Previous page"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  {page} / {queueTotalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(queueTotalPages, p + 1))}
+                  disabled={page >= queueTotalPages}
+                  aria-label="Next page"
+                  className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <AnimatePresence initial={false}>
