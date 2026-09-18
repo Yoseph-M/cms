@@ -8,7 +8,6 @@ import { axiosClient } from '../../api/axiosClient';
 import { useQueryClient } from '@tanstack/react-query';
 
 export const STEPS = [
-  { label: 'Business Profile', desc: 'Name, logo, currency' },
   { label: 'Service Type', desc: 'Table service or counter service' },
   { label: 'First Printer', desc: 'Add a kitchen or receipt printer' },
   { label: 'Menu', desc: 'Add a few items or skip for later' },
