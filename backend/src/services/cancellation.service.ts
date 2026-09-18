@@ -11,15 +11,16 @@
 import { prisma } from './prisma.service';
 import { recordAudit } from './audit.service';
 import { emitToLiveOrders } from './socket.service';
-import { CancellationRequestStatus, OrderStatus, SettlementStatus } from '@prisma/client';
+import { CancellationRequestStatus, OrderStatus, PaymentMethod, SettlementStatus } from '@prisma/client';
+import { logger } from '../utils/logger';
 import { executeInCriticalTransaction } from '../utils/transaction';
 import {
+  ConcurrentModificationError,
   NotFoundError,
   ValidationError,
   OrderAlreadyCancelledError,
   CannotCancelSettledOrderError,
   CancellationRequestNotPendingError,
-  ConcurrentModificationError,
 } from '../utils/errors';
 
 interface CreateCancellationRequestParams {
@@ -151,6 +152,32 @@ export async function requestCancellation(params: CreateCancellationRequestParam
     return request;
   });
 
+  // A cancelled order must be visible on the Settlements page, so write the
+  // same VOID settlement the direct-cancel path writes. Non-critical: the
+  // cancellation itself has already succeeded either way.
+  if (isWaiter) {
+    try {
+      const alreadyLogged = await prisma.settlement.findFirst({
+        where: { orderId, reference: 'VOID' },
+        select: { id: true },
+      });
+      if (!alreadyLogged) {
+        await prisma.settlement.create({
+          data: {
+            orderId,
+            amountMinor: Math.max(result.order.totalAmount, 0),
+            method: PaymentMethod.NONE,
+            reference: 'VOID',
+            note: `Cancelled: ${reason.trim()}`,
+            recordedById: requestedById,
+          },
+        });
+      }
+    } catch (settlementErr) {
+      logger.warn({ err: settlementErr, orderId }, 'Failed to record void settlement for auto-approved cancellation');
+    }
+  }
+
   // Audit log
   await recordAudit({
     actorId: requestedById,
@@ -190,88 +217,130 @@ export async function requestCancellation(params: CreateCancellationRequestParam
 }
 
 /**
+ * MongoDB aborts contending transactions with a transient write conflict.
+ * Review operations race constantly (two managers clicking at once), so retry
+ * the whole critical transaction a few times before giving up.
+ */
+async function withTransactionRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const message = String((err as Error)?.message ?? '');
+      const transient =
+        (err as { code?: number })?.code === 112 ||
+        (err as { errorLabels?: string[] })?.errorLabels?.includes('TransientTransactionError') ||
+        /write conflict|deadlock|NoSuchTransaction/i.test(message);
+      if (!transient) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
+  // Retries exhausted — MongoDB never gave us a clean read. From the caller's
+  // perspective another reviewer's write won, which is a conflict, not a 500.
+  throw new ConcurrentModificationError('CancellationRequest');
+}
+
+/**
  * Approve a cancellation request and cancel the order
- * Uses conditional update to prevent race conditions
+ * Uses conditional update to prevent race conditions.
+ * Idempotent: approving an already-approved request returns 200.
  */
 export async function approveCancellation(params: ApproveCancellationParams) {
   const { requestId, approvedById } = params;
 
   // Use critical transaction - approval must be atomic
-  const { requestId: approvedRequestId, orderId } = await executeInCriticalTransaction(prisma, async (tx) => {
-    // 1. Try to update cancellation request with conditional WHERE clause
-    // This ensures we only succeed if status is still PENDING
-    const updateResult = await tx.orderCancellationRequest.updateMany({
-      where: {
-        id: requestId,
-        status: PENDING_STATUS, // Only update if still pending!
-      },
-      data: {
-        status: APPROVED_STATUS,
-        approvedById,
-        approvedAt: new Date(),
-      },
-    });
+  const { requestId: approvedRequestId, orderId } = await withTransactionRetry(() =>
+    executeInCriticalTransaction(prisma, async (tx) => {
+      // 1. Try to update cancellation request with conditional WHERE clause
+      // This ensures we only succeed if status is still PENDING
+      const updateResult = await tx.orderCancellationRequest.updateMany({
+        where: {
+          id: requestId,
+          status: PENDING_STATUS, // Only update if still pending!
+        },
+        data: {
+          status: APPROVED_STATUS,
+          approvedById,
+          approvedAt: new Date(),
+        },
+      });
 
-    // If zero rows affected, another reviewer already acted
-    if (updateResult.count === 0) {
-      throw new CancellationRequestNotPendingError(requestId, 'already processed');
-    }
+      // If zero rows affected, another reviewer already acted
+      if (updateResult.count === 0) {
+        const existing = await tx.orderCancellationRequest.findUnique({
+          where: { id: requestId },
+          select: { id: true, orderId: true, status: true },
+        });
+        if (!existing) {
+          throw new NotFoundError('CancellationRequest', requestId);
+        }
+        // Approving an already-approved request is an idempotent no-op.
+        if (existing.status === APPROVED_STATUS) {
+          return { requestId: existing.id, orderId: existing.orderId, idempotent: true as const };
+        }
+        // Approving a rejected request is a real conflict.
+        throw new CancellationRequestNotPendingError(requestId, `already ${existing.status.toLowerCase()}`);
+      }
 
-    // 2. Fetch minimal data to validate eligibility
-    const approvedRequest = await tx.orderCancellationRequest.findUnique({
-      where: { id: requestId },
-      select: { 
-        id: true, 
-        orderId: true, 
-        reason: true,
-        order: {
-          select: {
-            status: true,
-            settlementStatus: true,
+      // 2. Fetch minimal data to validate eligibility
+      const approvedRequest = await tx.orderCancellationRequest.findUnique({
+        where: { id: requestId },
+        select: { 
+          id: true, 
+          orderId: true, 
+          reason: true,
+          order: {
+            select: {
+              status: true,
+              settlementStatus: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!approvedRequest) {
-      throw new NotFoundError('CancellationRequest', requestId);
-    }
+      if (!approvedRequest) {
+        throw new NotFoundError('CancellationRequest', requestId);
+      }
 
-    // 3. Validate order is still eligible for cancellation
-    if (approvedRequest.order.status === OrderStatus.CANCELLED) {
-      throw new OrderAlreadyCancelledError(approvedRequest.orderId);
-    }
+      // 3. Validate order is still eligible for cancellation
+      if (approvedRequest.order.status === OrderStatus.CANCELLED) {
+        throw new OrderAlreadyCancelledError(approvedRequest.orderId);
+      }
 
-    if (approvedRequest.order.settlementStatus !== SettlementStatus.UNSETTLED) {
-      throw new CannotCancelSettledOrderError(approvedRequest.orderId);
-    }
+      if (approvedRequest.order.settlementStatus !== SettlementStatus.UNSETTLED) {
+        throw new CannotCancelSettledOrderError(approvedRequest.orderId);
+      }
 
-    // 4. Cancel the order - also use conditional update
-    const orderUpdateResult = await tx.order.updateMany({
-      where: {
-        id: approvedRequest.orderId,
-        status: { not: OrderStatus.CANCELLED }, // Only if not already cancelled
-      },
-      data: {
-        status: OrderStatus.CANCELLED,
-        cancellationReason: approvedRequest.reason,
-        cancelledById: approvedById,
-      },
-    });
+      // 4. Cancel the order - also use conditional update
+      const orderUpdateResult = await tx.order.updateMany({
+        where: {
+          id: approvedRequest.orderId,
+          status: { not: OrderStatus.CANCELLED }, // Only if not already cancelled
+        },
+        data: {
+          status: OrderStatus.CANCELLED,
+          cancellationReason: approvedRequest.reason,
+          cancelledById: approvedById,
+        },
+      });
 
-    // If order couldn't be cancelled (concurrent modification), 
-    // the request is already approved but order update failed
-    // This is an inconsistent state we need to handle
-    if (orderUpdateResult.count === 0) {
-      // Order was already cancelled or status changed - log but continue
-      // The request is approved so we return that, but order was already cancelled
-    }
+      // If order couldn't be cancelled (concurrent modification), 
+      // the request is already approved but order update failed
+      // This is an inconsistent state we need to handle
+      if (orderUpdateResult.count === 0) {
+        // Order was already cancelled or status changed - log but continue
+        // The request is approved so we return that, but order was already cancelled
+      }
 
-    return { 
-      requestId: approvedRequest.id, 
-      orderId: approvedRequest.orderId 
-    };
-  });
+      return { 
+        requestId: approvedRequest.id, 
+        orderId: approvedRequest.orderId,
+        idempotent: false as const,
+      };
+    }),
+  );
 
   // Fetch full details OUTSIDE transaction
   const [approvedRequest, cancelledOrder] = await Promise.all([
@@ -297,6 +366,32 @@ export async function approveCancellation(params: ApproveCancellationParams) {
   }
 
   const result = { request: approvedRequest, order: cancelledOrder };
+
+  // A cancelled order must be visible on the Settlements page, so write the
+  // same VOID settlement the direct-cancel path writes. Non-critical: the
+  // approval itself has already succeeded either way.
+  if (cancelledOrder) {
+    try {
+      const alreadyLogged = await prisma.settlement.findFirst({
+        where: { orderId, reference: 'VOID' },
+        select: { id: true },
+      });
+      if (!alreadyLogged) {
+        await prisma.settlement.create({
+          data: {
+            orderId,
+            amountMinor: Math.max(cancelledOrder.totalAmount, 0),
+            method: PaymentMethod.NONE,
+            reference: 'VOID',
+            note: `Cancelled: ${approvedRequest.reason}`,
+            recordedById: approvedById,
+          },
+        });
+      }
+    } catch (settlementErr) {
+      logger.warn({ err: settlementErr, orderId }, 'Failed to record void settlement for approved cancellation');
+    }
+  }
 
   // Audit log
   await recordAudit({
@@ -341,29 +436,44 @@ export async function rejectCancellation(params: RejectCancellationParams) {
     throw new ValidationError('Rejection reason is required', 'rejectedReason');
   }
 
-  // Use critical transaction for atomic rejection
-  const rejectedRequestId = await executeInCriticalTransaction(prisma, async (tx) => {
-    // 1. Try to update with conditional WHERE clause
-    const updateResult = await tx.orderCancellationRequest.updateMany({
-      where: {
-        id: requestId,
-        status: PENDING_STATUS, // Only update if still pending!
-      },
-      data: {
-        status: REJECTED_STATUS,
-        approvedById, // approvedBy is actually "reviewedBy" in this context
-        approvedAt: new Date(),
-        rejectedReason: rejectedReason.trim(),
-      },
-    });
+  // Use critical transaction for atomic rejection.
+  // Idempotent: rejecting an already-rejected request returns 200.
+  const rejectedRequestId = await withTransactionRetry(() =>
+    executeInCriticalTransaction(prisma, async (tx) => {
+      // 1. Try to update with conditional WHERE clause
+      const updateResult = await tx.orderCancellationRequest.updateMany({
+        where: {
+          id: requestId,
+          status: PENDING_STATUS, // Only update if still pending!
+        },
+        data: {
+          status: REJECTED_STATUS,
+          approvedById, // approvedBy is actually "reviewedBy" in this context
+          approvedAt: new Date(),
+          rejectedReason: rejectedReason.trim(),
+        },
+      });
 
-    // If zero rows affected, another reviewer already acted
-    if (updateResult.count === 0) {
-      throw new CancellationRequestNotPendingError(requestId, 'already processed');
-    }
+      // If zero rows affected, another reviewer already acted
+      if (updateResult.count === 0) {
+        const existing = await tx.orderCancellationRequest.findUnique({
+          where: { id: requestId },
+          select: { id: true, status: true },
+        });
+        if (!existing) {
+          throw new NotFoundError('CancellationRequest', requestId);
+        }
+        // Rejecting an already-rejected request is an idempotent no-op.
+        if (existing.status === REJECTED_STATUS) {
+          return existing.id;
+        }
+        // Rejecting an approved request is a real conflict.
+        throw new CancellationRequestNotPendingError(requestId, `already ${existing.status.toLowerCase()}`);
+      }
 
-    return requestId;
-  });
+      return requestId;
+    }),
+  );
 
   // 2. Fetch the updated request OUTSIDE transaction
   const result = await prisma.orderCancellationRequest.findUnique({
