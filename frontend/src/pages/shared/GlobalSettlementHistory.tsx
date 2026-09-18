@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import { useHeaderStore } from '../../store/headerStore';
 import { Card, CardContent } from '../../components/ui/Card';
@@ -25,7 +26,7 @@ import {
 interface SettlementRecord {
   id: string;
   amountMinor: number;
-  method: 'CASH' | 'CARD' | 'MOBILE';
+  method: 'CASH' | 'CARD' | 'MOBILE' | 'NONE';
   reference: string;
   note: string;
   createdAt: string;
@@ -36,6 +37,8 @@ interface SettlementRecord {
     tableNumber: string;
     totalAmount: number;
     status: string;
+    /** Present on cancelled orders — why the ticket was voided. */
+    cancellationReason?: string;
     waiter?: {
       id: string;
       name: string;
@@ -55,6 +58,12 @@ interface SettlementRecord {
     name: string;
     role: string;
   } | null;
+  /**
+   * True for cancelled tickets that never received a VOID settlement row: the
+   * server synthesises the row from the order so the cancellation still shows
+   * in this history.
+   */
+  isSyntheticVoid?: boolean;
 }
 
 interface Pagination {
@@ -71,12 +80,14 @@ const METHOD_ICONS: Record<string, React.ReactNode> = {
   CASH: <Banknote className="w-4 h-4 text-green-600" />,
   CARD: <CreditCard className="w-4 h-4 text-blue-600" />,
   MOBILE: <Smartphone className="w-4 h-4 text-purple-600" />,
+  NONE: <X className="w-4 h-4 text-slate-500" />,
 };
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: 'Cash',
   CARD: 'Card',
   MOBILE: 'Mobile',
+  NONE: 'Void',
 };
 
 const DATE_PRESETS: Array<{ key: string; label: string; get: () => { from: string; to: string } }> = [
@@ -171,6 +182,10 @@ const formatAmount = (amountMinor: number) =>
   amountFormatter.format(Number.isFinite(amountMinor) ? amountMinor : 0);
 
 const formatDate = (iso: string) => new Date(iso).toLocaleString();
+
+/** Short human handle for the related ticket — the tail of its client id. */
+const ticketRef = (order: { clientOrderId?: string; id: string }) =>
+  (order.clientOrderId || order.id || '').slice(-6);
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -287,6 +302,11 @@ function SettlementDetailsModal({
                     <span className="font-mono">{formatAmount(s.order.totalAmount)}</span>
                   </DetailRow>
                   <DetailRow label="Waiter">{s.order.waiter?.name || 'Unknown'}</DetailRow>
+                  {s.order.status === 'CANCELLED' ? (
+                    <DetailRow label="Cancelled because">
+                      {s.order.cancellationReason || 'No reason recorded'}
+                    </DetailRow>
+                  ) : null}
                   {s.order.createdAt ? (
                     <DetailRow label="Placed">{formatDate(s.order.createdAt)}</DetailRow>
                   ) : null}
@@ -300,6 +320,11 @@ function SettlementDetailsModal({
               <div className="divide-y divide-border/40">
                 <DetailRow label="Method">{METHOD_LABELS[s.method] || s.method}</DetailRow>
                 {s.reference ? <DetailRow label="Reference">{s.reference}</DetailRow> : null}
+                {s.method === 'NONE' ? (
+                  <DetailRow label="Effect">
+                    Void — cancels the ticket, no revenue recorded
+                  </DetailRow>
+                ) : null}
               </div>
             </div>
           </div>
@@ -310,6 +335,7 @@ function SettlementDetailsModal({
 }
 
 export const GlobalSettlementHistory: React.FC = () => {
+  const location = useLocation() as { state?: { orderFilter?: string } };
   const [page, setPage] = useState(1);
   const [methodFilter, setMethodFilter] = useState<string>('');
   const [datePreset, setDatePreset] = useState<string>('all');
@@ -318,6 +344,8 @@ export const GlobalSettlementHistory: React.FC = () => {
   const [amountPreset, setAmountPreset] = useState<string>('all');
   const [minAmount, setMinAmount] = useState<string>('');
   const [maxAmount, setMaxAmount] = useState<string>('');
+  // Deep-link from header search: pre-filter to a specific order's settlements.
+  const [orderFilter, setOrderFilter] = useState<string>(location.state?.orderFilter ?? '');
   const [sortColumn, setSortColumn] = useState<SortColumn>('date');
   const [selected, setSelected] = useState<SettlementRecord | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -325,7 +353,7 @@ export const GlobalSettlementHistory: React.FC = () => {
 
   // Reflect the current section in the global header.
   useEffect(() => {
-    setPageTitle({ title: 'Settlements', subtitle: 'All payment settlements across orders' });
+    setPageTitle({ title: 'Settlements', subtitle: 'All payments and cancelled tickets across orders' });
     setShowDateRange(false);
     return () => {
       setPageTitle({ title: 'Overview', subtitle: '' });
@@ -349,6 +377,7 @@ export const GlobalSettlementHistory: React.FC = () => {
       dateTo,
       minAmount,
       maxAmount,
+      orderFilter,
       page,
     ],
     queryFn: async () => {
@@ -361,6 +390,7 @@ export const GlobalSettlementHistory: React.FC = () => {
       }
       if (minAmount) params.minAmount = String(parseFloat(minAmount));
       if (maxAmount) params.maxAmount = String(parseFloat(maxAmount));
+      if (orderFilter) params.order = orderFilter;
 
       const res = await axiosClient.get('/settlements', { params });
       return res.data;
@@ -381,7 +411,7 @@ export const GlobalSettlementHistory: React.FC = () => {
   // Any filter change starts over at page 1.
   useEffect(() => {
     setPage(1);
-  }, [methodFilter, dateFrom, dateTo, minAmount, maxAmount]);
+  }, [methodFilter, dateFrom, dateTo, minAmount, maxAmount, orderFilter]);
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -454,11 +484,25 @@ export const GlobalSettlementHistory: React.FC = () => {
         <div>
           <h3 className="text-lg font-bold">Settlement History</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            All payment settlements across all orders. {pagination.total} records total.
+            Every payment — plus cancelled tickets, listed as voids. {pagination.total} records total.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Order deep-link from header search — shown as a removable chip. */}
+          {orderFilter && (
+            <button
+              type="button"
+              onClick={() => setOrderFilter('')}
+              className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 text-sm font-medium text-foreground transition-colors hover:bg-primary/10"
+              title="Clear order filter"
+            >
+              <Receipt className="h-4 w-4 text-primary" />
+              <span className="max-w-[14ch] truncate">#{orderFilter.slice(-6)}</span>
+              <X className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          )}
+
           {/* Date filter */}
           <DropdownMenu>
             <DropdownMenuTrigger aria-label="Filter by date" className="shrink-0 h-11">
@@ -529,10 +573,12 @@ export const GlobalSettlementHistory: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
-                    inputMode="decimal"
+                    inputMode="numeric"
+                    step="1"
+                    min="0"
                     value={minAmount}
                     onChange={(e) => {
-                      setMinAmount(e.target.value);
+                      setMinAmount(e.target.value.replace(/[^\d]/g, ''));
                       setAmountPreset('custom');
                     }}
                     placeholder="Min"
@@ -541,10 +587,12 @@ export const GlobalSettlementHistory: React.FC = () => {
                   <span className="text-muted-foreground text-xs">–</span>
                   <input
                     type="number"
-                    inputMode="decimal"
+                    inputMode="numeric"
+                    step="1"
+                    min="0"
                     value={maxAmount}
                     onChange={(e) => {
-                      setMaxAmount(e.target.value);
+                      setMaxAmount(e.target.value.replace(/[^\d]/g, ''));
                       setAmountPreset('custom');
                     }}
                     placeholder="Max"
@@ -567,7 +615,7 @@ export const GlobalSettlementHistory: React.FC = () => {
                 <span>All methods</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {(['CASH', 'CARD', 'MOBILE'] as const).map((method) => (
+              {(['CASH', 'CARD', 'MOBILE', 'NONE'] as const).map((method) => (
                 <DropdownMenuItem
                   key={method}
                   selected={methodFilter === method}
@@ -602,7 +650,9 @@ export const GlobalSettlementHistory: React.FC = () => {
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <CreditCard className="w-10 h-10 mb-3 opacity-40" />
               <p className="font-medium">No settlements found</p>
-              <p className="text-sm mt-1">Settlement records will appear here once payments are recorded.</p>
+              <p className="text-sm mt-1">
+                Payments and cancelled tickets will appear here once they are recorded.
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -665,14 +715,27 @@ export const GlobalSettlementHistory: React.FC = () => {
                         className={cn(
                           'border-b border-border/50 transition-colors cursor-pointer select-none',
                           'hover:bg-muted/20',
-                          isCancelled && 'opacity-70'
+                          // Cancellations are real history, so they get a tint rather
+                          // than a faded row (fading made them look disabled/filtered out).
+                          isCancelled && 'bg-destructive/[0.045] hover:bg-destructive/[0.07]'
                         )}
                         title="Click to view order details"
                       >
                         <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
-                          {formatDate(s.createdAt)}
+                          <div>{formatDate(s.createdAt)}</div>
+                          {s.order ? (
+                            <div className="mt-0.5 text-[11px] text-muted-foreground/90">
+                              Table {s.order.tableNumber || '—'} · #{ticketRef(s.order)}
+                            </div>
+                          ) : null}
                         </td>
-                        <td className="px-4 py-3 font-mono font-semibold">
+                        <td
+                          className={cn(
+                            'px-4 py-3 font-mono whitespace-nowrap',
+                            isCancelled ? 'text-muted-foreground line-through' : 'font-semibold'
+                          )}
+                          title={isCancelled ? 'Voided — not counted as revenue' : undefined}
+                        >
                           {formatAmount(s.amountMinor)}
                         </td>
                         <td className="px-4 py-3">
@@ -680,6 +743,11 @@ export const GlobalSettlementHistory: React.FC = () => {
                             {METHOD_ICONS[s.method]}
                             {METHOD_LABELS[s.method] || s.method}
                           </span>
+                          {s.method === 'NONE' && (
+                            <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                              no revenue
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {s.order ? (
