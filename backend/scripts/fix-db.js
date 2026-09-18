@@ -98,6 +98,18 @@ async function cleanUp() {
        console.log("No users found to use as fallback for foreign keys.");
     }
 
+    // 8. Print Jobs - Delete legacy TCP/WINDOWS print jobs (or invalid transport)
+    const printJobsRes = await db.collection('print_jobs').deleteMany({
+      transport: { $in: ['TCP', 'WINDOWS', null, ''] }
+    });
+    console.log(`- Deleted ${printJobsRes.deletedCount} legacy/invalid 'print_jobs'`);
+
+    // 9. Printer Stations - Delete legacy TCP/WINDOWS printer stations
+    const printerStationsRes = await db.collection('printer_stations').deleteMany({
+      transport: { $in: ['TCP', 'WINDOWS', null, ''] }
+    });
+    console.log(`- Deleted ${printerStationsRes.deletedCount} legacy/invalid 'printer_stations'`);
+
     console.log("\nCleanup complete! Try refreshing your page now.");
   } catch (e) {
     console.error("Error during cleanup:", e);
