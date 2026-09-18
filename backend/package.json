@@ -11,7 +11,9 @@
     "verify-indexes": "tsx scripts/verify-indexes.ts",
     "test": "jest --detectOpenHandles --forceExit",
     "migrate": "tsx scripts/migrate-drop-password.ts",
-    "migrate:money-major-units": "tsx scripts/migrate-money-major-units.ts"
+    "migrate:money-major-units": "tsx scripts/migrate-money-major-units.ts",
+    "migrate:money-integers": "tsx scripts/migrate-money-integers.ts",
+    "backfill:payroll-expenses": "tsx scripts/backfill-payroll-expenses.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
