@@ -20,7 +20,7 @@ export async function getSystemSetting(req: AuthenticatedRequest, res: Response)
 
   const setting = await prisma.systemSetting.findUnique({ where: { key } });
   if (!setting) {
-    return res.status(404).json({ error: `Setting "${key}" not found.` });
+    return res.json({ key, value: null, updatedAt: new Date() });
   }
 
   return res.json({ key: setting.key, value: setting.value, updatedAt: setting.updatedAt });
@@ -33,7 +33,6 @@ export async function patchSystemSetting(req: AuthenticatedRequest, res: Respons
   const ownerOnlySettings = [
     'managerDashboardEnabled',
     'systemAdministrationEnabled',
-    'cashierMenuManagementEnabled',
   ];
 
   if (ownerOnlySettings.includes(key) && req.user?.role !== 'OWNER') {
@@ -48,12 +47,10 @@ export async function patchSystemSetting(req: AuthenticatedRequest, res: Respons
 
   // Feature flags are cached in memory for 30s — refresh immediately so the
   // new value is enforced on the very next request.
-  if (key.endsWith('Enabled')) {
-    clearFeatureFlagCache();
-  }
+  clearFeatureFlagCache();
 
-  if (key === 'cashierOrderingEnabled') {
-    emitToLiveOrders('settings:cashierOrderingChanged', { value: setting.value });
+  if (key === 'cashierMenuEditRestricted') {
+    emitToLiveOrders('settings:menuEditChanged', { value: setting.value });
   }
 
   return res.json({ key: setting.key, value: setting.value, updatedAt: setting.updatedAt });
