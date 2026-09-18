@@ -5,31 +5,119 @@ import { ExpenseCategory } from '@prisma/client';
 import { recordAudit } from '../../services/audit.service';
 import { emitToRoom } from '../../services/socket.service';
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * Payroll is written one row per staff member per month, which buries the
+ * Expenses page in near-identical lines. Collapse those rows into a single
+ * "Payroll — <Month> <Year>" entry whose amount is the month's total, so the
+ * page shows one general payroll figure per month instead of every individual.
+ * The aggregated rows are read-only (marked `isAggregated`).
+ */
+function aggregatePayroll(
+  rows: Array<{
+    date: Date;
+    amount: number;
+    recordedBy: { id: string; name: string } | null;
+  }>,
+) {
+  const groups = new Map<string, {
+    year: number;
+    month: number;
+    amount: number;
+    count: number;
+    latestDate: Date;
+    recordedBy: { id: string; name: string } | null;
+  }>();
+
+  for (const row of rows) {
+    const year = row.date.getFullYear();
+    const month = row.date.getMonth() + 1;
+    const key = `${year}-${String(month).padStart(2, '0')}`;
+    const group = groups.get(key);
+    if (group) {
+      group.amount += row.amount;
+      group.count += 1;
+      if (row.date > group.latestDate) {
+        group.latestDate = row.date;
+        group.recordedBy = row.recordedBy;
+      }
+    } else {
+      groups.set(key, {
+        year,
+        month,
+        amount: row.amount,
+        count: 1,
+        latestDate: row.date,
+        recordedBy: row.recordedBy,
+      });
+    }
+  }
+
+  return Array.from(groups.values()).map((group) => ({
+    id: `payroll-${group.year}-${String(group.month).padStart(2, '0')}`,
+    category: 'PAYROLL' as ExpenseCategory,
+    amount: group.amount,
+    description: `Payroll — ${MONTH_NAMES[group.month - 1]} ${group.year} (${group.count} payment${group.count === 1 ? '' : 's'})`,
+    date: group.latestDate,
+    recordedBy: group.recordedBy,
+    isAggregated: true,
+  }));
+}
+
 export async function listExpenses(req: AuthenticatedRequest, res: Response) {
   const { from, to, category } = req.query;
-  const where: Record<string, unknown> = {};
 
+  let dateFilter: Record<string, Date> | undefined;
   if (from || to) {
-    const dateFilter: Record<string, Date> = {};
+    dateFilter = {};
     if (from) dateFilter.gte = new Date(from as string);
     if (to) {
       const end = new Date(to as string);
       end.setHours(23, 59, 59, 999);
       dateFilter.lte = end;
     }
-    where.date = dateFilter;
-  }
-  if (category && Object.values(ExpenseCategory).includes(category as ExpenseCategory)) {
-    where.category = category;
   }
 
-  const expenses = await prisma.expense.findMany({
-    where,
-    include: { recordedBy: { select: { id: true, name: true } } },
-    orderBy: { date: 'desc' },
-  });
+  const categoryFilter =
+    category && Object.values(ExpenseCategory).includes(category as ExpenseCategory)
+      ? (category as ExpenseCategory)
+      : undefined;
 
-  return res.json(expenses);
+  const includePayroll = !categoryFilter || categoryFilter === ExpenseCategory.PAYROLL;
+  const includeOther = categoryFilter !== ExpenseCategory.PAYROLL;
+
+  const [otherExpenses, payrollExpenses] = await Promise.all([
+    includeOther
+      ? prisma.expense.findMany({
+          where: {
+            ...(dateFilter ? { date: dateFilter } : {}),
+            ...(categoryFilter ? { category: categoryFilter } : { category: { not: ExpenseCategory.PAYROLL } }),
+          },
+          include: { recordedBy: { select: { id: true, name: true } } },
+          orderBy: { date: 'desc' },
+        })
+      : Promise.resolve([]),
+    includePayroll
+      ? prisma.expense.findMany({
+          where: {
+            category: ExpenseCategory.PAYROLL,
+            ...(dateFilter ? { date: dateFilter } : {}),
+          },
+          include: { recordedBy: { select: { id: true, name: true } } },
+          orderBy: { date: 'desc' },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const combined = [...aggregatePayroll(payrollExpenses), ...otherExpenses].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
+
+  return res.json(combined);
 }
 
 /**
