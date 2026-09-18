@@ -6,22 +6,16 @@
  * that occurred through external means (cash, card terminal, mobile payment, etc.)
  * 
  * SETTLEMENT ATTRIBUTION SEMANTICS:
- * - CASH settlements: REQUIRE active cashier shift
- *   → Creates cash drawer ledger entry
- *   → Links settlement to shift via shiftId
- *   → Cashier must have OPEN shift
- * 
- * - CARD/MOBILE/OTHER settlements: NO shift requirement
- *   → Only records the settlement actor (recordedById)
- *   → Does NOT affect cash drawer
- *   → Can be processed by any authenticated user
- * 
+ * - Every method (CASH, CARD, MOBILE) is recorded the same way: the settlement
+ *   actor is stored in `recordedById`. Shift management has been removed, so
+ *   there is no open-shift requirement and no cash drawer ledger entry.
+ *
  * All operations are atomic and idempotent.
  */
 
 import { prisma } from './prisma.service';
 import { recordAudit } from './audit.service';
-import { PaymentMethod, SettlementStatus, OrderStatus, CashDrawerEventType } from '@prisma/client';
+import { PaymentMethod, SettlementStatus, OrderStatus } from '@prisma/client';
 import { executeInCriticalTransaction } from '../utils/transaction';
 import { canSettle } from '../utils/orderStateMachine';
 import {
@@ -46,6 +40,8 @@ interface CreateSettlementParams {
 }
 
 interface SettlementResult {
+  /** True when the idempotency key matched an existing settlement (a retry). */
+  isReplay?: boolean;
   settlement: {
     id: string;
     orderId: string;
@@ -54,7 +50,6 @@ interface SettlementResult {
     reference: string;
     note: string;
     recordedById: string;
-    shiftId: string | null;
     idempotencyKey: string | null;
     createdAt: Date;
   };
@@ -65,6 +60,52 @@ interface SettlementResult {
     settlementStatus: SettlementStatus;
     status: OrderStatus;
   };
+}
+
+async function findIdempotentSettlement(
+  idempotencyKey: string,
+  requestFingerprint?: string,
+): Promise<SettlementResult | null> {
+  const existing = await prisma.settlement.findUnique({
+    where: { idempotencyKey },
+    include: { order: true },
+  });
+
+  if (!existing) return null;
+
+  if (requestFingerprint) {
+    const existingFingerprint = `${existing.orderId}:${existing.amountMinor}:${existing.method}`;
+    if (existingFingerprint !== requestFingerprint) {
+      throw new IdempotencyConflictError(
+        'Idempotency key reused with different request parameters',
+      );
+    }
+  }
+
+  return { isReplay: true, settlement: existing, order: existing.order };
+}
+
+function isIdempotencyKeyConflict(error: any): boolean {
+  if (error?.code !== 'P2002') return false;
+  const target = error.meta?.target;
+  return Array.isArray(target)
+    ? target.includes('idempotencyKey')
+    : typeof target === 'string' && target.includes('idempotencyKey');
+}
+
+/**
+ * MongoDB aborts contending transactions with these transient codes; retrying
+ * at the app level isn't meaningful for settlements (the winner has already
+ * committed), so the loser maps to a clean 409 instead of a 500.
+ */
+function isTransientTransactionError(error: any): boolean {
+  const message = String(error?.message ?? '');
+  return (
+    error?.code === 112 || // WriteConflict
+    error?.code === 251 || // NoSuchTransaction
+    error?.errorLabels?.includes('TransientTransactionError') ||
+    /write conflict|deadlock|NoSuchTransaction/i.test(message)
+  );
 }
 
 /**
@@ -87,28 +128,8 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
 
   // Pre-check: If idempotency key exists, check outside transaction for fast return
   if (idempotencyKey) {
-    const existing = await prisma.settlement.findUnique({
-      where: { idempotencyKey },
-      include: { order: true },
-    });
-    
-    if (existing) {
-      // If fingerprint provided, check for materially different request
-      if (requestFingerprint) {
-        const existingFingerprint = `${existing.orderId}:${existing.amountMinor}:${existing.method}`;
-        if (existingFingerprint !== requestFingerprint) {
-          throw new IdempotencyConflictError(
-            'Idempotency key reused with different request parameters'
-          );
-        }
-      }
-      
-      // Return existing settlement immediately (idempotent response, no transaction needed)
-      return {
-        settlement: existing,
-        order: existing.order,
-      };
-    }
+    const existing = await findIdempotentSettlement(idempotencyKey, requestFingerprint);
+    if (existing) return existing;
   }
 
   // Pre-check: Quick validation of order status outside transaction to fail fast
@@ -129,31 +150,10 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     throw new AlreadySettledError(orderId);
   }
 
-  // Fetch shift settings and active shift outside the transaction to reduce transaction duration
-  const shiftSetting = await prisma.systemSetting.findUnique({
-    where: { key: 'shiftManagementEnabled' },
-  });
-  const shiftEnabled = shiftSetting ? shiftSetting.value === 'true' : true;
-
-  let activeShiftId: string | null = null;
-  if (shiftEnabled) {
-    const activeShift = await prisma.cashierShift.findFirst({
-      where: { cashierId: recordedById, status: 'OPEN' },
-      select: { id: true }
-    });
-    
-    if (activeShift) {
-      activeShiftId = activeShift.id;
-    } else if (method === PaymentMethod.CASH) {
-      throw new ValidationError(
-        'CASH settlements require an active cashier shift. Please open a shift first.',
-        'method'
-      );
-    }
-  }
-
   // Use critical transaction wrapper - will fail if transactions unavailable
-  const result = await executeInCriticalTransaction(prisma, async (tx) => {
+  let result: SettlementResult;
+  try {
+    result = await executeInCriticalTransaction(prisma, async (tx) => {
     // 2. Load order WITHIN the transaction for authoritative state
     const order = await tx.order.findUnique({
       where: { id: orderId },
@@ -194,47 +194,19 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
       newSettlementStatus = 'UNSETTLED';
     }
 
-    // 4. Create settlement record WITHIN transaction
-    let settlement;
-    try {
-      settlement = await tx.settlement.create({
-        data: {
-          orderId,
-          amountMinor,
-          method,
-          reference,
-          note,
-          recordedById,
-          shiftId: activeShiftId,
-          idempotencyKey,
-        },
-      });
-    } catch (error: any) {
-      // Handle unique constraint violation on idempotencyKey
-      if (error.code === 'P2002' && error.meta?.target?.includes('idempotencyKey')) {
-        // If we hit this, it means a concurrent request succeeded between our check and our create.
-        // We cannot use tx.settlement.findUnique here because the transaction is already aborted.
-        // Throw a ConcurrentModificationError to return a 409 and let the frontend retry.
-        // On retry, the pre-check outside the transaction will return the existing record.
-        throw new ConcurrentModificationError('Settlement request is already in progress');
-      }
-      throw error;
-    }
-
-    // 4.5. Auto-create CASH_SETTLEMENT ledger entry if CASH
-    if (method === PaymentMethod.CASH && activeShiftId) {
-      await tx.cashDrawerEvent.create({
-        data: {
-          shiftId: activeShiftId,
-          type: CashDrawerEventType.CASH_SETTLEMENT,
-          amountMinor,
-          referenceType: 'Settlement',
-          referenceId: settlement.id,
-          performedById: recordedById,
-          notes: `Cash settlement for order ${orderId}`,
-        },
-      });
-    }
+    // 4. Create settlement record WITHIN transaction. A same-key collision is
+    // handled outside this transaction, after the winning transaction commits.
+    const settlement = await tx.settlement.create({
+      data: {
+        orderId,
+        amountMinor,
+        method,
+        reference,
+        note,
+        recordedById,
+        idempotencyKey,
+      },
+    });
 
     // 5. Update order settlement status atomically using optimistic locking
     // This ensures we don't overwrite if status changed since we read
@@ -277,8 +249,28 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
       where: { id: orderId },
     });
 
-    return { settlement, order: updatedOrder! };
-  });
+      return { settlement, order: updatedOrder! };
+    });
+  } catch (error: any) {
+    // MongoDB replica sets abort contending transactions with a transient
+    // write conflict/deadlock. From the caller's perspective that IS a
+    // concurrent modification — another request settled the order first — so
+    // surface it as a 409 instead of leaking a 500.
+    if (isTransientTransactionError(error)) {
+      throw new ConcurrentModificationError('Order');
+    }
+    // Two identical browser requests can both pass the initial lookup. The
+    // unique index chooses one winner; return that winner rather than exposing
+    // a 409 that encourages the cashier to submit payment again.
+    if (idempotencyKey && isIdempotencyKeyConflict(error)) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const existing = await findIdempotentSettlement(idempotencyKey, requestFingerprint);
+        if (existing) return existing;
+        await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+      }
+    }
+    throw error;
+  }
 
   // Audit log (outside transaction - but this is acceptable as it's for observability)
   await recordAudit({
