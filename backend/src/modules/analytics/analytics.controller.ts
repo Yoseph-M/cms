@@ -447,8 +447,10 @@ export async function getPaymentMethods(req: AuthenticatedRequest, res: Response
   const match: Record<string, unknown> = {};
   Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
+  // VOID settlements (method NONE) audit cancellations, not revenue — exclude
+  // them so cancelled orders don't skew the payment-method split.
   const pipeline = [
-    { $match: match },
+    { $match: { ...match, method: { $ne: 'NONE' } } },
     {
       $group: {
         _id: '$method',
@@ -641,13 +643,17 @@ export async function getProfitLoss(req: AuthenticatedRequest, res: Response) {
   const revenue = ordersRaw[0]?.revenue ?? 0;
   const payrollCost = paymentsRaw[0]?.payrollCost ?? 0;
   const otherExpenses = expensesRaw[0]?.otherExpenses ?? 0;
-  const netProfit = revenue - payrollCost - otherExpenses;
+  // Payroll is spending like any other, so it is reported as part of total
+  // expenses rather than as a separate line item.
+  const expenses = payrollCost + otherExpenses;
+  const netProfit = revenue - expenses;
 
   return res.json({
     from: from || null,
     to: to || null,
     revenue, // Already in cents
-    payrollCost, // Already in cents
+    expenses, // Already in cents — payroll + other expenses
+    payrollCost, // Kept for callers that still break expenses apart
     otherExpenses, // Already in cents
     netProfit, // Already in cents
   });
