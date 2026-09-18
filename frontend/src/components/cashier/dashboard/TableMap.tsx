@@ -1,32 +1,38 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Armchair, ChevronLeft, Plus } from 'lucide-react';
+import { Armchair, ChevronLeft, Plus, ReceiptText } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import type { Order } from '../../../types';
 
 export interface TableMapProps {
   tableCount: number;
-  activeOrders: Order[];
+  /** How many orders are currently open on each table, keyed by table number. */
+  openOrderCounts?: Record<string, number>;
+  /** Start a brand-new order on this table (never re-opens an existing one). */
   onTableClick: (tableNumber: string) => void;
+  /** Jump to the queue filtered to this table's open orders. */
+  onViewOrders?: (tableNumber: string) => void;
   onBack: () => void;
   className?: string;
 }
 
 /**
- * New-order table picker. Only available tables are shown; active tables are
- * managed from the Tickets workspace.
+ * New-order table picker.
+ *
+ * Selecting a table always starts a *separate* new order — a table that is
+ * already in service never hijacks the tap, so a table can carry as many open
+ * orders as the floor needs. Tables that already have open orders show a count
+ * badge with a shortcut into the queue.
  */
 export const TableMap: React.FC<TableMapProps> = ({
   tableCount,
-  activeOrders,
+  openOrderCounts = {},
   onTableClick,
+  onViewOrders,
   onBack,
   className,
 }) => {
   const numbers = Array.from({ length: tableCount }, (_, i) => String(i + 1));
-  // New orders can only be started on available tables. Active tables remain
-  // accessible from Tickets, so they are intentionally omitted here.
-  const availableNumbers = numbers.filter((n) => !activeOrders.some((o) => o.tableNumber === n));
+  const totalOpen = Object.values(openOrderCounts).reduce((sum, n) => sum + n, 0);
 
   return (
     <div className={cn('h-full flex flex-col bg-app-gradient text-foreground overflow-hidden', className)}>
@@ -51,32 +57,39 @@ export const TableMap: React.FC<TableMapProps> = ({
             New order
           </span>
         </div>
-
-        <div className="hidden items-center gap-2 text-[11px] sm:flex">
-          <StatusChip tone="emerald" label={`${availableNumbers.length} available`} />
-        </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Choose a table</p>
-              <h2 className="mt-1 font-display text-xl font-bold text-foreground">Start a new order</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Only available tables are shown. Open Tickets to manage tables already in service.</p>
+          <div className="mb-4 flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h2 className="font-display text-base font-bold leading-tight text-foreground">
+                Pick a table
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Every tap starts a new ticket — tables already being served just get an extra order.
+              </p>
             </div>
-            <MapStat value={availableNumbers.length} label="Available" tone="emerald" />
+            <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground shrink-0">
+              <span className="rounded-full border border-border bg-secondary/50 px-2 py-0.5 tabular-nums">
+                {tableCount} tables
+              </span>
+              <span className="rounded-full border border-border bg-secondary/50 px-2 py-0.5 tabular-nums">
+                {totalOpen} open {totalOpen === 1 ? 'ticket' : 'tickets'}
+              </span>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {availableNumbers.map((n) => {
-            return (
+
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10">
+            {numbers.map((n) => (
               <TableTile
                 key={n}
                 number={n}
+                openCount={openOrderCounts[n] ?? 0}
                 onClick={() => onTableClick(n)}
+                onViewOrders={onViewOrders ? () => onViewOrders(n) : undefined}
               />
-            );
-          })}
+            ))}
           </div>
         </div>
       </main>
@@ -86,62 +99,69 @@ export const TableMap: React.FC<TableMapProps> = ({
 
 const TableTile: React.FC<{
   number: string;
+  openCount: number;
   onClick: () => void;
-}> = ({ number, onClick }) => {
+  onViewOrders?: () => void;
+}> = ({ number, openCount, onClick, onViewOrders }) => {
+  const busy = openCount > 0;
+
   return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      whileHover={{ y: -2 }}
+    <motion.div
+      whileHover={{ y: -1 }}
       whileTap={{ scale: 0.97 }}
       transition={{ type: 'spring', stiffness: 380, damping: 28 }}
       className={cn(
-        'relative min-h-[142px] overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.07] to-card p-3.5 text-left transition-all hover:border-emerald-500/50 hover:shadow-[0_12px_28px_-14px_rgba(16,185,129,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 flex flex-col',
+        'group relative flex flex-col rounded-xl border bg-card p-2.5 transition-all',
+        busy
+          ? 'border-primary/40 bg-gradient-to-br from-primary/[0.07] to-card'
+          : 'border-border hover:border-primary/40',
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Table</p>
-          <p className="mt-1 font-display text-3xl font-bold tabular-nums leading-none text-foreground">{number}</p>
-        </div>
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-emerald-600/10 bg-background/70 text-emerald-600">
-          <Plus className="h-3.5 w-3.5" />
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={`Start a new order on table ${number}`}
+        className="flex items-center justify-between gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 rounded-md"
+      >
+        <span className="min-w-0">
+          <span className="block text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+            Table
+          </span>
+          <span className="block font-display text-xl font-bold leading-none tabular-nums text-foreground">
+            {number}
+          </span>
         </span>
-      </div>
-      <div className="mt-auto pt-3 space-y-0.5">
-        <p className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-600">
-          <Plus className="w-3 h-3" />
-          Available
-        </p>
-        <p className="pt-1 text-[11px] font-semibold text-foreground/70">Start order →</p>
-      </div>
-    </motion.button>
-  );
-};
+        <span
+          className={cn(
+            'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition-colors',
+            busy
+              ? 'border-primary/30 bg-primary/10 text-primary'
+              : 'border-border bg-background/70 text-muted-foreground group-hover:text-primary',
+          )}
+        >
+          <Plus className="h-3 w-3" />
+        </span>
+      </button>
 
-const MapStat: React.FC<{ value: number; label: string; tone: 'emerald' }> = ({ value, label, tone }) => {
-  const colors = {
-    emerald: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700',
-    sky: 'border-sky-500/20 bg-sky-500/10 text-sky-700',
-    amber: 'border-amber-500/20 bg-amber-500/10 text-amber-700',
-  }[tone];
-  return (
-    <div className={cn('min-w-[70px] rounded-xl border px-3 py-2', colors)}>
-      <p className="font-display text-lg font-bold leading-none tabular-nums">{value}</p>
-      <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.12em] opacity-80">{label}</p>
-    </div>
-  );
-};
-
-const StatusChip: React.FC<{ tone: 'emerald'; label: string }> = ({ tone, label }) => {
-  const toneClass = {
-    emerald: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
-    sky: 'bg-sky-500/10 text-sky-700 border-sky-500/30',
-    amber: 'bg-amber-500/10 text-amber-700 border-amber-500/30',
-  }[tone];
-  return (
-    <span className={cn('px-2.5 py-1 rounded-full font-semibold border', toneClass)}>
-      {label}
-    </span>
+      <div className="mt-2 flex items-center justify-between gap-1">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-primary">
+          New order
+        </span>
+        {busy && onViewOrders && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewOrders();
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-foreground/80 transition-colors hover:border-primary/40 hover:text-primary"
+            aria-label={`View ${openCount} open order${openCount === 1 ? '' : 's'} on table ${number}`}
+          >
+            <ReceiptText className="h-2.5 w-2.5" />
+            {openCount} open
+          </button>
+        )}
+      </div>
+    </motion.div>
   );
 };
