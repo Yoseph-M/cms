@@ -9,10 +9,25 @@ import crypto from 'crypto';
 export async function getUsers(req: AuthenticatedRequest, res: Response) {
   const { role, isActive } = req.query;
 
+  const callerRole = req.user!.role as Role;
+  const isOwner = callerRole === Role.OWNER;
+  const isManager = callerRole === Role.MANAGER;
+
   const whereClause: any = {};
-  if (role) whereClause.role = role as Role;
-  
-  const isPrivileged = req.user!.role === Role.OWNER || req.user!.role === Role.MANAGER;
+
+  // Managers only ever see the staff who work under them — never owners or
+  // other managers. Requesting those roles explicitly yields an empty list.
+  if (isManager && (!role || role === Role.MANAGER || role === Role.OWNER)) {
+    return res.json([]);
+  }
+
+  if (role) {
+    whereClause.role = role as Role;
+  } else if (isManager) {
+    whereClause.role = { notIn: [Role.OWNER, Role.MANAGER] };
+  }
+
+  const isPrivileged = isOwner || isManager;
 
   if (isActive !== undefined && isPrivileged) {
     whereClause.isActive = isActive === 'true';
@@ -43,7 +58,12 @@ export async function getUsers(req: AuthenticatedRequest, res: Response) {
 
 export async function createUser(req: AuthenticatedRequest, res: Response) {
   const callerRole = req.user!.role as Role;
-  const { name, role, username, phone, password, salaryAmount } = req.body;
+  const { name, role, phone, password, salaryAmount } = req.body;
+  // Store usernames trimmed so a stray space can never become part of the
+  // account name people have to type at the login screen.
+  const username: string | null = typeof req.body.username === 'string' && req.body.username.trim()
+    ? req.body.username.trim()
+    : null;
 
   // Role matrix enforcement: Manager cannot create another Manager or Owner
   if (callerRole === Role.MANAGER && (role === Role.MANAGER || role === Role.OWNER)) {
@@ -66,6 +86,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: 'User with this username already exists.' });
     }
   }
+  // `username || null` below keeps the null case in one place.
 
   const newUser = await prisma.user.create({
     data: {
@@ -113,12 +134,17 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
     return res.status(403).json({ error: 'Forbidden: Managers cannot modify Manager or Owner profiles.' });
   }
 
+  const { password, ...profileChanges } = req.body;
+
+  const data: Record<string, unknown> = { ...profileChanges };
+  // salaryAmount is already in cents from the frontend
+  if (profileChanges.salaryAmount !== undefined) data.salaryAmount = profileChanges.salaryAmount;
+  // A password supplied from the staff edit card replaces the stored hash.
+  if (password) data.passwordHash = await hashPassword(password);
+
   const updatedUser = await prisma.user.update({
     where: { id },
-    data: {
-      ...req.body,
-      ...(req.body.salaryAmount !== undefined && { salaryAmount: req.body.salaryAmount }) // Already in cents
-    },
+    data,
     select: {
       id: true,
       name: true,
@@ -136,7 +162,7 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
     actionType: 'USER_UPDATED',
     targetType: 'User',
     targetId: id,
-    details: { changes: req.body },
+    details: { changes: profileChanges, passwordChanged: Boolean(password) },
   });
 
   return res.json(updatedUser);
@@ -261,7 +287,15 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
 
 export async function updateOwnProfile(req: AuthenticatedRequest, res: Response) {
   const userId = req.user!.userId;
-  const { name, username, phone, avatarUrl } = req.body;
+  const { name, phone, avatarUrl } = req.body;
+  // Whitespace-only names collapse to "no username"; real ones get trimmed.
+  const rawUsername = req.body.username;
+  const username: string | null | undefined =
+    rawUsername === undefined
+      ? undefined
+      : typeof rawUsername === 'string' && rawUsername.trim()
+        ? rawUsername.trim()
+        : null;
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || !user.isActive) {
