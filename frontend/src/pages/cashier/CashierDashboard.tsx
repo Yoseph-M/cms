@@ -33,7 +33,8 @@ import {
 interface SettlementRow {
   id: string;
   amountMinor: number;
-  method: 'CASH' | 'CARD' | 'MOBILE';
+  /** NONE marks the VOID row written when a ticket is cancelled. */
+  method: 'CASH' | 'CARD' | 'MOBILE' | 'NONE';
   createdAt: string;
 }
 
@@ -44,14 +45,14 @@ const METHOD_COLOR: Record<string, string> = {
 };
 const METHOD_LABEL: Record<string, string> = { CASH: 'Cash', CARD: 'Card', MOBILE: 'Mobile' };
 
-/** A calm, glanceable dashboard for an open cashier shift. */
+/** A calm, glanceable dashboard for the cashier station. */
 export const CashierDashboard: React.FC = () => {
   const { socket } = useSocketStore();
   const queryClient = useQueryClient();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
 
   useEffect(() => {
-    setPageTitle({ title: 'Cashier dashboard', subtitle: 'Live shift overview' });
+    setPageTitle({ title: 'Cashier dashboard', subtitle: 'Live service overview' });
     setShowDateRange(false);
     return () => {
       setPageTitle({ title: 'Overview', subtitle: '' });
@@ -68,7 +69,7 @@ export const CashierDashboard: React.FC = () => {
       const res = await axiosClient.get('/orders');
       setOrders(res.data.data || res.data);
     } catch {
-      // The ShiftManager already surfaced auth/network errors; stay quiet here.
+      // Auth/network errors are surfaced globally; stay quiet on the dashboard.
     } finally {
       setIsLoading(false);
     }
@@ -126,8 +127,11 @@ export const CashierDashboard: React.FC = () => {
     const active = orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED');
     const ready = active.filter((o) => o.status === 'SERVED');
     const cooking = active.filter((o) => o.status === 'SUBMITTED' || o.status === 'IN_KITCHEN');
-    const collectedMinor = settlements.reduce((sum, s) => sum + (s.amountMinor || 0), 0);
-    const byMethod = settlements.reduce<Record<string, number>>((acc, s) => {
+    // VOID rows carry the cancelled ticket's value for the audit trail, but no
+    // money was collected — counting them here inflated "Collected today".
+    const paidSettlements = settlements.filter((s) => s.method !== 'NONE');
+    const collectedMinor = paidSettlements.reduce((sum, s) => sum + (s.amountMinor || 0), 0);
+    const byMethod = paidSettlements.reduce<Record<string, number>>((acc, s) => {
       acc[s.method] = (acc[s.method] || 0) + (s.amountMinor || 0);
       return acc;
     }, {});
@@ -139,9 +143,12 @@ export const CashierDashboard: React.FC = () => {
       cooking: cooking.length,
       readyOrders: readySorted.slice(0, 5),
       collectedMinor,
-      settledCount: settlements.length,
+      settledCount: paidSettlements.length,
       byMethod,
-      avgMinor: settlements.length > 0 ? Math.round(collectedMinor / settlements.length) : 0,
+      avgMinor:
+        paidSettlements.length > 0
+          ? Math.round(collectedMinor / paidSettlements.length)
+          : 0,
     };
   }, [orders, settlements]);
 
