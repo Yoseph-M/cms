@@ -9,29 +9,103 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Badge } from '../../components/ui/Badge';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Printer, Plus, Pencil, Trash2, Zap, Wifi, WifiOff, X, AlertCircle } from 'lucide-react';
+import { Printer, Plus, Pencil, Trash2, Zap, X, AlertCircle, Bluetooth, Usb, ScanLine, Loader2, CheckCircle2, Wifi } from 'lucide-react';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { usePrintersQuery } from '../../hooks/useCachedQueries';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
 
+type PrinterTransport = 'BLUETOOTH' | 'USB' | 'NETWORK';
+
 interface PrinterStation {
   id?: string;
   station: string;
-  transport: 'TCP' | 'WINDOWS';
+  transport: PrinterTransport;
+  macAddress: string | null;
+  vendorId: string | null;
+  productId: string | null;
   ip: string | null;
   port: number | null;
-  printerName: string | null;
 }
 
 interface PrinterStatus {
   [key: string]: 'online' | 'offline' | 'unknown';
 }
 
-const STATION_OPTIONS = ['kitchen', 'bar', 'cashier'];
+const DEFAULT_NETWORK_PORT = 9100;
 
-const EMPTY_FORM = { station: 'kitchen', transport: 'TCP' as 'TCP' | 'WINDOWS', ip: '', port: '9100', printerName: '' };
+const EMPTY_FORM = {
+  transport: 'BLUETOOTH' as PrinterTransport,
+  macAddress: '',
+  vendorId: '',
+  productId: '',
+  ip: '',
+  port: String(DEFAULT_NETWORK_PORT),
+};
 const EMPTY_PRINTERS: PrinterStation[] = [];
+
+/**
+ * Chrome reports nearly every Web Bluetooth failure as a `NotFoundError`, so the
+ * error name alone carries no information: "globally disabled", "blocked by
+ * policy", "no adapter" and a genuine cancel all look identical. Chrome only
+ * prints the reason to the dev console, so classify on the message and tell the
+ * operator what to do. Returns null for a deliberate cancel (nothing to report).
+ */
+export function describeScanFailure(err: any): { title: string; message: string } | null {
+  const message = String(err?.message ?? '');
+
+  // The chooser was dismissed, or the operator picked nothing.
+  if (/no device selected|cancel/i.test(message)) return null;
+
+  if (/user gesture/i.test(message)) {
+    return { title: 'Scan needs a click', message: 'Press Scan again from this panel.' };
+  }
+  if (/globally disabled/i.test(message)) {
+    return {
+      title: 'Bluetooth is blocked in this browser',
+      // Web Bluetooth has no permission prompt of its own: consent is granted by
+      // picking a device, and a browser that refuses up front never opens that
+      // chooser — so there is nothing here the operator could "allow".
+      message:
+        'This browser refuses Bluetooth before it can ask, so no permission prompt is coming. Open the app in a normal Chrome or Edge window (not an embedded or automated one) and scan again.',
+    };
+  }
+  if (/enterprise policy|denied the browser permission/i.test(message)) {
+    return {
+      title: 'Bluetooth permission blocked',
+      message:
+        'Allow Bluetooth for this site, then scan again. In Chrome: Settings → Privacy and security → Site settings → Bluetooth devices.',
+    };
+  }
+  if (/adapter not available|low energy not available|not supported on this platform/i.test(message)) {
+    return {
+      title: 'Bluetooth is off on this device',
+      message: 'Turn Bluetooth on in this computer or tablet, then scan again.',
+    };
+  }
+
+  return {
+    title: 'Scan failed',
+    message:
+      message || 'Could not scan for printers. Check the printer is switched on and in range.',
+  };
+}
+
+/**
+ * `Bluetooth.getAvailability()` resolves false when the adapter is missing or
+ * Web Bluetooth is blocked for this document — the two states where the chooser
+ * opens and then fails with nothing but a console line. Older browsers omit the
+ * method, so "unknown" must be treated as available and left to requestDevice.
+ */
+async function bluetoothUnavailableReason(bt: any): Promise<string | null> {
+  if (typeof bt?.getAvailability !== 'function') return null;
+  try {
+    if ((await bt.getAvailability()) !== false) return null;
+  } catch {
+    return null;
+  }
+  return 'Either Bluetooth is switched off on this device, or this browser blocks Web Bluetooth. Check the device settings, or add a Network printer instead.';
+}
 
 export const OwnerPrinters: React.FC = () => {
   const { addToast } = useToastStore();
@@ -56,6 +130,9 @@ export const OwnerPrinters: React.FC = () => {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PrinterStation | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // Auto-discovery state — the browser finds real Bluetooth/USB devices.
+  const [scanning, setScanning] = useState(false);
+  const [scannedName, setScannedName] = useState<string | null>(null);
 
   const invalidatePrinters = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['printers'] });
@@ -78,13 +155,13 @@ export const OwnerPrinters: React.FC = () => {
   useEffect(() => {
     if (!socket) return;
 
-    const handleFailed = (data: { ip: string; port: number }) => {
-      const p = printers.find((pr) => pr.ip === data.ip && pr.port === data.port);
+    const handleFailed = (data: { station: string }) => {
+      const p = printers.find((pr) => pr.station === data.station);
       if (p) setStatuses((st) => ({ ...st, [p.station]: 'offline' }));
     };
 
-    const handleRecovered = (data: { ip: string; port: number }) => {
-      const p = printers.find((pr) => pr.ip === data.ip && pr.port === data.port);
+    const handleRecovered = (data: { station: string }) => {
+      const p = printers.find((pr) => pr.station === data.station);
       if (p) setStatuses((st) => ({ ...st, [p.station]: 'online' }));
     };
 
@@ -99,47 +176,155 @@ export const OwnerPrinters: React.FC = () => {
   const openAdd = () => {
     setEditingPrinter(null);
     setForm(EMPTY_FORM);
+    setScannedName(null);
     setSlideOverOpen(true);
   };
 
   const openEdit = (printer: PrinterStation) => {
     setEditingPrinter(printer);
     setForm({
-      station: printer.station,
       transport: printer.transport,
+      macAddress: printer.macAddress || '',
+      vendorId: printer.vendorId || '',
+      productId: printer.productId || '',
       ip: printer.ip || '',
-      port: printer.port ? String(printer.port) : '9100',
-      printerName: printer.printerName || '',
+      port: String(printer.port || DEFAULT_NETWORK_PORT),
     });
+    setScannedName(
+      printer.transport === 'NETWORK'
+        ? printer.ip
+        : printer.macAddress || (printer.vendorId ? `USB ${printer.vendorId}:${printer.productId}` : null),
+    );
     setSlideOverOpen(true);
   };
 
+  /**
+   * Scans for real devices through the browser (Web Bluetooth / WebUSB). Nothing
+   * is faked: if the browser can't scan, the operator gets told why.
+   */
+  const handleScan = async () => {
+    setScanning(true);
+    setScannedName(null);
+
+    try {
+      if (form.transport === 'BLUETOOTH') {
+        const bt = (navigator as any).bluetooth;
+        if (!bt?.requestDevice) {
+          addToast({
+            type: 'error',
+            title: 'Bluetooth scanning unavailable',
+            // Embedded/in-app browsers and non-Chrome engines hide the API
+            // entirely; there is no prompt to accept, so name the real fix.
+            message:
+              'This browser has no Web Bluetooth at all, so it cannot ask for permission. Open the app in Chrome or Edge over https:// or http://localhost.',
+          });
+          return;
+        }
+        if (!window.isSecureContext) {
+          addToast({
+            type: 'error',
+            title: 'Bluetooth scanning unavailable',
+            message: 'Web Bluetooth only works on a secure connection. Open the app over https:// or http://localhost.',
+          });
+          return;
+        }
+        // Fail here with a reason instead of opening a chooser that cannot work.
+        const unavailable = await bluetoothUnavailableReason(bt);
+        if (unavailable) {
+          addToast({ type: 'error', title: 'Bluetooth not available', message: unavailable });
+          return;
+        }
+        const device = await bt.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [
+            '000018f0-0000-1000-8000-00805f9b34fb',
+            '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+          ],
+        });
+        if (!device) return;
+        // Blink returns an opaque, per-origin device id — never the MAC — and it
+        // is case sensitive. Store it exactly as given: printing looks the
+        // device up by this value later (useHardwarePrinter).
+        const deviceId = String(device.id || '');
+        if (!deviceId) {
+          addToast({
+            type: 'error',
+            title: 'Bluetooth printer not identified',
+            message: 'The browser did not return an id for that printer. Scan again and pick it once more.',
+          });
+          return;
+        }
+        setForm((f) => ({ ...f, macAddress: deviceId }));
+        setScannedName(device.name || 'Bluetooth printer');
+        addToast({
+          type: 'success',
+          title: 'Bluetooth printer found',
+          message: device.name || deviceId,
+        });
+      } else if (form.transport === 'USB') {
+        const usb = (navigator as any).usb;
+        if (!usb?.requestDevice) {
+          addToast({
+            type: 'error',
+            title: 'USB scanning unavailable',
+            message: 'This browser cannot scan for USB printers. Use Chrome or Edge over a secure connection.',
+          });
+          return;
+        }
+        const device = await usb.requestDevice({ filters: [] });
+        if (!device) return;
+        const vendorId = Number(device.vendorId).toString(16).padStart(4, '0');
+        const productId = Number(device.productId).toString(16).padStart(4, '0');
+        setForm((f) => ({ ...f, vendorId, productId }));
+        setScannedName(device.productName || `USB ${vendorId}:${productId}`);
+        addToast({
+          type: 'success',
+          title: 'USB printer found',
+          message: device.productName || `${vendorId}:${productId}`,
+        });
+      }
+    } catch (err: any) {
+      const failure = describeScanFailure(err);
+      // A dismissed chooser is not an error worth interrupting the operator for.
+      if (!failure) return;
+      addToast({ type: 'error', ...failure });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const transportReady =
+    form.transport === 'BLUETOOTH'
+      ? Boolean(form.macAddress.trim())
+      : form.transport === 'USB'
+        ? Boolean(form.vendorId.trim() && form.productId.trim())
+        : Boolean(form.ip.trim());
+
   const handleSave = async () => {
-    if (form.transport === 'TCP') {
-      if (!form.ip.trim() || !form.station) {
-        addToast({ type: 'error', title: 'Station and IP are required.' });
-        return;
-      }
-      const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-      if (!ipRegex.test(form.ip.trim())) {
-        addToast({ type: 'error', title: 'Invalid IP address format.' });
-        return;
-      }
-    } else {
-      if (!form.printerName.trim() || !form.station) {
-        addToast({ type: 'error', title: 'Station and Printer Name are required.' });
-        return;
-      }
+    if (!transportReady) {
+      addToast({
+        type: 'error',
+        title: form.transport === 'NETWORK' ? 'Enter the printer address' : 'Scan for a printer first',
+        message:
+          form.transport === 'NETWORK'
+            ? 'Type the IP address of the network printer (for example 192.168.1.50).'
+            : `Use the scan button to detect a ${form.transport === 'BLUETOOTH' ? 'Bluetooth' : 'USB'} printer automatically.`,
+      });
+      return;
     }
 
     setIsSaving(true);
     try {
       const payload = {
-        station: form.station,
         transport: form.transport,
-        ip: form.transport === 'TCP' ? form.ip.trim() : null,
-        port: form.transport === 'TCP' ? parseInt(form.port) || 9100 : null,
-        printerName: form.transport === 'WINDOWS' ? form.printerName.trim() : null,
+        macAddress: form.transport === 'BLUETOOTH' ? form.macAddress.trim() : null,
+        vendorId: form.transport === 'USB' ? form.vendorId.trim() : null,
+        productId: form.transport === 'USB' ? form.productId.trim() : null,
+        ip: form.transport === 'NETWORK' ? form.ip.trim() : null,
+        port:
+          form.transport === 'NETWORK'
+            ? parseInt(form.port, 10) || DEFAULT_NETWORK_PORT
+            : null,
       };
       if (editingPrinter) {
         const stationId = editingPrinter.id || editingPrinter.station;
@@ -147,11 +332,12 @@ export const OwnerPrinters: React.FC = () => {
         addToast({ type: 'success', title: 'Printer updated' });
       } else {
         const all = printers.map((p) => ({
-          station: p.station,
           transport: p.transport,
-          ip: p.ip,
-          port: p.port,
-          printerName: p.printerName,
+          macAddress: p.macAddress,
+          vendorId: p.vendorId,
+          productId: p.productId,
+          ip: p.ip ?? null,
+          port: p.port ?? null,
         }));
         await axiosClient.post('/settings/printers', { stations: [...all, payload] });
         addToast({ type: 'success', title: 'Printer added' });
@@ -192,13 +378,15 @@ export const OwnerPrinters: React.FC = () => {
       addToast({
         type: 'error',
         title: `Test print failed: ${printer.station}`,
-        message: extractErrorMessage(err) || 'TCP connection failed',
+        message: extractErrorMessage(err) || 'Could not reach the printer. Check that it is switched on.',
       });
       setStatuses(prev => ({ ...prev, [printer.station]: 'offline' }));
     } finally {
       setTestingId(null);
     }
   };
+
+  const deleteTargetId = deleteTarget ? deleteTarget.id || deleteTarget.station : null;
 
   const getStatusIcon = (station: string) => {
     const st = statuses[station];
@@ -219,7 +407,10 @@ export const OwnerPrinters: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-bold">LAN Printers</h3>
-          <p className="text-sm text-muted-foreground mt-0.5">Configure and test your thermal printer stations.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            The first printer on this list prints the kitchen tickets. Add more only if you want a
+            spare.
+          </p>
         </div>
         <Button id="add-printer-btn" onClick={openAdd}>
           <Plus className="w-4 h-4 mr-2" />Add Printer
@@ -241,7 +432,7 @@ export const OwnerPrinters: React.FC = () => {
       ) : printers.length === 0 ? (
         <EmptyState
           title="Let's set up your first printer"
-          message="You can add receipt printers for the front counter and the kitchen here to automate your workflow."
+          message="Connect a printer here and kitchen tickets will print automatically. The first printer you add becomes your ticket printer."
           icon={<Printer className="w-7 h-7" />}
           action={{
             label: 'Add Printer',
@@ -255,9 +446,10 @@ export const OwnerPrinters: React.FC = () => {
           initial="hidden" animate="show"
           variants={{ show: { transition: { staggerChildren: 0.06 } } }}
         >
-          {printers.map(printer => {
+          {printers.map((printer, index) => {
             const stationId = printer.id || printer.station;
             const isTesting = testingId === stationId;
+            const isTicketPrinter = index === 0;
             return (
               <motion.div
                 key={stationId}
@@ -269,16 +461,26 @@ export const OwnerPrinters: React.FC = () => {
                       <div className="flex items-center gap-2">
                         {getStatusIcon(printer.station)}
                         <div>
-                          <p className="font-bold capitalize">{printer.station} Printer</p>
+                          <p className="font-bold">
+                            {isTicketPrinter ? 'Ticket printer' : `Printer ${index + 1}`}
+                          </p>
                           <p className="text-xs font-mono text-muted-foreground mt-0.5">
-                            {printer.transport === 'TCP'
-                              ? `TCP: ${printer.ip}:${printer.port}`
-                              : `Windows Agent: ${printer.printerName}`}
+                            {printer.transport === 'BLUETOOTH'
+                              ? `Bluetooth ID: ${printer.macAddress}`
+                              : printer.transport === 'USB'
+                                ? `USB: ${printer.vendorId}:${printer.productId}`
+                                : `Network: ${printer.ip}${printer.port ? `:${printer.port}` : ''}`}
                           </p>
                         </div>
                       </div>
                       {getStatusLabel(printer.station)}
                     </div>
+
+                    {isTicketPrinter && (
+                      <p className="mb-4 text-xs text-muted-foreground">
+                        Kitchen tickets are sent here.
+                      </p>
+                    )}
 
                     <div className="flex items-center gap-2">
                       <Button
@@ -325,9 +527,12 @@ export const OwnerPrinters: React.FC = () => {
               className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm" onClick={() => setSlideOverOpen(false)} />
             <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
               transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingPrinter ? 'Edit printer' : 'Add printer'}
               className="fixed right-0 top-0 bottom-0 w-full max-w-sm bg-card border-l border-border z-50 flex flex-col shadow-2xl"
             >
-              <div className="flex items-center justify-between p-6 border-b border-border">
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border">
                 <h2 className="text-lg font-bold">{editingPrinter ? 'Edit Printer' : 'Add Printer'}</h2>
                 <Tooltip label="Close">
                   <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
@@ -335,46 +540,116 @@ export const OwnerPrinters: React.FC = () => {
                   </button>
                 </Tooltip>
               </div>
-              <div className="flex-1 p-6 space-y-5">
-                <div>
-                  <label htmlFor="pr-station" className="text-sm font-medium block mb-1.5">Station <span className="text-destructive">*</span></label>
-                  <Select id="pr-station" value={form.station} onChange={e => setForm(f => ({ ...f, station: e.target.value }))}>
-                    {STATION_OPTIONS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                  </Select>
-                </div>
-                
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
                 <div>
                   <label htmlFor="pr-transport" className="text-sm font-medium block mb-1.5">Transport Type</label>
-                  <Select id="pr-transport" value={form.transport} onChange={e => setForm(f => ({ ...f, transport: e.target.value as 'TCP' | 'WINDOWS' }))}>
-                    <option value="TCP">Network (TCP)</option>
-                    <option value="WINDOWS">Windows Print Agent</option>
+                  <Select
+                    id="pr-transport"
+                    value={form.transport}
+                    onChange={e => {
+                      setForm(f => ({ ...f, transport: e.target.value as PrinterTransport, macAddress: '', vendorId: '', productId: '', ip: '', port: String(DEFAULT_NETWORK_PORT) }));
+                      setScannedName(null);
+                    }}
+                  >
+                    <option value="BLUETOOTH">Bluetooth</option>
+                    <option value="USB">USB</option>
+                    <option value="NETWORK">Network (Wi-Fi / LAN)</option>
                   </Select>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Network printers are the most reliable: the server prints to them directly, so no
+                    browser or print agent has to be running.
+                  </p>
                 </div>
 
-                {form.transport === 'TCP' ? (
-                  <>
-                    <div>
-                      <label htmlFor="pr-ip" className="text-sm font-medium block mb-1.5">IP Address <span className="text-destructive">*</span></label>
-                      <Input id="pr-ip" value={form.ip} onChange={e => setForm(f => ({ ...f, ip: e.target.value }))}
-                        placeholder="192.168.1.100" className="font-mono" />
-                    </div>
-                    <div>
-                      <label htmlFor="pr-port" className="text-sm font-medium block mb-1.5">Port</label>
-                      <Input id="pr-port" type="number" value={form.port} onChange={e => setForm(f => ({ ...f, port: e.target.value }))}
-                        placeholder="9100" className="font-mono" />
-                      <p className="text-xs text-muted-foreground mt-1">Default ESC/POS port is 9100.</p>
-                    </div>
-                  </>
-                ) : (
-                  <div>
-                    <label htmlFor="pr-name" className="text-sm font-medium block mb-1.5">Printer Name <span className="text-destructive">*</span></label>
-                    <Input id="pr-name" value={form.printerName} onChange={e => setForm(f => ({ ...f, printerName: e.target.value }))}
-                      placeholder="EPSON TM-T82III Receipt" className="font-mono" />
-                    <p className="text-xs text-muted-foreground mt-1">Exact name of the printer as shown in Windows Control Panel.</p>
+                {/* Network or Bluetooth/USB specific options */}
+                <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {form.transport === 'NETWORK' && <Wifi className="h-4 w-4 text-primary" />}
+                    {form.transport === 'BLUETOOTH' && <Bluetooth className="h-4 w-4 text-primary" />}
+                    {form.transport === 'USB' && <Usb className="h-4 w-4 text-primary" />}
+                    {form.transport === 'NETWORK' ? 'Network printer' : form.transport === 'BLUETOOTH' ? 'Bluetooth printer' : 'USB printer'}
                   </div>
-                )}
+
+                  {form.transport === 'NETWORK' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label htmlFor="pr-ip" className="text-sm font-medium block mb-1.5">
+                          Printer IP address <span className="text-destructive">*</span>
+                        </label>
+                        <Input
+                          id="pr-ip"
+                          value={form.ip}
+                          onChange={e => setForm(f => ({ ...f, ip: e.target.value }))}
+                          placeholder="192.168.1.50"
+                          className="font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="pr-port" className="text-sm font-medium block mb-1.5">Port</label>
+                        <Input
+                          id="pr-port"
+                          inputMode="numeric"
+                          value={form.port}
+                          onChange={e => setForm(f => ({ ...f, port: e.target.value.replace(/[^\d]/g, '') }))}
+                          placeholder={String(DEFAULT_NETWORK_PORT)}
+                          className="font-mono"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {transportReady ? (
+                    <div className="flex items-start gap-2 rounded-lg border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 p-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {scannedName ?? 'Network printer'}
+                        </p>
+                        <p className="truncate font-mono text-xs text-muted-foreground">
+                          {form.transport === 'BLUETOOTH'
+                            ? form.macAddress
+                            : form.transport === 'USB'
+                            ? `USB ${form.vendorId}:${form.productId}`
+                            : `IP ${form.ip}:${form.port}`}
+                        </p>
+                      </div>
+                    </div>
+                  ) : form.transport === 'NETWORK' ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      No browser can scan your local network, so type the address printed on the
+                      printer's own settings page.
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Scan to detect nearby {form.transport === 'BLUETOOTH' ? 'Bluetooth' : 'USB'} printers and pick one automatically.
+                      {form.transport === 'BLUETOOTH' &&
+                        ' Browsers only see low-energy (BLE) printers — one paired in Windows or Android settings stays hidden, so use a Network printer for those.'}
+                    </p>
+                  )}
+
+                  {form.transport !== 'NETWORK' && (
+                    <Button
+                      type="button"
+                      onClick={handleScan}
+                      disabled={scanning}
+                      className="mt-3 w-full"
+                    >
+                      {scanning ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Scanning…
+                        </>
+                      ) : (
+                        <>
+                          <ScanLine className="mr-2 h-4 w-4" />
+                          Scan for {form.transport === 'BLUETOOTH' ? 'Bluetooth' : 'USB'} printers
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="p-6 border-t border-border flex gap-3">
+              <div className="p-4 sm:p-6 border-t border-border flex gap-3">
                 <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
                 <Button onClick={handleSave} disabled={isSaving} className="flex-1">
                   {isSaving ? 'Saving...' : (editingPrinter ? 'Update' : 'Add Printer')}
@@ -393,10 +668,17 @@ export const OwnerPrinters: React.FC = () => {
               className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-              <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full pointer-events-auto">
-                <h3 className="font-bold mb-2 capitalize">Remove {deleteTarget.station} printer?</h3>
+              <div className="bg-card border border-border rounded-xl shadow-2xl p-4 sm:p-6 max-w-sm w-full pointer-events-auto">
+                <h3 className="font-bold mb-2">Remove this printer?</h3>
                 <p className="text-sm text-muted-foreground mb-6">
-                  The printer at {deleteTarget.ip}:{deleteTarget.port} will be removed from all stations.
+                  {deleteTargetId === (printers[0]?.id || printers[0]?.station)
+                    ? 'This is your ticket printer — kitchen tickets will stop printing until you add another one. '
+                    : ''}
+                  The printer at {deleteTarget.transport === 'BLUETOOTH'
+                    ? deleteTarget.macAddress
+                    : deleteTarget.transport === 'USB'
+                      ? `${deleteTarget.vendorId}:${deleteTarget.productId}`
+                      : `${deleteTarget.ip}${deleteTarget.port ? `:${deleteTarget.port}` : ''}`} will be removed.
                 </p>
                 <div className="flex gap-3">
                   <Button variant="outline" onClick={() => setDeleteTarget(null)} className="flex-1">Cancel</Button>
