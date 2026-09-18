@@ -5,13 +5,17 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppRoutes } from '../App';
 import { useAuthStore } from '../store/authStore';
 
-vi.mock('../store/socketStore', () => ({
-  useSocketStore: () => ({
+vi.mock('../store/socketStore', () => {
+  const mockState = {
     connect: vi.fn(),
     disconnect: vi.fn(),
     isConnected: false,
-  }),
-}));
+    socket: null,
+  };
+  const useSocketStore: any = () => mockState;
+  useSocketStore.getState = () => mockState;
+  return { useSocketStore };
+});
 
 vi.mock('../store/offlineSyncStore', () => ({
   useOfflineSyncStore: () => ({
