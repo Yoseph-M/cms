@@ -168,6 +168,17 @@
   body,
   #root {
     height: 100%;
+    min-width: 0;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
   }
 
   body {
@@ -175,6 +186,16 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+
+  /* Keep controls readable and prevent iOS from zooming the viewport when a
+     field receives focus.  Desktop font sizes are left untouched. */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
 
   /* Better default focus visibility — inputs are excluded so wrappers can style focus */
