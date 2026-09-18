@@ -158,6 +158,8 @@ export interface ProfitLossResponse {
   from: string | null;
   to: string | null;
   revenue: number;
+  /** Total expenses for the period, already including payroll. */
+  expenses: number;
   payrollCost: number;
   otherExpenses: number;
   netProfit: number;
