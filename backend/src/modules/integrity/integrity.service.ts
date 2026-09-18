@@ -5,16 +5,12 @@
  * Checks for:
  * 1. Over-settlement (settlement total > order total)
  * 2. Orphan settlements (settlements without valid order)
- * 3. Missing shift (cash settlement without an open shift)
- * 4. Closed shift settlement (cash settlement on closed shift)
- * 5. Duplicate daily close
- * 6. Negative totals (order amounts, payouts)
- * 7. Broken ledger chain
- * 8. Ledger tampering (missing sequential events, time anomalies)
+ * 3. Duplicate daily close
+ * 4. Negative totals (order amounts, payouts)
  */
 
 import { prisma } from '../../services/prisma.service';
-import { IntegritySeverity, IntegrityCategory, ShiftStatus, IntegrityIssue } from '@prisma/client';
+import { IntegritySeverity, IntegrityCategory, IntegrityIssue } from '@prisma/client';
 import { recordAudit, SYSTEM_USER_ID } from '../../services/audit.service';
 import { emitToRoom } from '../../services/socket.service';
 import { logger } from '../../utils/logger';
@@ -92,80 +88,8 @@ export async function runIntegrityChecks() {
     }
   }, 'Orphan settlements check', issues);
 
-  // Check 3 & 4: Shift Issues (Missing Shift / Closed Shift Settlement)
-  await safeCheck(async () => {
-    // NEW: Check that all CASH settlements have shiftId populated
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const cashSettlementsWithoutShift = await prisma.settlement.findMany({
-      where: { 
-        method: 'CASH',
-        shiftId: null, // CASH settlements must have shiftId
-        createdAt: { gte: today }
-      },
-    });
-
-    for (const settlement of cashSettlementsWithoutShift) {
-      issues.push({
-        severity: IntegritySeverity.CRITICAL,
-        category: IntegrityCategory.MISSING_SHIFT,
-        description: `Cash settlement ${settlement.id} has no associated shift (shiftId is null)`,
-        referenceType: 'Settlement',
-        referenceId: settlement.id,
-      });
-    }
-
-    // Check 4: Verify cash settlements have matching ledger entries and weren't recorded on closed shifts
-    const cashSettlements = await prisma.settlement.findMany({
-      where: { method: 'CASH', createdAt: { gte: today } },
-    });
-
-    // Get all shifts with their close times
-    const shifts = await prisma.cashierShift.findMany({
-      where: { openedAt: { gte: today } },
-      select: { 
-        id: true, 
-        status: true, 
-        closedAt: true,
-        openedAt: true 
-      },
-    });
-    const shiftsById = new Map(shifts.map(s => [s.id, s]));
-
-    const cashEvents = await prisma.cashDrawerEvent.findMany({
-      where: { type: 'CASH_SETTLEMENT', createdAt: { gte: today } },
-      include: { shift: true },
-    });
-
-    for (const settlement of cashSettlements) {
-      const event = cashEvents.find(e => e.referenceId === settlement.id);
-      
-      // Missing ledger entry
-      if (!event) {
-        issues.push({
-          severity: IntegritySeverity.ERROR,
-          category: IntegrityCategory.MISSING_SHIFT,
-          description: `Cash settlement ${settlement.id} has no matching cash drawer ledger entry`,
-          referenceType: 'Settlement',
-          referenceId: settlement.id,
-        });
-        continue;
-      }
-      
-      // Check if settlement was recorded after shift was closed
-      const shift = shiftsById.get(event.shiftId);
-      if (shift && shift.closedAt && settlement.createdAt > shift.closedAt) {
-        issues.push({
-          severity: IntegritySeverity.ERROR,
-          category: IntegrityCategory.CLOSED_SHIFT_SETTLEMENT,
-          description: `Cash settlement ${settlement.id} was recorded after shift ${shift.id} was closed (Settlement: ${settlement.createdAt.toISOString()}, Shift closed: ${shift.closedAt.toISOString()})`,
-          referenceType: 'Settlement',
-          referenceId: settlement.id,
-        });
-      }
-    }
-  }, 'Shift issues check', issues);
+  // Shift checks (missing shift / closed-shift settlement) were removed along
+  // with shift management — settlements no longer belong to a shift.
 
   // Check 5: Duplicate daily close
   await safeCheck(async () => {
@@ -203,81 +127,8 @@ export async function runIntegrityChecks() {
     }
   }, 'Negative totals check', issues);
 
-  // Check 7: Broken ledger chain (Expected cash doesn't match sum of events)
-  await safeCheck(async () => {
-    const openShifts = await prisma.cashierShift.findMany({
-      where: { status: ShiftStatus.OPEN },
-      include: { cashDrawerEvents: true },
-    });
-
-    for (const shift of openShifts) {
-      let computedExpected = shift.openingCashMinor;
-      for (const event of shift.cashDrawerEvents) {
-        if (['OPENING_BALANCE', 'CASH_SETTLEMENT'].includes(event.type)) {
-          computedExpected += event.amountMinor;
-        } else if (['CASH_PAYOUT', 'PETTY_CASH'].includes(event.type)) {
-          computedExpected -= event.amountMinor;
-        } else if (event.type === 'CASH_ADJUSTMENT') {
-          computedExpected += event.amountMinor;
-        }
-      }
-      
-      // For OPEN shifts, expectedCashMinor should match computed value from ledger
-      // If shift has expectedCashMinor populated and it doesn't match, flag as broken chain
-      if (shift.expectedCashMinor !== null && shift.expectedCashMinor !== computedExpected) {
-        issues.push({
-          severity: IntegritySeverity.ERROR,
-          category: IntegrityCategory.BROKEN_LEDGER,
-          description: `Shift ${shift.id} has broken ledger chain (Expected: ${shift.expectedCashMinor}, Computed: ${computedExpected})`,
-          referenceType: 'CashierShift',
-          referenceId: shift.id,
-        });
-      }
-    }
-  }, 'Broken ledger chain check', issues);
-
-  // Check 8: Ledger tampering detection (time anomalies, gaps)
-  await safeCheck(async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const allShifts = await prisma.cashierShift.findMany({
-      where: { createdAt: { gte: today } },
-      include: { cashDrawerEvents: { orderBy: { createdAt: 'asc' } } },
-    });
-
-    for (const shift of allShifts) {
-      const events = shift.cashDrawerEvents;
-      
-      // Check for time anomalies: events should be chronologically ordered
-      for (let i = 1; i < events.length; i++) {
-        const prevEvent = events[i - 1];
-        const currEvent = events[i];
-        
-        // If current event is before previous event, flag as tampering
-        if (currEvent.createdAt < prevEvent.createdAt) {
-          issues.push({
-            severity: IntegritySeverity.CRITICAL,
-            category: IntegrityCategory.BROKEN_LEDGER,
-            description: `Shift ${shift.id} has out-of-order ledger events (Event ${currEvent.id} created before ${prevEvent.id})`,
-            referenceType: 'CashierShift',
-            referenceId: shift.id,
-          });
-        }
-      }
-      
-      // Check for missing OPENING_BALANCE
-      if (events.length > 0 && events[0].type !== 'OPENING_BALANCE') {
-        issues.push({
-          severity: IntegritySeverity.ERROR,
-          category: IntegrityCategory.BROKEN_LEDGER,
-          description: `Shift ${shift.id} missing OPENING_BALANCE as first event`,
-          referenceType: 'CashierShift',
-          referenceId: shift.id,
-        });
-      }
-    }
-  }, 'Ledger tampering check', issues);
+  // Ledger-chain and ledger-tampering checks were removed with shift
+  // management: the cash drawer ledger is no longer written to.
 
   // Record issues in DB with efficient batch duplicate detection
   const createdIssues = [];
