@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback } from '../../components/ui/Avatar';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Plus, Search, Pencil, ShieldOff, ShieldCheck,
-  KeyRound, Copy, X, Eye, EyeOff, AlertTriangle
+  X, Eye, EyeOff, KeyRound
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -44,6 +44,13 @@ const STAFF_ROLES = ['MANAGER', 'CASHIER', 'WAITER', 'COOKER', 'BARISTA'];
 
 const EMPTY_FORM = { name: '', role: 'CASHIER', username: '', phone: '', salaryAmount: '', credential: '' };
 
+/** Fields shown in the Add/Edit staff slide-over. Salary is managed on the Payroll page. */
+const STAFF_FIELDS = [
+  { id: 'sf-name', label: 'Full Name', key: 'name' as const, placeholder: 'e.g. Alice Johnson', required: true },
+  { id: 'sf-phone', label: 'Phone', key: 'phone' as const, placeholder: '+251 9XX XXX XXX', required: true, phone: true },
+  { id: 'sf-username', label: 'Username', key: 'username' as const, placeholder: 'staff_username' },
+];
+
 export const OwnerStaff: React.FC = () => {
   const { addToast } = useToastStore();
   const { user: currentUser } = useAuthStore();
@@ -70,9 +77,6 @@ export const OwnerStaff: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const pendingStatusTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
-  const [resetResult, setResetResult] = useState<{ name: string; credential: string } | null>(null);
-  const [isResetting, setIsResetting] = useState(false);
 
   const users: User[] = useMemo(() => {
     const list = (serverUsers as User[]) || [];
@@ -117,6 +121,7 @@ export const OwnerStaff: React.FC = () => {
 
   const openEdit = (user: User) => {
     setEditingUser(user);
+    // `credential` is repurposed as the optional new password when editing.
     setForm({ name: user.name, role: user.role, username: user.username || '', phone: user.phone, salaryAmount: String(user.salaryAmount), credential: '' });
     setShowCredential(false);
     setSlideOverOpen(true);
@@ -138,11 +143,10 @@ export const OwnerStaff: React.FC = () => {
         role: form.role,
         username: form.username || undefined,
         phone: form.phone.trim(),
-        salaryAmount: parseFloat(form.salaryAmount) || 0,
       };
-      if (!editingUser && form.credential) {
-        payload.password = form.credential;
-      }
+      // Salary is intentionally not set here — it is recorded on the Payroll
+      // page when the staff member is actually paid. A new password is optional.
+      if (form.credential) payload.password = form.credential;
       if (editingUser) {
         const res = await axiosClient.patch(`/users/${editingUser.id}`, payload);
         queryClient.setQueryData<User[]>(['users'], (old) =>
@@ -215,19 +219,6 @@ export const OwnerStaff: React.FC = () => {
       undo: { label: 'Undo', onClick: undo },
     });
   }, [addToast]);
-
-  const handleReset = async (user: User) => {
-    setIsResetting(true);
-    try {
-      const res = await axiosClient.patch(`/users/${user.id}/reset-password`);
-      const newCred = res.data?.password || '(see response)';
-      setResetResult({ name: user.name, credential: newCred });
-    } catch (err: any) {
-      addToast({ type: 'error', title: 'Reset failed', message: extractErrorMessage(err) });
-    } finally {
-      setIsResetting(false);
-    }
-  };
 
   const initials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
@@ -339,8 +330,8 @@ export const OwnerStaff: React.FC = () => {
                           </button>
                         </Tooltip>
                         {user.id !== currentUser?.id && (
-                          <Tooltip label="Reset Password">
-                            <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                          <Tooltip label="Change password">
+                            <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                               <KeyRound className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
@@ -378,7 +369,7 @@ export const OwnerStaff: React.FC = () => {
               transition={{ type: 'spring', stiffness: 380, damping: 34 }}
               className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-card border-l border-border z-50 flex flex-col shadow-2xl"
             >
-              <div className="flex items-center justify-between p-6 border-b border-border">
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border">
                 <h2 className="text-lg font-bold">{editingUser ? 'Edit Staff Member' : 'Add Staff Member'}</h2>
                 <Tooltip label="Close">
                   <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
@@ -386,13 +377,8 @@ export const OwnerStaff: React.FC = () => {
                   </button>
                 </Tooltip>
               </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                {[
-                  { id: 'sf-name', label: 'Full Name', key: 'name', placeholder: 'e.g. Alice Johnson', required: true },
-                  { id: 'sf-phone', label: 'Phone', key: 'phone', placeholder: '+251 9XX XXX XXX', required: true, phone: true },
-                  { id: 'sf-username', label: 'Username', key: 'username', placeholder: 'staff_username' },
-                  { id: 'sf-salary', label: 'Monthly Salary (ETB)', key: 'salaryAmount', placeholder: '2500' },
-                ].map(field => (
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+                {STAFF_FIELDS.map(field => (
                   <div key={field.key}>
                     <label htmlFor={field.id} className="text-sm font-medium text-foreground block mb-1.5">
                       {field.label} {field.required && <span className="text-destructive">*</span>}
@@ -414,29 +400,34 @@ export const OwnerStaff: React.FC = () => {
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">OWNER cannot be created via this form.</p>
                 </div>
-                {!editingUser && (
-                  <div>
-                    <label htmlFor="sf-cred" className="text-sm font-medium text-foreground block mb-1.5">
-                      Initial Password
-                    </label>
-                    <div className="relative">
-                      <Input
-                        id="sf-cred"
-                        type={showCredential ? 'text' : 'password'}
-                        value={form.credential}
-                        onChange={e => setForm(f => ({ ...f, credential: e.target.value }))}
-                        placeholder="Temporary password"
-                        className="pr-10"
-                      />
-                      <button type="button" onClick={() => setShowCredential(v => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                        {showCredential ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
+                <div>
+                  <label htmlFor="sf-cred" className="text-sm font-medium text-foreground block mb-1.5">
+                    {editingUser ? 'Change Password' : 'Initial Password'}
+                    {editingUser && <span className="text-muted-foreground font-normal"> (optional)</span>}
+                  </label>
+                  <div className="relative">
+                    <Input
+                      id="sf-cred"
+                      type={showCredential ? 'text' : 'password'}
+                      value={form.credential}
+                      onChange={e => setForm(f => ({ ...f, credential: e.target.value }))}
+                      placeholder={editingUser ? 'Leave blank to keep current password' : 'Temporary password'}
+                      className="pr-10"
+                      autoComplete="new-password"
+                    />
+                    <button type="button" onClick={() => setShowCredential(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                      {showCredential ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
-                )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {editingUser
+                      ? 'Set a new password for this staff member. They will sign in with it on their next login.'
+                      : 'Password used for this staff member\u2019s first login.'}
+                  </p>
+                </div>
               </div>
-              <div className="p-6 border-t border-border flex gap-3">
+              <div className="p-4 sm:p-6 border-t border-border flex gap-3">
                 <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
                 <Button onClick={handleSave} disabled={isSaving} className="flex-1">
                   {isSaving ? 'Saving...' : editingUser ? 'Save Changes' : 'Add Staff'}
@@ -447,38 +438,6 @@ export const OwnerStaff: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Reset credential one-time display */}
-      <AnimatePresence>
-        {resetResult && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-              <div className="bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full pointer-events-auto">
-                <h3 className="font-bold mb-1">New Credential for {resetResult.name}</h3>
-                <p className="text-xs text-[hsl(var(--warning))] font-medium mb-4 flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  This won't be shown again — record it now.
-                </p>
-                <div className="flex items-center gap-2 bg-secondary rounded-lg p-3 mb-5">
-                  <code className="font-mono text-lg font-bold tracking-widest flex-1 text-foreground">
-                    {resetResult.credential}
-                  </code>
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(resetResult.credential); addToast({ type: 'success', title: 'Copied!' }); }}
-                    className="p-2 rounded-md hover:bg-border transition-colors text-muted-foreground hover:text-foreground"
-                    title="Copy"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
-                <Button onClick={() => setResetResult(null)} className="w-full">I've Saved It — Close</Button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
