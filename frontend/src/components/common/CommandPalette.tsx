@@ -1,14 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
-import { Search, Users, UtensilsCrossed, ReceiptText, Zap } from 'lucide-react';
+import { Search, Users, UtensilsCrossed, ReceiptText, Zap, Wallet, Coins, CreditCard, Printer } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { formatCurrency } from '../../utils/currency';
 
-type Results = { staff: any[]; menuItems: any[]; orders: any[] };
-const emptyResults: Results = { staff: [], menuItems: [], orders: [] };
+type Results = {
+  staff: any[];
+  menuItems: any[];
+  orders: any[];
+  expenses: any[];
+  payroll: any[];
+  settlements: any[];
+  printers: any[];
+};
+const emptyResults: Results = {
+  staff: [],
+  menuItems: [],
+  orders: [],
+  expenses: [],
+  payroll: [],
+  settlements: [],
+  printers: [],
+};
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthLabel = (month?: number, year?: number) =>
+  `${MONTH_SHORT[(Number(month) || 1) - 1] ?? ''} ${year ?? ''}`.trim();
 
 export const CommandPalette: React.FC = () => {
   const { user } = useAuthStore();
@@ -23,19 +43,13 @@ export const CommandPalette: React.FC = () => {
 
   useEffect(() => {
     if (user?.role !== 'OWNER' && user?.role !== 'MANAGER') return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setOpen(value => !value);
-      }
+    const openPalette = (event: Event) => {
+      const detail = (event as CustomEvent<{ q?: string }>).detail;
+      if (detail?.q) setQuery(detail.q);
+      setOpen(true);
     };
-    window.addEventListener('keydown', onKeyDown);
-    const openPalette = () => setOpen(true);
     window.addEventListener('cafeflow:open-command-palette', openPalette);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('cafeflow:open-command-palette', openPalette);
-    };
+    return () => window.removeEventListener('cafeflow:open-command-palette', openPalette);
   }, [user?.role]);
 
   useEffect(() => {
@@ -59,27 +73,28 @@ export const CommandPalette: React.FC = () => {
   
   // Build navigation pages array, conditionally including Settings for OWNER
   const ownerPages: [string, string][] = [
-    ['Dashboard', '/owner'], 
-    ['Staff', '/owner/staff'], 
-    ['Menu', '/owner/menu'], 
-    ['Attendance', '/owner/attendance'], 
-    ['Payroll', '/owner/payroll'], 
-    ['Expenses', '/owner/expenses'], 
-    ['Finance', '/owner/finance'], 
-    ['Audit log', '/owner/audit'], 
-    ['Printers', '/owner/printers'],
-    ['Settings', '/owner/settings'] // Settings is always accessible
+    ['Dashboard', '/owner'],
+    ['Staff', '/owner/admin?tab=staff'],
+    ['Menu', '/owner/menu'],
+    ['Attendance', '/owner/attendance'],
+    ['Payroll', '/owner/payroll'],
+    ['Expenses', '/owner/expenses'],
+    ['Finance', '/owner/finance'],
+    ['Audit logs', '/owner/admin?tab=audit'],
+    ['Printers', '/owner/admin?tab=printers'],
+    ['Backup & restore', '/owner/admin?tab=backup'],
+    ['Settings', '/owner/settings'],
   ];
-  
+
   const pages = user.role === 'OWNER'
     ? ownerPages
-    : [['Dashboard', '/manager'], ['People', '/manager/people'], ['Menu', '/manager/menu'], ['Attendance', '/manager/attendance'], ['Payroll', '/manager/payroll'], ['Expenses', '/manager/expenses'], ['Settings', '/manager/settings']];
+    : [['Dashboard', '/manager'], ['Staff', '/manager/staff'], ['Menu', '/manager/menu'], ['Attendance', '/manager/attendance'], ['Payroll', '/manager/payroll'], ['End of Day', '/manager/reconciliation'], ['Expenses', '/manager/expenses'], ['Settings', '/manager/settings']];
 
   return <Command.Dialog open={open} onOpenChange={setOpen} label="Global command palette" className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4 pt-[12vh]">
     <div className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-popover shadow-2xl">
       <div className="flex items-center gap-2 border-b border-border px-3">
         <Search className="h-4 w-4 text-muted-foreground" />
-        <Command.Input value={query} onValueChange={setQuery} placeholder="Search staff, menu items, and orders…" className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+        <Command.Input value={query} onValueChange={setQuery} placeholder="Search staff, orders, expenses, payroll…" className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
         <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">ESC</kbd>
       </div>
       <Command.List className="max-h-[55vh] overflow-y-auto p-2 text-sm">
@@ -96,9 +111,13 @@ export const CommandPalette: React.FC = () => {
           </Command.Group>
         </>}
         {query && <>
-          <ResultGroup heading="Staff" items={results.staff} icon={<Users className="h-4 w-4" />} render={(item) => `${item.name} · ${item.role}`} onSelect={(item) => go(`/${role}/staff?highlight=${item.id}`)} />
+          <ResultGroup heading="Staff" items={results.staff} icon={<Users className="h-4 w-4" />} render={(item) => `${item.name} · ${item.role}`} onSelect={(item) => go(role === 'owner' ? `/owner/admin?tab=staff&highlight=${item.id}` : `/manager/staff?highlight=${item.id}`)} />
           <ResultGroup heading="Menu items" items={results.menuItems} icon={<UtensilsCrossed className="h-4 w-4" />} render={(item) => `${item.name} · ${formatCurrency(item.price)}`} onSelect={(item) => go(`/${role}/menu?highlight=${item.id}`)} />
           <ResultGroup heading="Recent orders" items={results.orders} icon={<ReceiptText className="h-4 w-4" />} render={(item) => `Table ${item.tableNumber} · #${item.clientOrderId.slice(0, 8)} · ${item.status}`} onSelect={() => go(`/${role}`)} />
+          <ResultGroup heading="Expenses" items={results.expenses ?? []} icon={<Wallet className="h-4 w-4" />} render={(item) => `${item.description} · ${formatCurrency(item.amount)}`} onSelect={() => go(`/${role}/expenses`)} />
+          <ResultGroup heading="Payroll" items={results.payroll ?? []} icon={<Coins className="h-4 w-4" />} render={(item) => `${item.user?.name ?? 'Payroll'} · ${monthLabel(item.periodMonth, item.periodYear)} · ${formatCurrency(item.paidAmount)}`} onSelect={() => go(`/${role}/payroll`)} />
+          <ResultGroup heading="Settlements" items={results.settlements ?? []} icon={<CreditCard className="h-4 w-4" />} render={(item) => `Table ${item.order?.tableNumber ?? '—'} · ${item.method} · ${formatCurrency(item.amountMinor)}`} onSelect={() => go(`/${role}/settlements`)} />
+          <ResultGroup heading="Printers" items={results.printers ?? []} icon={<Printer className="h-4 w-4" />} render={(item) => `${item.station} · ${item.transport}`} onSelect={() => go('/owner/admin?tab=printers')} />
         </>}
       </Command.List>
     </div>
