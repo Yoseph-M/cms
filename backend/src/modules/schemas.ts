@@ -3,7 +3,10 @@ import { Role, MenuCategory, OrderStatus, PaymentMethod, AttendanceStatus } from
 
 // ---------- Auth Schemas ----------
 export const loginSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters'),
+  // Trim before validating: on shared terminals usernames are typed by hand and
+  // stray leading/trailing spaces are common. Case is handled in the controller,
+  // which matches usernames case-insensitively.
+  username: z.string().trim().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -16,10 +19,10 @@ export const refreshTokenSchema = z.object({
 export const createUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   role: z.nativeEnum(Role),
-  username: z.string().min(3).optional().nullable(),
+  username: z.string().trim().min(3).optional().nullable(),
   phone: z.string().min(5, 'Valid phone number is required'),
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
-  salaryAmount: z.number().nonnegative().default(0),
+  salaryAmount: z.number().nonnegative().transform((v) => Math.round(v)).default(0),
 });
 
 export const updateUserSchema = z.object({
@@ -27,8 +30,10 @@ export const updateUserSchema = z.object({
   role: z.nativeEnum(Role).optional(),
   username: z.string().min(3).optional().nullable(),
   phone: z.string().min(5).optional(),
-  salaryAmount: z.number().nonnegative().optional(),
+  salaryAmount: z.number().nonnegative().transform((v) => Math.round(v)).optional(),
   isActive: z.boolean().optional(),
+  // Set directly from the staff edit card; hashed server-side before storage.
+  password: z.string().min(6, 'Password must be at least 6 characters').optional(),
 });
 
 export const resetPasswordSchema = z.object({
@@ -73,7 +78,7 @@ export const createMenuItemSchema = z.object({
   name: z.string().min(1, 'Item name is required'),
   nameAmharic: z.string().trim().min(1).max(200).nullable().optional(),
   category: z.nativeEnum(MenuCategory),
-  price: z.number().positive('Price must be greater than 0'),
+  price: z.number().positive('Price must be greater than 0').transform((v) => Math.round(v)),
   isAvailable: z.boolean().default(true),
   imageUrl: imageUrlSchema.nullable().optional(),
 });
@@ -82,7 +87,7 @@ export const updateMenuItemSchema = z.object({
   name: z.string().min(1).optional(),
   nameAmharic: z.string().trim().min(1).max(200).nullable().optional(),
   category: z.nativeEnum(MenuCategory).optional(),
-  price: z.number().positive('Price must be greater than 0').optional(),
+  price: z.number().positive('Price must be greater than 0').transform((v) => Math.round(v)).optional(),
   isAvailable: z.boolean().optional(),
   imageUrl: imageUrlSchema.nullable().optional(),
 });
@@ -101,7 +106,7 @@ export const orderItemInputSchema = z.object({
   menuItemId: z.string().min(1, 'menuItemId is required'),
   // name and unitPrice are optional — the server recomputes them from the DB
   name: z.string().optional(),
-  unitPrice: z.number().nonnegative().optional(),
+  unitPrice: z.number().nonnegative().transform((v) => Math.round(v)).optional(),
   quantity: z.number().int().positive('Quantity must be at least 1'),
   notes: z.string().default(''),
 });
@@ -119,7 +124,7 @@ export const payOrderSchema = z.object({
 });
 
 export const createSettlementSchema = z.object({
-  amountMinor: z.number().positive('Amount must be greater than zero'),
+  amountMinor: z.number().positive('Amount must be greater than zero').transform((v) => Math.round(v)),
   method: z.enum(['CASH', 'CARD', 'MOBILE'], {
     errorMap: () => ({ message: 'Payment method must be CASH, CARD, or MOBILE' }),
   }),
@@ -156,7 +161,7 @@ export const payrollEntrySchema = z.object({
   userId: z.string().min(1, 'userId is required'),
   periodMonth: z.number().int().min(1, 'Month must be between 1 and 12').max(12),
   periodYear: z.number().int().min(2000).max(2100),
-  paidAmount: z.number().min(0, 'paidAmount must be non-negative'),
+  paidAmount: z.number().min(0, 'paidAmount must be non-negative').transform((v) => Math.round(v)),
   note: z.string().optional(),
 });
 
