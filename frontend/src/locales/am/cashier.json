@@ -1,4 +1,9 @@
 {
+  "nav": {
+    "dashboard": "ዳሽቦርድ", "tickets": "ቲኬቶች", "menu": "የምናሌ ዝርዝር",
+    "settlements": "ክፍያዎች", "systemSettings": "የስርዓት ቅንብሮች",
+    "groups": { "core": "አጠቃላይ እይታ", "ops": "ሥራዎች" }
+  },
   "console": "የጥሬ ገንዘብ ሠራተኛ ኮንሶል",
   "header": {
     "orders": "ትዕዛዞች",
@@ -14,7 +19,12 @@
     "takeout": "ለወጭ",
     "items": "ዕቃዎች",
     "by": "በ",
+    "searchPlaceholder": "ጠረጴዛ፣ ትዕዛዝ ወይም አስተናጋጅ ይፈልጉ…",
+    "sortBy": "በዚህ ደርድር",
+    "filter": { "newest": "አዲስ የሆነ", "longer": "ረዘም ያለ" },
     "status": {
+      "ready": "ለክፍያ ዝግጁ",
+      "cooking": "በወጥ ቤት ውስጥ",
       "paid": "ተከፍሏል",
       "cancelled": "ተሰርዟል",
       "cancelReq": "ሰርዝ ጥያቄ",
@@ -70,6 +80,7 @@
     },
     "cart": {
       "title": "አዲስ ትዕዛዝ",
+      "line": "{{count}} መስመር",
       "line_one": "{{count}} መስመር",
       "line_other": "{{count}} መስመሮች",
       "tableNumber": "የጠረጴዛ ቁጥር",
@@ -104,12 +115,36 @@
     "tableText": "የጠረጴዛ {{table}}",
     "takeoutText": "ለወጭ ትዕዛዝ",
     "paymentFailed": "ክፍያ አልተሳካም",
-    "cancelFailed": "መሰረዝ አልተሳካም"
+    "cancelFailed": "መሰረዝ አልተሳካም",
+    "cancelRequested": "የመሰረዝ ጥያቄ ተልኳል"
   },
   "shortcuts": {
     "navigate": "↑↓ / J K — ወረፋ ዳስስ",
     "payment": "1 2 3 — ጥሬ ገንዘብ / ካርድ / ሞባይል",
     "pay": "Enter — ተከፍሏል ምልክት ያድርጉ",
     "close": "Esc — ዝጋ / ምርጫ ሰርዝ"
+  },
+  "shiftManager": {
+    "startShift": "ፈረቃ ጀምር",
+    "starting": "በመጀመር ላይ...",
+    "openShiftPrompt": "እባክዎ ደንበኞችን ለማስተናገድ የመክፈቻ ጥሬ ገንዘብ መጠንዎን ያስገቡ።",
+    "openingCashLabel": "የመክፈቻ ጥሬ ገንዘብ መጠን",
+    "shiftOpenedSuccess": "ፈረቃ በተሳካ ሁኔታ ተከፍቷል",
+    "shiftOpenedFail": "ፈረቃ መክፈት አልተሳካም",
+    "closeRegister": "ፈረቃ ዝጋ",
+    "closeRegisterPrompt": "በሳጥንዎ ውስጥ ያለውን ትክክለኛ የጥሬ ገንዘብ መጠን ያስገቡ።",
+    "declaredCash": "የተቆጠረ የጥሬ ገንዘብ መጠን",
+    "declaredCard": "የተቆጠረ የካርድ መጠን",
+    "declaredMobile": "የተቆጠረ የሞባይል መጠን",
+    "closingNotes": "የመዝጊያ ማስታወሻዎች (አማራጭ)",
+    "closingNotesPlaceholder": "ለገቢ ልዩነቶች ማብራሪያ ካለዎት...",
+    "cancel": "ሰርዝ",
+    "closeShift": "ፈረቃ ዝጋ",
+    "closing": "በመዝጋት ላይ...",
+    "shiftClosedSuccess": "ፈረቃ በተሳካ ሁኔታ ተዘግቷል። የልዩነት ግምገማ በመጠባበቅ ላይ ነው።",
+    "shiftClosedFail": "ፈረቃ መዝጋት አልተሳካም",
+    "checkingStatus": "የፈረቃ ሁኔታ በመጣራት ላይ...",
+    "loadFail": "የፈረቃ ሁኔታ መጫን አልተሳካም",
+    "endShift": "ፈረቃ ጨርስ"
   }
 }
