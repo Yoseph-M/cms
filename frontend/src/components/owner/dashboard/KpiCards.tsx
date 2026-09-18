@@ -149,7 +149,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
   totalRevenue,
 }) => {
   return (
-    <div className="grid grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
+    <div className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
       <KpiCard
         label="Today's orders"
         value={totalOrders}
