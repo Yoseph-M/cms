@@ -1,12 +1,15 @@
 import rateLimit from 'express-rate-limit';
 import { Request, Response } from 'express';
+import { config } from '../config';
 
 /**
  * Rate limiter for agent registration to prevent abuse
  */
 export const agentRegistrationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Max 5 agent registrations per window
+  // Max 5 agent registrations per window in production. The test suite registers
+  // several agents in one run, so it gets a larger budget instead of 429s.
+  max: config.nodeEnv === 'test' ? 100 : 5,
   message: { error: 'Too many agent registrations. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
