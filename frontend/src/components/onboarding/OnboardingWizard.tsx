@@ -3,14 +3,13 @@ import { useOnboardingStore } from '../../store/onboardingStore';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
-import { fileToCompressedDataUrl } from '../../utils/imageResize';
 import { useToastStore } from '../../store/toastStore';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Switch } from '../ui/Switch';
-import { X, Building2, Store, Printer, Coffee, Users, Bell, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { X, Store, Printer, Coffee, Users, Bell, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const NOTIFICATION_TYPES = [
@@ -72,99 +71,24 @@ export const OnboardingWizard: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="bg-card w-full max-w-2xl rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-card w-full max-w-2xl rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90dvh]">
         <div className="flex items-center justify-between p-4 border-b border-border bg-muted/30">
           <h2 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Setup Guide • Step {stepIndex + 1} of 7
+            Setup Guide • Step {stepIndex + 1} of 6
           </h2>
           <Button variant="ghost" size="icon" onClick={closeWizard} className="-mr-2 rounded-full">
             <X className="w-5 h-5" />
           </Button>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-6 md:p-10">
-          {stepIndex === 0 && <Step1Profile onNext={() => saveProgress(1)} />}
-          {stepIndex === 1 && <Step2Service onNext={() => saveProgress(2)} />}
-          {stepIndex === 2 && <Step3Printer onNext={() => saveProgress(3)} onSkip={() => saveProgress(3)} />}
-          {stepIndex === 3 && <Step4Menu onNext={() => saveProgress(4)} onSkip={() => saveProgress(4)} />}
-          {stepIndex === 4 && <Step5Team onNext={() => saveProgress(5)} onSkip={() => saveProgress(5)} />}
-          {stepIndex === 5 && <Step6Notifications onNext={() => saveProgress(6)} />}
-          {stepIndex === 6 && <Step7Complete onFinish={handleFinish} />}
+        <div className="flex-1 overflow-y-auto p-6 md:p-10 max-[767px]:p-4">
+          {stepIndex === 0 && <Step2Service onNext={() => saveProgress(1)} />}
+          {stepIndex === 1 && <Step3Printer onNext={() => saveProgress(2)} onSkip={() => saveProgress(2)} />}
+          {stepIndex === 2 && <Step4Menu onNext={() => saveProgress(3)} onSkip={() => saveProgress(3)} />}
+          {stepIndex === 3 && <Step5Team onNext={() => saveProgress(4)} onSkip={() => saveProgress(4)} />}
+          {stepIndex === 4 && <Step6Notifications onNext={() => saveProgress(5)} />}
+          {stepIndex === 5 && <Step7Complete onFinish={handleFinish} />}
         </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Step 1: Profile ---
-const Step1Profile: React.FC<{ onNext: () => void }> = ({ onNext }) => {
-  const { addToast } = useToastStore();
-  const [form, setForm] = useState({ businessName: '', currency: 'ETB' });
-  const [logo, setLogo] = useState('');
-  const [saving, setSaving] = useState(false);
-  
-  const bNameQuery = useSystemSettingQuery('businessName');
-  const currQuery = useSystemSettingQuery('currency');
-  const logoQuery = useSystemSettingQuery('receiptLogo');
-
-  useEffect(() => {
-    if (bNameQuery.data) setForm(f => ({ ...f, businessName: bNameQuery.data.value || '' }));
-    if (currQuery.data) setForm(f => ({ ...f, currency: currQuery.data.value || 'ETB' }));
-    if (logoQuery.data) setLogo(logoQuery.data.value || '');
-  }, [bNameQuery.data, currQuery.data, logoQuery.data]);
-
-  const upload = (file?: File) => {
-    if (!file) return;
-    fileToCompressedDataUrl(file)
-      .then(setLogo)
-      .catch(() => addToast({ type: 'error', title: 'Could not process image' }));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await Promise.all([
-        axiosClient.patch('/settings/system/businessName', { value: form.businessName || ' ' }),
-        axiosClient.patch('/settings/system/currency', { value: form.currency || ' ' }),
-        axiosClient.patch('/settings/system/receiptLogo', { value: logo || ' ' })
-      ]);
-      onNext();
-    } catch (e) {
-      addToast({ type: 'error', title: 'Could not save profile' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center gap-3 text-primary mb-2">
-        <div className="p-3 rounded-full bg-primary/10"><Building2 className="w-6 h-6" /></div>
-        <h1 className="text-2xl font-display font-bold text-foreground">Business Profile</h1>
-      </div>
-      <p className="text-muted-foreground">Let's start with the basics. These details will appear on receipts and reports.</p>
-      
-      <div className="space-y-4 pt-4">
-        <div>
-          <label className="text-sm font-medium mb-1 block">Business Name</label>
-          <Input value={form.businessName} onChange={e => setForm(f => ({ ...f, businessName: e.target.value }))} placeholder="CafeFlow Coffee" />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium mb-1 block">Currency</label>
-            <Input value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} placeholder="ETB" />
-          </div>
-        </div>
-        <div>
-          <label className="text-sm font-medium mb-1 block">Business Logo</label>
-          <div className="flex items-center gap-4">
-            {logo ? <img src={logo} className="w-16 h-16 object-contain rounded-lg border bg-white" alt="Logo" /> : <div className="w-16 h-16 rounded-lg border border-dashed bg-muted flex items-center justify-center text-xs text-muted-foreground">No logo</div>}
-            <Input type="file" accept="image/*" onChange={e => upload(e.target.files?.[0])} className="flex-1" />
-          </div>
-        </div>
-      </div>
-      <div className="pt-6 flex justify-end">
-        <Button onClick={handleSave} disabled={saving} className="gap-2">Continue <ArrowRight className="w-4 h-4" /></Button>
       </div>
     </div>
   );
@@ -247,7 +171,7 @@ const Step2Service: React.FC<{ onNext: () => void }> = ({ onNext }) => {
 // --- Step 3: First Printer ---
 const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNext, onSkip }) => {
   const { addToast } = useToastStore();
-  const [form, setForm] = useState({ station: 'kitchen', ip: '', port: '9100' });
+  const [form, setForm] = useState({ ip: '', port: '9100' });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [createdId, setCreatedId] = useState<string|null>(null);
@@ -255,8 +179,13 @@ const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ on
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await axiosClient.post('/settings/printers', form);
-      setCreatedId(res.data.id);
+      // This is the owner's first printer, so it becomes the ticket printer.
+      const res = await axiosClient.post('/settings/printers', {
+        stations: [
+          { transport: 'NETWORK', ip: form.ip.trim(), port: Number(form.port) || 9100 },
+        ],
+      });
+      setCreatedId(res.data?.[0]?.id ?? null);
       addToast({ type: 'success', title: 'Printer added' });
     } catch (e: any) {
       addToast({ type: 'error', title: 'Failed to add printer', message: extractErrorMessage(e, 'Failed to add printer.') });
@@ -289,15 +218,7 @@ const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ on
 
       {!createdId ? (
         <div className="space-y-4 pt-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-1">
-              <label className="text-sm font-medium mb-1 block">Station</label>
-              <Select value={form.station} onChange={e => setForm(f => ({ ...f, station: e.target.value }))}>
-                <option value="kitchen">Kitchen</option>
-                <option value="bar">Bar</option>
-                <option value="cashier">Cashier</option>
-              </Select>
-            </div>
+          <div className="grid grid-cols-2 max-[419px]:grid-cols-1 gap-4">
             <div className="col-span-1">
               <label className="text-sm font-medium mb-1 block">IP Address</label>
               <Input value={form.ip} onChange={e => setForm(f => ({ ...f, ip: e.target.value }))} placeholder="192.168.1.100" />
@@ -389,9 +310,9 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
               </Select>
             </div>
             <div className="w-24">
-              <Input type="number" placeholder="Price" value={item.price} onChange={e => {
+              <Input type="number" step="1" min="0" placeholder="Price" value={item.price} onChange={e => {
                 const newItems = [...items];
-                newItems[idx].price = e.target.value;
+                newItems[idx].price = e.target.value.replace(/[^\d]/g, '');
                 setItems(newItems);
               }} />
             </div>
@@ -439,7 +360,7 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
 
       {!created ? (
         <div className="space-y-4 pt-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 max-[419px]:grid-cols-1 gap-4">
             <div>
               <label className="text-sm font-medium mb-1 block">Name</label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Alex" />
