@@ -154,7 +154,7 @@ export const CancellationReview: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between max-[767px]:flex-col max-[767px]:items-start max-[767px]:gap-2">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Cancellation Requests</h1>
           <p className="text-muted-foreground">Review and process order cancellation requests</p>
@@ -178,8 +178,8 @@ export const CancellationReview: React.FC = () => {
               className="bg-card border rounded-lg p-4 hover:border-primary/50 transition-colors cursor-pointer"
               onClick={() => setSelectedRequest(request)}
             >
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
+              <div className="flex items-start justify-between max-[767px]:flex-col max-[767px]:gap-3">
+                <div className="min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">Order #{request.order.clientOrderId}</span>
                     <span className="text-muted-foreground">•</span>
@@ -190,7 +190,7 @@ export const CancellationReview: React.FC = () => {
                   </p>
                   <p className="text-sm font-medium text-warning">{request.reason}</p>
                 </div>
-                <div className="text-right">
+                <div className="text-right max-[767px]:flex max-[767px]:items-center max-[767px]:justify-between max-[767px]:gap-3">
                   <p className="text-lg font-bold">{formatAmount(request.order.totalAmount)}</p>
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning">
                     Pending
@@ -205,13 +205,13 @@ export const CancellationReview: React.FC = () => {
       {/* Detail Modal */}
       {selectedRequest && !showRejectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-card rounded-lg border max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b">
+          <div className="bg-card rounded-lg border max-w-lg w-full max-h-[90dvh] overflow-y-auto">
+            <div className="p-6 max-[767px]:p-4 border-b">
               <h2 className="text-xl font-bold">Cancellation Request</h2>
               <p className="text-muted-foreground">Order #{selectedRequest.order.clientOrderId}</p>
             </div>
             
-            <div className="p-6 space-y-4">
+            <div className="p-6 max-[767px]:p-4 space-y-4">
               {/* Order Details */}
               <div>
                 <h3 className="font-semibold mb-2">Order Details</h3>
@@ -268,7 +268,7 @@ export const CancellationReview: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-6 border-t flex gap-3">
+            <div className="p-6 max-[767px]:p-4 border-t flex flex-col gap-2 sm:flex-row sm:gap-3">
               <button
                 onClick={() => setSelectedRequest(null)}
                 className="flex-1 px-4 py-2 border rounded-lg hover:bg-secondary transition-colors"
@@ -298,12 +298,12 @@ export const CancellationReview: React.FC = () => {
       {showRejectModal && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-card rounded-lg border max-w-md w-full">
-            <div className="p-6 border-b">
+            <div className="p-6 max-[767px]:p-4 border-b">
               <h2 className="text-xl font-bold text-destructive">Reject Cancellation</h2>
               <p className="text-muted-foreground">Order #{selectedRequest.order.clientOrderId}</p>
             </div>
             
-            <div className="p-6 space-y-4">
+            <div className="p-6 max-[767px]:p-4 space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">
                   Rejection Reason <span className="text-destructive">*</span>
@@ -318,7 +318,7 @@ export const CancellationReview: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-6 border-t flex gap-3">
+            <div className="p-6 max-[767px]:p-4 border-t flex flex-col gap-2 sm:flex-row sm:gap-3">
               <button
                 onClick={() => {
                   setShowRejectModal(false);
