@@ -1,5 +1,7 @@
 {
   "nav": {
+    "dashboard": "Dashboard",
+    "staff": "Staff",
     "people": "People",
     "menu": "Menu Catalog",
     "reconciliation": "End of Day",
@@ -14,6 +16,7 @@
       "ops": "Operations"
     }
   },
+  "staff": { "title": "Staff roster", "description": "Manage your team's attendance and status." },
   "dashboard": {
     "subtitle": "Manager",
     "title": "Staff Roster",
@@ -83,9 +86,7 @@
     },
     "filters": {
       "category": "Category",
-      "allCategories": "All categories",
-      "from": "From",
-      "to": "To"
+      "allCategories": "All categories"
     },
     "table": {
       "date": "Date",
@@ -122,6 +123,16 @@
       "deleted": "Expense deleted",
       "deleteFailed": "Delete failed",
       "loadFailed": "Failed to load expenses."
+    },
+    "payrollAuto": {
+      "hint": "Added automatically from recorded payroll — grouped by month. Total paid this month: ",
+      "empty": "No payroll recorded yet. Monthly totals appear here as soon as payroll entries are saved."
+    },
+    "payrollHistory": {
+      "title": "Payroll history",
+      "subtitle": "Every month on its own line — added automatically from recorded payroll.",
+      "empty": "No payroll recorded yet. Monthly totals appear here as soon as a payroll entry is saved.",
+      "average": "Avg"
     }
   },
   "toasts": {
