@@ -85,7 +85,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
   return (
     <div className={cn('max-w-7xl mx-auto space-y-6 animate-fade-in pb-12', className)}>
       {/* ─── Modern Settings Header ─── */}
-      <header className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all sm:p-8">
+      <header className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all sm:p-8 max-[767px]:p-4">
         {/* Subtle mesh/ambient glow decoration */}
         <div
           aria-hidden
@@ -180,7 +180,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
               {searchResults.map(({ category, item }) => (
                 <div
                   key={`${category.id}-${item.id}`}
-                  className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md hover:border-border"
+                  className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md hover:border-border max-[767px]:p-4"
                 >
                   <div className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     <span className="rounded-md bg-secondary px-2 py-0.5 text-[10px] font-bold">
