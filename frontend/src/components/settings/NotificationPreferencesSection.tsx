@@ -7,7 +7,7 @@ const NOTIFICATION_TYPES = [
   {
     key: 'MISSING_ATTENDANCE',
     label: 'Missing attendance alerts',
-    description: 'Notify when a staff member has not clocked in for an active shift.',
+    description: 'Notify when a staff member has no attendance marked for today.',
     icon: AlertTriangle,
     iconClassName: 'text-amber-600 dark:text-amber-400',
     iconBgClassName: 'bg-amber-500/10',
