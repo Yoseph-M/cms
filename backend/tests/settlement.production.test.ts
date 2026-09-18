@@ -8,6 +8,7 @@
  */
 
 import request from 'supertest';
+import crypto from 'crypto';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
 import { Role } from '@prisma/client';
 
@@ -22,37 +23,31 @@ describe('Settlement Production Tests', () => {
   beforeAll(async () => {
     await cleanDb();
     const cashier = await seedTestUser({ role: Role.CASHIER });
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: cashier.email, password: 'password123' });
-    cashierToken = loginRes.body.accessToken;
+    cashierToken = cashier.accessToken;
 
     const manager = await seedTestUser({ role: Role.MANAGER });
-    const managerLogin = await request(app)
-      .post('/api/auth/login')
-      .send({ email: manager.email, password: 'password123' });
-    managerToken = managerLogin.body.accessToken;
+    managerToken = manager.accessToken;
   });
 
   beforeEach(async () => {
-    // Create a test order for each test
+    // Create a test order for each test. Orders are priced server-side from the
+    // menu, so the item must really exist (a hardcoded ObjectId is rejected).
     const waiter = await seedTestUser({ role: Role.WAITER });
-    const waiterLoginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: waiter.email, password: 'password123' });
-    
+    const menuItem = await prisma.menuItem.create({
+      data: { name: 'Test Item', category: 'FOOD', price: 10000, isAvailable: true },
+    });
+
     const orderRes = await request(app)
       .post('/api/orders')
-      .set('Authorization', `Bearer ${waiterLoginRes.body.accessToken}`)
+      .set('Authorization', `Bearer ${waiter.accessToken}`)
       .send({
-        clientOrderId: `test-${Date.now()}`,
+        clientOrderId: crypto.randomUUID(),
         tableNumber: 'T1',
-        items: [
-          { menuItemId: '507f1f77bcf86cd799439011', name: 'Test Item', unitPrice: 10000, quantity: 1 }
-        ],
+        items: [{ menuItemId: menuItem.id, quantity: 1 }],
       });
-    
-    orderId = orderRes.body.id;
+
+    // Order creation returns `{ isNew, order, ... }`.
+    orderId = orderRes.body.order?.id ?? orderRes.body.id;
   });
 
   afterAll(async () => {
@@ -237,18 +232,15 @@ describe('Settlement Production Tests', () => {
     });
 
     it('should prevent settlement of cancelled orders', async () => {
-      // Request cancellation
-      const cancelReqRes = await request(app)
-        .post(`/api/orders/${orderId}/cancellation-request`)
+      // Cancel the order immediately (the cancellation-request flow was replaced
+      // by direct cancellation).
+      await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
         .set('Authorization', `Bearer ${cashierToken}`)
         .send({
           reason: 'Test cancellation',
-        });
-
-      // Approve cancellation
-      await request(app)
-        .patch(`/api/cancellation-requests/${cancelReqRes.body.id}/approve`)
-        .set('Authorization', `Bearer ${managerToken}`);
+        })
+        .expect(200);
 
       // Try to settle cancelled order
       const res = await request(app)
