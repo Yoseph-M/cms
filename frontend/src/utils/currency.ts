@@ -1,14 +1,14 @@
 /**
  * Centralized currency formatting for CafeFlow.
- * Amounts are stored as entered (major units / ETB with decimals).
- * Renders as: "1,234.50 ETB"
+ * Amounts are stored as whole ETB units — no cents.
+ * Renders as: "1,235 ETB"
  */
 export function formatCurrency(amount: number): string {
   const n = Number.isFinite(amount) ? amount : 0;
   const formatted = new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n);
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(n));
   return `${formatted} ETB`;
 }
 
@@ -29,4 +29,12 @@ export function formatCurrencyCompact(amount: number): string {
     return `${scaled.toFixed(decimals)}k ETB`;
   }
   return `${Math.round(n)} ETB`;
+}
+
+/**
+ * Largest whole-number amount that fits in `max` — used by payment inputs so
+ * a "full" quick-fill never lands on a fractional remainder.
+ */
+export function wholeAmount(amount: number): number {
+  return Math.round(Number.isFinite(amount) ? amount : 0);
 }
