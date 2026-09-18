@@ -24,7 +24,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
   onCancel,
 }) => {
   const { accessToken } = useAuthStore();
-  const [amount, setAmount] = useState<string>(remainingAmount.toFixed(2));
+  const [amount, setAmount] = useState<string>(String(Math.round(remainingAmount)));
   const [method, setMethod] = useState<'CASH' | 'CARD' | 'MOBILE'>('CASH');
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
@@ -116,7 +116,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
     if (amountMinor > remainingAmount) {
       setError(
-        `Amount cannot exceed remaining balance of $${remainingAmount.toFixed(2)}`
+        `Amount cannot exceed remaining balance of ${Math.round(remainingAmount).toLocaleString('en-US')} ETB`
       );
       isSubmittingRef.current = false;
       return;
@@ -129,11 +129,11 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
   const handleQuickAmount = (percentage: number) => {
     const quickAmount = (remainingAmount * percentage) / 100;
-    setAmount(quickAmount.toFixed(2));
+    setAmount(String(Math.round(quickAmount)));
   };
 
   return (
-    <div className="record-settlement bg-white rounded-lg shadow-lg p-6">
+    <div className="record-settlement bg-white rounded-lg shadow-lg p-6 max-[767px]:p-4">
       <h3 className="text-xl font-bold mb-4">Record External Payment</h3>
 
       {error && (
@@ -146,7 +146,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
       <div className="mb-4 bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-800">
         <p className="font-semibold">Remaining Balance</p>
         <p className="text-2xl font-bold mt-1">
-          ${remainingAmount.toFixed(2)}
+          {Math.round(remainingAmount).toLocaleString('en-US')} ETB
         </p>
       </div>
 
@@ -157,14 +157,14 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
             Payment Amount <span className="text-red-500">*</span>
           </label>
           <div className="relative">
-            <span className="absolute left-3 top-2.5 text-gray-500 text-lg">$</span>
+            <span className="absolute left-3 top-2.5 text-gray-500 text-lg">ETB</span>
             <input
               type="number"
-              step="0.01"
-              min="0.01"
-              max={remainingAmount.toFixed(2)}
+              step="1"
+              min="1"
+              max={Math.round(remainingAmount)}
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
               className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
               required
               disabled={submitting}
@@ -203,7 +203,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Payment Method <span className="text-red-500">*</span>
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 max-[419px]:grid-cols-1 gap-2">
             <button
               type="button"
               onClick={() => setMethod('CASH')}
