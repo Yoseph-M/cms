@@ -47,7 +47,9 @@ const ROUTE_SPECS: RouteSpec[] = [
   {
     method: 'GET',
     path: '/api/users',
-    allowedRoles: [Role.OWNER, Role.MANAGER],
+    // Cashier dashboards resolve staff names from this list too; mutations
+    // stay Owner/Manager-only.
+    allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     description: 'List users',
   },
   {
@@ -99,28 +101,32 @@ const ROUTE_SPECS: RouteSpec[] = [
   {
     method: 'POST',
     path: '/api/menu',
-    allowedRoles: [Role.OWNER, Role.MANAGER],
+    // Cashiers manage menu items from the POS; a manager-side toggle can
+    // restrict it (see feature.middleware). Owners/managers are always allowed.
+    allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     body: { name: 'Test Item', category: 'FOOD', price: 1000 }, // 10.00 in minor units
     description: 'Create menu item',
   },
   {
     method: 'PATCH',
     path: `/api/menu/${fakeId}`,
-    allowedRoles: [Role.OWNER, Role.MANAGER],
+    allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     body: { name: 'Updated Item' },
     description: 'Update menu item',
   },
   {
     method: 'PATCH',
     path: `/api/menu/${fakeId}/availability`,
-    allowedRoles: [Role.OWNER, Role.MANAGER],
+    allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     body: { isAvailable: false },
     description: 'Toggle menu availability',
   },
   {
     method: 'DELETE',
     path: `/api/menu/${fakeId}`,
-    allowedRoles: [Role.OWNER, Role.MANAGER],
+    // Same menu-editing access as create/update — cashiers manage the menu
+    // unless the manager-side restriction toggle is on.
+    allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     description: 'Delete menu item',
   },
 
@@ -128,7 +134,8 @@ const ROUTE_SPECS: RouteSpec[] = [
   {
     method: 'POST',
     path: '/api/orders',
-    allowedRoles: [Role.WAITER],
+    // Cashier POS ordering is always on (no longer behind a system setting).
+    allowedRoles: [Role.WAITER, Role.CASHIER],
     body: () => ({
       clientOrderId: uuid(),
       tableNumber: 'T1',
