@@ -65,7 +65,7 @@ export const Sheet: React.FC<SheetProps> = ({
             )}
           >
             {(title || description) && (
-              <div className="flex items-start justify-between p-6 border-b border-border shrink-0">
+              <div className="flex items-start justify-between p-6 max-[767px]:p-4 border-b border-border shrink-0">
                 <div>
                   {title && (
                     <h2 className="text-lg font-semibold text-foreground leading-tight">
@@ -85,9 +85,9 @@ export const Sheet: React.FC<SheetProps> = ({
                 </button>
               </div>
             )}
-            <div className="flex-1 overflow-y-auto p-6">{children}</div>
+            <div className="flex-1 overflow-y-auto p-6 max-[767px]:p-4">{children}</div>
             {footer && (
-              <div className="p-6 border-t border-border shrink-0 bg-card">{footer}</div>
+              <div className="p-6 max-[767px]:p-4 border-t border-border shrink-0 bg-card">{footer}</div>
             )}
           </motion.div>
         </>
