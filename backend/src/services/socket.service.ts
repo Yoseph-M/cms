@@ -18,20 +18,29 @@ interface AuthenticatedSocket extends Socket {
 
 let ioServer: Server | null = null;
 
-const allowedOrigins =
+const normalizeOrigin = (o: string | undefined) => o ? o.replace(/\/$/, '') : '';
+
+const allowedOrigins = (
   config.nodeEnv === 'production'
-    ? [config.webAppUrl, ...config.extraCorsOrigins].filter(Boolean)
+    ? [config.webAppUrl, ...config.extraCorsOrigins]
     : [
         'http://localhost:3000',
         'http://localhost:5173',
         config.webAppUrl,
         ...config.extraCorsOrigins,
-      ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i);
+      ]
+).filter(Boolean).map(normalizeOrigin).filter((v, i, a) => a.indexOf(v) === i);
 
 export function initSocketService(httpServer: HttpServer): Server {
   ioServer = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(normalizeOrigin(origin))) {
+          callback(null, true);
+        } else {
+          callback(null, false);
+        }
+      },
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
       credentials: true,
     },
