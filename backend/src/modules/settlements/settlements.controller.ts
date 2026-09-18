@@ -3,6 +3,44 @@ import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { recordSettlement, getOrderSettlements, getSettlementById, getRemainingAmount } from '../../services/settlement.service';
 import { prisma } from '../../services/prisma.service';
 import { logger } from '../../utils/logger';
+import { OrderStatus, Prisma } from '@prisma/client';
+
+/** Order fields the settlement page needs for its detail card. */
+const ORDER_SUMMARY_SELECT = Prisma.validator<Prisma.OrderSelect>()({
+  id: true,
+  clientOrderId: true,
+  tableNumber: true,
+  totalAmount: true,
+  status: true,
+  createdAt: true,
+  cancellationReason: true,
+  items: true, // embedded OrderItem composite: name, quantity, unitPrice, notes
+  waiter: { select: { id: true, name: true, role: true } },
+});
+
+interface SettlementRow {
+  id: string;
+  orderId: string;
+  amountMinor: number;
+  method: string;
+  reference: string;
+  note: string;
+  createdAt: Date;
+  order: {
+    id: string;
+    clientOrderId: string;
+    tableNumber: string;
+    totalAmount: number;
+    status: string;
+    createdAt: Date;
+  } | null;
+  recordedBy: { id: string; name: string; role: string } | null;
+  /**
+   * True for rows synthesised from a cancelled order that has no settlement
+   * document of its own. The row is an audit entry, not a stored payment.
+   */
+  isSyntheticVoid?: boolean;
+}
 
 /**
  * GET /api/settlements
@@ -33,7 +71,9 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
     const maxAmount = req.query.maxAmount as string | undefined;
 
     const where: Record<string, unknown> = {};
-    if (method && ['CASH', 'CARD', 'MOBILE'].includes(method)) {
+    // NONE marks VOID settlements — the audit rows written when an order is
+    // cancelled (directly, via approval, or auto-cancelled by the scheduler).
+    if (method && ['CASH', 'CARD', 'MOBILE', 'NONE'].includes(method)) {
       where.method = method;
     }
     if (from || to) {
@@ -47,26 +87,22 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
       }
       where.createdAt = range;
     }
+    let amountRange: Record<string, number> | undefined;
     if (minAmount || maxAmount) {
       const amount: Record<string, number> = {};
       if (minAmount) amount.gte = parseInt(minAmount, 10);
       if (maxAmount) amount.lte = parseInt(maxAmount, 10);
+      amountRange = amount;
       where.amountMinor = amount;
     }
 
-    // Pull matching order ids when a table or order filter is provided.
-    let orderFilter: Record<string, unknown> | undefined;
-    if (table || order) {
-      orderFilter = {};
-      if (table) orderFilter.tableNumber = { contains: table, mode: 'insensitive' };
-      if (order) {
-        // clientOrderId is unique; fall back to a substring match on the order id when needed.
-        orderFilter.OR = [
-          { clientOrderId: { contains: order, mode: 'insensitive' } },
-          { id: order },
-        ];
-      }
-    }
+    // The table/order filters cannot be expressed in the settlement query (the
+    // related order is fetched separately), so they are applied to the merged
+    // rows below via `matchesOrderFilters`.
+    //
+    // Resolved user ids for the `recordedBy` filter — needed for both stored
+    // settlements and the synthesised void rows below.
+    let recordedByUserIds: string[] | null = null;
     if (recordedBy) {
       // Only match `id` when the input looks like a Mongo ObjectId. Passing free
       // text to Prisma's ObjectId `id` filter throws "Malformed ObjectID", which
@@ -88,14 +124,15 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
           pagination: { page, limit, total: 0, totalPages: 0 },
         });
       }
-      where.order = { waiterId: { in: users.map((u) => u.id) } };
+      recordedByUserIds = users.map((u) => u.id);
+      where.order = { waiterId: { in: recordedByUserIds } };
     }
 
+    // Every matching settlement is loaded before the page is sliced, because
+    // synthesised void rows have to be interleaved with the stored ones.
     const settlements = await prisma.settlement.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
     });
 
     // Resolve the related order & recorder with separate queries instead of
@@ -109,16 +146,7 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
     const [orders, recorders] = await Promise.all([
       prisma.order.findMany({
         where: { id: { in: orderIds } },
-        select: {
-          id: true,
-          clientOrderId: true,
-          tableNumber: true,
-          totalAmount: true,
-          status: true,
-          createdAt: true,
-          items: true, // embedded OrderItem composite: name, quantity, unitPrice, notes
-          waiter: { select: { id: true, name: true, role: true } },
-        },
+        select: ORDER_SUMMARY_SELECT,
       }),
       prisma.user.findMany({
         where: { id: { in: recorderIds } },
@@ -133,26 +161,76 @@ export async function getAllSettlements(req: AuthenticatedRequest, res: Response
       recordedBy: recorderById.get(s.recordedById) ?? null,
     }));
 
-    // Apply order-related filters as a post-filter so the page still respects pagination.
-    const filtered = orderFilter
-      ? hydrated.filter((s) => {
-          if (!s.order) return false;
-          if (table && !(s.order.tableNumber || '').toLowerCase().includes(table.toLowerCase())) {
-            return false;
-          }
-          if (order) {
-            const idMatch = s.order.id === order;
-            const clientMatch = (s.order.clientOrderId || '').toLowerCase().includes(order.toLowerCase());
-            if (!idMatch && !clientMatch) return false;
-          }
-          return true;
-        })
-      : hydrated;
+    /**
+     * Shared predicate for the table/order filters. It used to run only over
+     * stored settlements; now both kinds of row go through the same test.
+     */
+    const matchesOrderFilters = (relatedOrder: SettlementRow['order']): boolean => {
+      if (!table && !order) return true;
+      if (!relatedOrder) return false;
+      if (table && !(relatedOrder.tableNumber || '').toLowerCase().includes(table.toLowerCase())) {
+        return false;
+      }
+      if (order) {
+        const idMatch = relatedOrder.id === order;
+        const clientMatch = (relatedOrder.clientOrderId || '').toLowerCase().includes(order.toLowerCase());
+        if (!idMatch && !clientMatch) return false;
+      }
+      return true;
+    };
 
-    const total = await prisma.settlement.count({ where });
+    const filtered: SettlementRow[] = hydrated.filter((s) => matchesOrderFilters(s.order));
+
+    /**
+     * Cancelled tickets must show on this page, but their VOID audit row is only
+     * written at cancellation time — anything cancelled before that behaviour
+     * existed (or through a path where the write failed) has no settlement row
+     * at all and would silently disappear from the history. Synthesise a VOID
+     * row from the order itself so every cancellation is listed; rows already
+     * carrying a settlement of their own are skipped to avoid duplicates.
+     */
+    let voidRows: SettlementRow[] = [];
+    if (!method || method === 'NONE') {
+      const voidWhere: Record<string, unknown> = {
+        status: OrderStatus.CANCELLED,
+        settlements: { none: {} },
+      };
+      // The void is dated from the order, so it is filtered and shown on the
+      // order's own timestamp (no cancellation timestamp is stored).
+      if (where.createdAt) voidWhere.createdAt = where.createdAt;
+      if (amountRange) voidWhere.totalAmount = amountRange;
+      if (recordedByUserIds) voidWhere.waiterId = { in: recordedByUserIds };
+
+      const orphanedCancellations = await prisma.order.findMany({
+        where: voidWhere,
+        select: ORDER_SUMMARY_SELECT,
+      });
+
+      voidRows = orphanedCancellations
+        .filter((relatedOrder) => matchesOrderFilters(relatedOrder))
+        .map((relatedOrder) => ({
+          id: `void-${relatedOrder.id}`,
+          orderId: relatedOrder.id,
+          amountMinor: Math.max(relatedOrder.totalAmount, 0),
+          method: 'NONE',
+          reference: 'VOID',
+          note: relatedOrder.cancellationReason
+            ? `Cancelled: ${relatedOrder.cancellationReason}`
+            : 'Cancelled',
+          createdAt: relatedOrder.createdAt,
+          order: relatedOrder,
+          recordedBy: null,
+          isSyntheticVoid: true,
+        }));
+    }
+
+    const merged = [...filtered, ...voidRows].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+    const total = merged.length;
 
     return res.json({
-      data: filtered,
+      data: merged.slice(skip, skip + limit),
       pagination: {
         page,
         limit,
@@ -186,9 +264,13 @@ export async function createSettlement(req: AuthenticatedRequest, res: Response,
       note,
       recordedById,
       idempotencyKey,
+      // Detects the same key being reused with different payment parameters.
+      requestFingerprint: `${orderId}:${amountMinor}:${method}`,
     });
 
-    return res.status(201).json({
+    // A genuine new settlement is 201; an idempotent replay of a settled
+    // request returns the same payload as 200 so clients treat it as a read.
+    return res.status(result.isReplay ? 200 : 201).json({
       settlement: result.settlement,
       order: result.order,
     });
