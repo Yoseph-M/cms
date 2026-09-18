@@ -47,8 +47,9 @@ enum SettlementStatus {
 }
 
 enum PrintTransport {
-  TCP
-  WINDOWS
+  BLUETOOTH
+  USB
+  NETWORK // Wi-Fi / Ethernet ESC-POS printer the server talks to directly (no browser, no agent)
 }
 
 enum PrintJobStatus {
@@ -196,7 +197,7 @@ model MenuItem {
   name        String
   nameAmharic String?
   category    MenuCategory
-  price       Float    // Stored in ETB as entered (major units)
+  price       Int      // Stored in ETB as a whole number (no cents)
   isAvailable Boolean      @default(true)
   imageUrl    String?
   createdAt   DateTime     @default(now())
@@ -210,7 +211,7 @@ model MenuItem {
 type OrderItem {
   menuItemId String @db.ObjectId
   name       String // snapshot at sale time — never re-read from MenuItem later
-  unitPrice  Float // snapshot at sale time, stored in ETB as entered
+  unitPrice  Int // snapshot at sale time, stored in ETB as a whole number
   quantity   Int
   notes      String @default("")
 }
@@ -224,7 +225,7 @@ model Order {
   cashierId          String?          @db.ObjectId
   cashier            User?            @relation("CashierOrders", fields: [cashierId], references: [id])
   items              OrderItem[]
-  totalAmount        Float
+  totalAmount        Int
   status             OrderStatus      @default(SUBMITTED)
   settlementStatus   SettlementStatus @default(UNSETTLED)
   isPaid             Boolean          @default(false) // Deprecated: use settlementStatus instead
@@ -252,13 +253,13 @@ model Settlement {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
   orderId         String        @db.ObjectId
   order           Order         @relation(fields: [orderId], references: [id])
-  amountMinor     Float         // Amount in ETB as entered (major units)
+  amountMinor     Int           // Amount in ETB as a whole number (no cents)
   method          PaymentMethod
   reference       String        @default("") // External transaction reference/receipt number
   note            String        @default("")
   recordedById    String        @db.ObjectId
   recordedBy      User          @relation("SettlementsRecorded", fields: [recordedById], references: [id])
-  shiftId         String?       @db.ObjectId // Required for CASH settlements, null for CARD/MOBILE/OTHER
+  shiftId         String?       @db.ObjectId // DEPRECATED: always null now (shift management removed)
   idempotencyKey  String?       @unique // For idempotent operations - @unique already creates an index
   recordedAt      DateTime      @default(now())
   createdAt       DateTime      @default(now())
@@ -381,10 +382,15 @@ model AuditLog {
 model PrinterStation {
   id          String         @id @default(auto()) @map("_id") @db.ObjectId
   station     String         @unique
-  transport   PrintTransport @default(TCP)
+  transport   PrintTransport @default(BLUETOOTH)
+  macAddress  String?
+  vendorId    String?
+  productId   String?
+  // NETWORK transport: the printer's address on the LAN. The backend prints to
+  // it directly over TCP (raw ESC/POS, port 9100 by default), so no browser or
+  // local print agent has to be running.
   ip          String?
-  port        Int?           @default(9100)
-  printerName String?
+  port        Int?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
@@ -417,14 +423,15 @@ model PrintJob {
   status        PrintJobStatus @default(QUEUED)
   attempts      Int            @default(0)
   maxAttempts   Int            @default(3)
-  printerName   String?
-  printerIp     String?
-  printerPort   Int?
-  payloadBase64 String
+  printerMacAddress String?
+  printerVendorId   String?
+  printerProductId  String?
+  payloadBase64     String
   lastError     String?
   claimedById   String?        @db.ObjectId
   claimedBy     PrintAgent?    @relation("AgentPrintJobs", fields: [claimedById], references: [id])
   claimedAt     DateTime?      // When job was claimed (for lease tracking)
+  lastAttemptAt DateTime?      // Last server-side dispatch attempt (NETWORK transport)
   printedAt     DateTime?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -453,7 +460,7 @@ model PayrollAdjustment {
 model Expense {
   id           String          @id @default(auto()) @map("_id") @db.ObjectId
   category     ExpenseCategory
-  amount       Float
+  amount       Int
   description  String
   date         DateTime
   recordedById String          @db.ObjectId
@@ -489,6 +496,9 @@ model SystemSetting {
   @@map("system_settings")
 }
 
+/// DEPRECATED — shift management has been removed from the application. This
+/// model is retained only so existing installations keep their historical rows;
+/// no application code creates or reads shifts anymore. Do not add new usage.
 model CashierShift {
   id                String       @id @default(auto()) @map("_id") @db.ObjectId
   cashierId         String       @db.ObjectId
@@ -496,15 +506,15 @@ model CashierShift {
   status            ShiftStatus  @default(OPEN)
   openedAt          DateTime     @default(now())
   closedAt          DateTime?
-  openingCashMinor  Float        // Initial cash in drawer (ETB as entered)
-  expectedCashMinor Float?       // CALCULATED from ledger: opening + sales - payouts ± adjustments
-  declaredCashMinor Float?       // PHYSICAL COUNT: what cashier actually counted
-  varianceMinor     Float?       // DERIVED: declaredCashMinor - expectedCashMinor
+  openingCashMinor  Int          // Initial cash in drawer (ETB whole numbers)
+  expectedCashMinor Int?         // CALCULATED from ledger: opening + sales - payouts ± adjustments
+  declaredCashMinor Int?         // PHYSICAL COUNT: what cashier actually counted
+  varianceMinor     Int?         // DERIVED: declaredCashMinor - expectedCashMinor
   
-  expectedCardMinor   Float?     // CALCULATED from settlements
-  declaredCardMinor   Float?     // PHYSICAL COUNT from cashier
-  expectedMobileMinor Float?     // CALCULATED from settlements
-  declaredMobileMinor Float?     // PHYSICAL COUNT from cashier
+  expectedCardMinor   Int?       // CALCULATED from settlements
+  declaredCardMinor   Int?       // PHYSICAL COUNT from cashier
+  expectedMobileMinor Int?       // CALCULATED from settlements
+  declaredMobileMinor Int?       // PHYSICAL COUNT from cashier
   
   openedById        String       @db.ObjectId
   openedBy          User         @relation("ShiftOpenedBy", fields: [openedById], references: [id])
@@ -526,12 +536,14 @@ model CashierShift {
   @@map("cashier_shifts")
 }
 
+/// DEPRECATED — the cash drawer ledger is no longer written. Retained for
+/// historical rows only. Do not add new usage.
 model CashDrawerEvent {
   id              String              @id @default(auto()) @map("_id") @db.ObjectId
   shiftId         String              @db.ObjectId
   shift           CashierShift        @relation(fields: [shiftId], references: [id])
   type            CashDrawerEventType
-  amountMinor     Float
+  amountMinor     Int
   referenceType   String?
   referenceId     String?
   performedById   String              @db.ObjectId
@@ -544,13 +556,15 @@ model CashDrawerEvent {
   @@map("cash_drawer_events")
 }
 
+/// DEPRECATED — variance review was part of shift management. Retained for
+/// historical rows only. Do not add new usage.
 model VarianceReview {
   id              String                 @id @default(auto()) @map("_id") @db.ObjectId
   shiftId         String                 @db.ObjectId
   shift           CashierShift           @relation(fields: [shiftId], references: [id])
-  varianceMinor   Float                  // Cash variance (ETB as entered)
-  cardVarianceMinor   Float?             // Card variance
-  mobileVarianceMinor Float?             // Mobile variance
+  varianceMinor   Int                    // Cash variance (ETB whole numbers)
+  cardVarianceMinor   Int?               // Card variance
+  mobileVarianceMinor Int?               // Mobile variance
   classification  VarianceClassification
   cashierReason   String
   reviewStatus    VarianceReviewStatus   @default(PENDING)
@@ -569,15 +583,15 @@ model DailyClose {
   id                     String           @id @default(auto()) @map("_id") @db.ObjectId
   businessDate           String           @unique // "YYYY-MM-DD"
   status                 DailyCloseStatus @default(OPEN)
-  totalSalesMinor        Float            @default(0)
-  totalSettledMinor      Float            @default(0)
-  cashSettledMinor       Float            @default(0)
-  cardSettledMinor       Float            @default(0)
-  mobileSettledMinor     Float            @default(0)
-  otherSettledMinor      Float            @default(0)
-  cashExpectedMinor      Float            @default(0)
-  cashDeclaredMinor      Float            @default(0)
-  cashVarianceMinor      Float            @default(0)
+  totalSalesMinor        Int              @default(0)
+  totalSettledMinor      Int              @default(0)
+  cashSettledMinor       Int              @default(0)
+  cardSettledMinor       Int              @default(0)
+  mobileSettledMinor     Int              @default(0)
+  otherSettledMinor      Int              @default(0)
+  cashExpectedMinor      Int              @default(0)
+  cashDeclaredMinor      Int              @default(0)
+  cashVarianceMinor      Int              @default(0)
   unsettledOrderCount    Int              @default(0)
   partialSettlementCount Int              @default(0)
   cancelledOrderCount    Int              @default(0)
