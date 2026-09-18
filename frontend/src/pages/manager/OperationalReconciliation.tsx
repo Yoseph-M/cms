@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { shiftApi, varianceApi, dailyCloseApi, integrityApi } from '../../api/phase9Api';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { dailyCloseApi, integrityApi } from '../../api/phase9Api';
 import { useToastStore } from '../../store/toastStore';
 import { useSocketStore } from '../../store/socketStore';
 import { useHeaderStore } from '../../store/headerStore';
@@ -8,22 +8,26 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Ca
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { LoadingState } from '../../components/common/LoadingState';
-import { ErrorState } from '../../components/common/ErrorState';
 import { formatCurrency } from '../../utils/currency';
 import { PageHeading } from '../../components/ui/Typography';
-import { AlertCircle, CheckCircle2, ShieldAlert, Wallet, Lock, Play } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ShieldAlert, Lock, Play } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 
+/**
+ * End of Day reconciliation.
+ *
+ * Shift management has been removed, so there is no open-shift or variance
+ * step: the day is ready to close as soon as the integrity checks are clean.
+ */
 export const OperationalReconciliation: React.FC = () => {
   const { addToast } = useToastStore();
-  const queryClient = useQueryClient();
   const { socket } = useSocketStore();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
   const [reviewNotes, setReviewNotes] = useState('');
 
   // Reflect the current section in the global header.
   useEffect(() => {
-    setPageTitle({ title: 'End of Day', subtitle: 'Shifts, variances, and integrity checks' });
+    setPageTitle({ title: 'End of Day', subtitle: 'Integrity checks and daily close' });
     setShowDateRange(false);
     return () => {
       setPageTitle({ title: 'Overview', subtitle: '' });
@@ -31,25 +35,11 @@ export const OperationalReconciliation: React.FC = () => {
     };
   }, [setPageTitle, setShowDateRange]);
 
-  // 1. Fetch Open Shifts
-  const { data: openShifts, isLoading: isLoadingShifts, refetch: refetchShifts } = useQuery({
-    queryKey: ['openShifts'],
-    queryFn: () => shiftApi.getOpenShifts(),
-  });
-
-  // 2. Fetch Pending Variances
-  const { data: pendingVariances, isLoading: isLoadingVariances, refetch: refetchVariances } = useQuery({
-    queryKey: ['pendingVariances'],
-    queryFn: () => varianceApi.getPendingReviews(),
-  });
-
-  // 3. Fetch Integrity Issues
   const { data: integrityIssues, isLoading: isLoadingIntegrity, refetch: refetchIntegrity } = useQuery({
     queryKey: ['integrityIssues'],
     queryFn: () => integrityApi.getIssues(),
   });
 
-  // 4. Fetch Daily Close Status
   const { data: dailyClose, isLoading: isLoadingClose, refetch: refetchClose } = useQuery({
     queryKey: ['currentDailyClose'],
     queryFn: () => dailyCloseApi.getCurrentStatus(),
@@ -58,14 +48,14 @@ export const OperationalReconciliation: React.FC = () => {
   const runIntegrityMutation = useMutation({
     mutationFn: () => integrityApi.runCheck(),
     onSuccess: (data) => {
-      addToast({ 
-        title: data.passed 
-          ? 'All systems check passed!' 
-          : `Found ${data.newIssuesLogged} issue${data.newIssuesLogged === 1 ? '' : 's'} that need attention.`, 
-        type: data.passed ? 'success' : 'error' 
+      addToast({
+        title: data.passed
+          ? 'All systems check passed!'
+          : `Found ${data.newIssuesLogged} issue${data.newIssuesLogged === 1 ? '' : 's'} that need attention.`,
+        type: data.passed ? 'success' : 'error',
       });
       refetchIntegrity();
-    }
+    },
   });
 
   const startDailyCloseMutation = useMutation({
@@ -79,7 +69,7 @@ export const OperationalReconciliation: React.FC = () => {
     },
     onError: (err: any) => {
       addToast({ title: 'Unable to start daily close', message: err.response?.data?.error?.message || 'Please resolve any outstanding issues and try again.', type: 'error' });
-    }
+    },
   });
 
   const finalizeDailyCloseMutation = useMutation({
@@ -94,21 +84,11 @@ export const OperationalReconciliation: React.FC = () => {
     },
     onError: (err: any) => {
       addToast({ title: 'Unable to finalize', message: err.response?.data?.error?.message || 'Something went wrong. Please try again.', type: 'error' });
-    }
-  });
-
-  const reviewVarianceMutation = useMutation({
-    mutationFn: ({ id, status, managerNotes }: { id: string, status: 'APPROVED' | 'REJECTED', managerNotes: string }) => 
-      varianceApi.reviewVariance(id, { status, managerNotes }),
-    onSuccess: () => {
-      addToast({ title: 'Variance reviewed', message: 'Your review has been recorded successfully.', type: 'success' });
-      refetchVariances();
-      refetchShifts();
-    }
+    },
   });
 
   const resolveIntegrityMutation = useMutation({
-    mutationFn: ({ id, resolutionNotes }: { id: string, resolutionNotes?: string }) => 
+    mutationFn: ({ id, resolutionNotes }: { id: string; resolutionNotes?: string }) =>
       integrityApi.resolveIssue(id, { resolutionNotes }),
     onSuccess: () => {
       addToast({ title: 'Issue resolved', message: 'The integrity issue has been marked as resolved.', type: 'success' });
@@ -116,37 +96,34 @@ export const OperationalReconciliation: React.FC = () => {
     },
     onError: (err: any) => {
       addToast({ title: 'Unable to resolve issue', message: err.response?.data?.error?.message || 'Something went wrong. Please try again.', type: 'error' });
-    }
+    },
   });
 
   // Socket listener for real-time integrity alerts
   useEffect(() => {
     if (!socket) return;
-    
+
     const onIntegrityAlert = (issue: any) => {
-      addToast({ 
-        title: 'Data integrity alert', 
+      addToast({
+        title: 'Data integrity alert',
         message: issue.description || 'A potential issue has been detected in the system data.',
-        type: 'error' 
+        type: 'error',
       });
       refetchIntegrity();
     };
-    
+
     socket.on('integrity:alert', onIntegrityAlert);
-    
+
     return () => {
       socket.off('integrity:alert', onIntegrityAlert);
     };
   }, [socket, refetchIntegrity, addToast]);
 
-  if (isLoadingShifts || isLoadingVariances || isLoadingIntegrity || isLoadingClose) {
+  if (isLoadingIntegrity || isLoadingClose) {
     return <LoadingState message="Loading reconciliation data..." />;
   }
 
-  const isReadyForClose = 
-    openShifts?.length === 0 && 
-    pendingVariances?.length === 0 && 
-    integrityIssues?.length === 0;
+  const isReadyForClose = integrityIssues?.length === 0;
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
@@ -162,147 +139,52 @@ export const OperationalReconciliation: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* 1. Open Shifts */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-blue-500" />
-              Active Shifts
-              <Badge variant={openShifts?.length ? 'warning' : 'success'} className="ml-auto">
-                {openShifts?.length || 0}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {openShifts?.length === 0 ? (
-              <div className="flex items-center gap-2 text-green-600 text-sm py-2">
-                <CheckCircle2 className="w-4 h-4" /> All shifts closed
-              </div>
-            ) : (
-              <ul className="space-y-3 mt-2">
-                {openShifts?.map((shift: any) => (
-                  <li key={shift.id} className="text-sm bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border">
-                    <div className="font-semibold">{shift.cashier?.name}</div>
-                    <div className="text-muted-foreground text-xs mt-1">Opened: {new Date(shift.openedAt).toLocaleTimeString()}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-red-500" />
+            Integrity Issues
+            <Badge variant={integrityIssues?.length ? 'error' : 'success'} className="ml-auto">
+              {integrityIssues?.length || 0}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {integrityIssues?.length === 0 ? (
+            <div className="flex items-center gap-2 text-green-600 text-sm py-2">
+              <CheckCircle2 className="w-4 h-4" /> System integrity verified
+            </div>
+          ) : (
+            <ul className="grid gap-3 mt-2 md:grid-cols-2">
+              {integrityIssues?.map((issue: any) => (
+                <li key={issue.id} className="text-sm bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 p-3 rounded-lg border border-red-200 dark:border-red-900/50">
+                  <div className="font-semibold flex items-center justify-between">
+                    {issue.category}
+                    <Badge variant="error" className="text-[10px] uppercase">{issue.severity}</Badge>
+                  </div>
+                  <div className="text-xs mt-1 leading-snug mb-2">{issue.description}</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-xs"
+                    onClick={() => {
+                      const notes = prompt('Resolution notes (optional):');
+                      if (notes !== null) {
+                        resolveIntegrityMutation.mutate({ id: issue.id, resolutionNotes: notes || 'Resolved by manager' });
+                      }
+                    }}
+                    disabled={resolveIntegrityMutation.isPending}
+                  >
+                    Resolve
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* 2. Pending Variances */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-500" />
-              Variances Pending
-              <Badge variant={pendingVariances?.length ? 'error' : 'success'} className="ml-auto">
-                {pendingVariances?.length || 0}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {pendingVariances?.length === 0 ? (
-              <div className="flex items-center gap-2 text-green-600 text-sm py-2">
-                <CheckCircle2 className="w-4 h-4" /> No pending reviews
-              </div>
-            ) : (
-              <ul className="space-y-4 mt-2">
-                {pendingVariances?.map((review: any) => (
-                  <li key={review.id} className="text-sm bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border">
-                    <div className="flex flex-col gap-1 mb-3">
-                      <div className="font-semibold mb-1">{review.shift?.cashier?.name}</div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-muted-foreground">Cash Variance:</span>
-                        <Badge variant={review.shift?.varianceMinor < 0 ? 'error' : 'warning'}>
-                          {formatCurrency(review.shift?.varianceMinor)}
-                        </Badge>
-                      </div>
-                      {(review.cardVarianceMinor !== 0) && (
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-muted-foreground">Card Variance:</span>
-                          <span className={review.cardVarianceMinor < 0 ? 'text-destructive font-semibold' : 'text-amber-600 font-semibold'}>
-                            {formatCurrency(review.cardVarianceMinor)}
-                          </span>
-                        </div>
-                      )}
-                      {(review.mobileVarianceMinor !== 0) && (
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-muted-foreground">Mobile Variance:</span>
-                          <span className={review.mobileVarianceMinor < 0 ? 'text-destructive font-semibold' : 'text-amber-600 font-semibold'}>
-                            {formatCurrency(review.mobileVarianceMinor)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-muted-foreground text-xs italic mb-3">"{review.shift?.notes || 'No notes provided by cashier'}"</div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="flex-1" onClick={() => {
-                        const note = prompt('Rejection reason (optional):');
-                        reviewVarianceMutation.mutate({ id: review.id, status: 'REJECTED', managerNotes: note || 'Rejected by manager' });
-                      }}>Reject</Button>
-                      <Button size="sm" variant="default" className="flex-1" onClick={() => {
-                        const note = prompt('Approval note (optional):');
-                        reviewVarianceMutation.mutate({ id: review.id, status: 'APPROVED', managerNotes: note || 'Approved by manager' });
-                      }}>Approve</Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 3. Integrity Issues */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-red-500" />
-              Integrity Issues
-              <Badge variant={integrityIssues?.length ? 'error' : 'success'} className="ml-auto">
-                {integrityIssues?.length || 0}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {integrityIssues?.length === 0 ? (
-              <div className="flex items-center gap-2 text-green-600 text-sm py-2">
-                <CheckCircle2 className="w-4 h-4" /> System integrity verified
-              </div>
-            ) : (
-              <ul className="space-y-3 mt-2">
-                {integrityIssues?.map((issue: any) => (
-                  <li key={issue.id} className="text-sm bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 p-3 rounded-lg border border-red-200 dark:border-red-900/50">
-                    <div className="font-semibold flex items-center justify-between">
-                      {issue.category}
-                      <Badge variant="error" className="text-[10px] uppercase">{issue.severity}</Badge>
-                    </div>
-                    <div className="text-xs mt-1 leading-snug mb-2">{issue.description}</div>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="w-full text-xs"
-                      onClick={() => {
-                        const notes = prompt('Resolution notes (optional):');
-                        if (notes !== null) { // Allow empty string but not cancel
-                          resolveIntegrityMutation.mutate({ id: issue.id, resolutionNotes: notes || 'Resolved by manager' });
-                        }
-                      }}
-                      disabled={resolveIntegrityMutation.isPending}
-                    >
-                      Resolve
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 4. Daily Close Action Panel */}
+      {/* Daily Close Action Panel */}
       <Card className="border-t-4 border-t-primary shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -314,28 +196,32 @@ export const OperationalReconciliation: React.FC = () => {
           <div className="flex flex-col md:flex-row gap-8 items-center justify-between">
             <div className="flex-1 text-sm text-slate-600 dark:text-slate-400">
               <p className="mb-2">
-                Daily close commits all operational data to the ledger, calculating total expected cash, 
-                variances, and resolving all pending checks.
+                Daily close commits all operational data to the ledger — total sales,
+                cash received, and settlement breakdowns — for the business day.
               </p>
               {!isReadyForClose ? (
                 <p className="text-amber-600 dark:text-amber-500 font-medium flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" /> Please resolve all pending shifts, variances, and integrity issues before closing the day.
+                  <AlertCircle className="w-4 h-4" /> Resolve the integrity issues above before closing the day.
                 </p>
               ) : dailyClose?.status === 'PENDING_REVIEW' ? (
                 <div className="space-y-4 w-full mt-4 bg-slate-50 dark:bg-slate-800 p-4 rounded-lg border">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 max-[419px]:grid-cols-1 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-bold">Total Sales</p>
                       <p className="text-xl font-bold">{formatCurrency(dailyClose.totalSalesMinor)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase font-bold">Cash Declared</p>
-                      <p className="text-xl font-bold text-primary">{formatCurrency(dailyClose.cashDeclaredMinor)}</p>
+                      <p className="text-xs text-muted-foreground uppercase font-bold">Cash Received</p>
+                      <p className="text-xl font-bold text-primary">{formatCurrency(dailyClose.cashSettledMinor)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase font-bold">Settled</p>
+                      <p className="text-xl font-bold">{formatCurrency(dailyClose.totalSettledMinor)}</p>
                     </div>
                   </div>
                   <div>
                     <label className="text-xs font-semibold block mb-1">Final Review Notes (Optional)</label>
-                    <Input 
+                    <Input
                       placeholder="Add any final notes before locking the day..."
                       value={reviewNotes}
                       onChange={e => setReviewNotes(e.target.value)}
@@ -355,9 +241,9 @@ export const OperationalReconciliation: React.FC = () => {
 
             <div className="shrink-0 w-full md:w-auto flex justify-end">
               {dailyClose?.status === 'PENDING_REVIEW' ? (
-                <Button 
-                  size="lg" 
-                  variant="default" 
+                <Button
+                  size="lg"
+                  variant="default"
                   className="w-full shadow-brand"
                   onClick={() => finalizeDailyCloseMutation.mutate()}
                   disabled={finalizeDailyCloseMutation.isPending}
@@ -368,8 +254,8 @@ export const OperationalReconciliation: React.FC = () => {
               ) : dailyClose?.status === 'CLOSED' ? (
                 <Button size="lg" disabled variant="outline">Day is Closed</Button>
               ) : (
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   variant="default"
                   className="w-full shadow-brand"
                   disabled={!isReadyForClose || startDailyCloseMutation.isPending}
