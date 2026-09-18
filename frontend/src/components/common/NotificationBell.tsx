@@ -28,7 +28,7 @@ function linkFor(n: NotificationItem, role: string): string {
     case 'MENU_ITEM_UNAVAILABLE':
       return `${base}/menu`;
     case 'PRINTER_FAILURE':
-      return role === 'OWNER' ? '/owner/printers' : '/manager/people';
+      return role === 'OWNER' ? '/owner/printers' : '/manager/reconciliation';
     case 'SYSTEM_OVERRIDE':
       return role === 'OWNER' ? '/owner/audit' : `${base}/attendance`;
     default:
@@ -124,6 +124,16 @@ export const NotificationBell: React.FC = () => {
     MISSING_ATTENDANCE: 'Attendance', PRINTER_FAILURE: 'Printers',
     PAYROLL_PERIOD_DUE: 'Payroll', MENU_ITEM_UNAVAILABLE: 'Menu', SYSTEM_OVERRIDE: 'System',
   };
+
+  // Short, plain-language headline per type so a glance is enough to know what
+  // a notification is about before reading the sentence below it.
+  const typeTitle: Record<string, string> = {
+    MISSING_ATTENDANCE: 'Attendance not marked',
+    PRINTER_FAILURE: 'A ticket did not print',
+    PAYROLL_PERIOD_DUE: 'Payroll not recorded',
+    MENU_ITEM_UNAVAILABLE: 'Menu item off for a while',
+    SYSTEM_OVERRIDE: 'System notice',
+  };
   const grouped = visibleItems.reduce<Record<string, NotificationItem[]>>((groups, item) => {
     const group = typeLabel[item.type] || 'System';
     (groups[group] ||= []).push(item);
@@ -148,7 +158,7 @@ export const NotificationBell: React.FC = () => {
       </Tooltip>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[22rem] max-h-[28rem] rounded-xl border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden z-50 flex flex-col">
+        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-[22rem] max-h-[28rem] rounded-xl border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden z-50 flex flex-col">
           <div className="px-3 py-2.5 border-b border-border flex items-center justify-between bg-secondary/30">
             <p className="text-sm font-semibold">Notifications</p>
             {unread > 0 && (
@@ -182,9 +192,12 @@ export const NotificationBell: React.FC = () => {
                           severityTone[n.severity] || severityTone.info
                         } ${n.isRead ? 'opacity-60' : ''}`}
                       >
-                        <p className="text-sm leading-snug">{n.message}</p>
+                        {typeTitle[n.type] && (
+                          <p className="text-[11px] font-bold text-foreground">{typeTitle[n.type]}</p>
+                        )}
+                        <p className="text-sm leading-snug text-muted-foreground">{n.message}</p>
                         <p className="text-[10px] text-muted-foreground mt-1 font-mono">
-                          {formatDate(n.createdAt)}
+                          {formatDate(n.createdAt)} · {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </button>
                     ))}
