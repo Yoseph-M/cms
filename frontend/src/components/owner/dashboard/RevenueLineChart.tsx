@@ -72,8 +72,8 @@ export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
     return (
       <div className="rounded-xl border border-border/60 bg-popover px-4 py-2 shadow-lg">
         <p className="text-xs text-muted-foreground mb-1">{date}</p>
-        {payload.map((entry) => (
-          <div key={String(entry.name)} className="flex items-center gap-2 text-sm">
+        {payload.map((entry, idx) => (
+          <div key={`${String(entry.name)}-${idx}`} className="flex items-center gap-2 text-sm">
             <span className="h-2 w-2 rounded-full shrink-0" style={{ background: entry.color }} />
             <span className="text-muted-foreground">{entry.name}</span>
             <span className="ml-auto font-bold tabular-nums text-popover-foreground">
@@ -95,8 +95,10 @@ export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
         valueFormatter={yFormat}
         customTooltip={tooltip}
         yAxisWidth={60}
-        onValueChange={() => {}}
-        showLegend={categories.length > 1}
+        // A no-op onValueChange makes Tremor render an extra transparent line
+        // for each category. Recharts then includes both lines in the tooltip,
+        // producing duplicate "Income" and "Expenses" entries/keys.
+        showLegend={false}
         className={cn(CHART_CLASS, 'mt-2 hidden sm:block')}
         style={{ height }}
       />
@@ -110,7 +112,6 @@ export const RevenueLineChart: React.FC<RevenueLineChartProps> = ({
         showYAxis={false}
         showLegend={false}
         startEndOnly
-        onValueChange={() => {}}
         className={cn(CHART_CLASS, 'mt-2 sm:hidden')}
         style={{ height: Math.max(220, height - 40) }}
       />
