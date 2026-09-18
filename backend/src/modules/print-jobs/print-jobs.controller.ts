@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { PrintJobStatus, Role } from '@prisma/client';
 import { emitToLiveOrders } from '../../services/socket.service';
+import { notifyKitchenPrintFailure } from '../../services/printer.service';
 import { recordAudit } from '../../services/audit.service';
 import { logger } from '../../utils/logger';
 
@@ -45,8 +46,8 @@ export async function claimPrintJob(req: AuthenticatedRequest, res: Response) {
   }
 
   // SECURITY: Verify job transport matches
-  if (job.transport !== 'WINDOWS') {
-    return res.status(400).json({ error: 'Job is not a Windows print job' });
+  if (!['USB', 'BLUETOOTH'].includes(job.transport as string)) {
+    return res.status(400).json({ error: 'Job is not a valid hardware print job' });
   }
 
   // Optimistic locking: Update where status is QUEUED
@@ -194,12 +195,14 @@ export async function getPendingJobs(req: AuthenticatedRequest, res: Response) {
   }
 
   // SECURITY: Agent can ONLY access jobs for its assigned station
-  // Do NOT trust query parameters - use agent's station assignment
+  // Do NOT trust query parameters - use agent's station assignment.
+  // Only hardware transports are claimable: network (Wi-Fi/Ethernet) tickets are
+  // written straight from the backend by the print dispatch service.
   const jobs = await prisma.printJob.findMany({
     where: {
       status: PrintJobStatus.QUEUED,
-      transport: 'WINDOWS',
       station: agent.station, // Enforce agent's assigned station
+      transport: { in: ['USB', 'BLUETOOTH'] },
     },
     orderBy: { createdAt: 'asc' },
     take: 50, // Limit batch size to prevent overwhelming agent
@@ -213,6 +216,85 @@ export async function getPendingJobs(req: AuthenticatedRequest, res: Response) {
   }, 'Agent fetched pending jobs');
 
   return res.status(200).json(jobs);
+}
+
+// Fetch pending jobs for frontend clients (WebUSB/WebBluetooth)
+export async function getFrontendPendingJobs(req: AuthenticatedRequest, res: Response) {
+  try {
+    const jobs = await prisma.printJob.findMany({
+      where: {
+        status: PrintJobStatus.QUEUED,
+        transport: { in: ['BLUETOOTH', 'USB'] },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+    return res.status(200).json(jobs);
+  } catch (error: any) {
+    logger.error({ error: error.message || error, stack: error.stack }, 'Failed to fetch frontend pending print jobs');
+    return res.status(500).json({ error: 'Failed to fetch pending print jobs', details: error.message });
+  }
+}
+
+// ACK print job from frontend
+export async function ackFrontendPrintJob(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { jobId } = req.params;
+    const { status, error } = req.body;
+
+    if (status !== 'PRINTED' && status !== 'FAILED') {
+      return res.status(400).json({ error: 'Status must be PRINTED or FAILED' });
+    }
+
+    const job = await prisma.printJob.findUnique({ where: { id: jobId } });
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const updatedStatus = status === 'PRINTED' ? PrintJobStatus.PRINTED : PrintJobStatus.FAILED;
+
+    if (job.status === updatedStatus) {
+      return res.status(200).json({ success: true, idempotent: true });
+    }
+
+    await prisma.printJob.update({
+      where: { id: jobId },
+      data: {
+        status: updatedStatus,
+        lastError: error || null,
+        printedAt: updatedStatus === PrintJobStatus.PRINTED ? new Date() : null,
+        attempts: { increment: 1 },
+      },
+    });
+
+    emitToLiveOrders('printJob:updated', { jobId, status: updatedStatus, error });
+
+    // A failed ticket must tell a human: the order stays on the Tickets page,
+    // the cashier gets a banner, and Owner/Manager get a notification.
+    if (updatedStatus === PrintJobStatus.FAILED) {
+      const order = job.orderId
+        ? await prisma.order.findUnique({
+            where: { id: job.orderId },
+            select: { id: true, tableNumber: true },
+          })
+        : null;
+      const deviceLabel =
+        job.printerMacAddress ||
+        [job.printerVendorId, job.printerProductId].filter(Boolean).join(':') ||
+        null;
+
+      await notifyKitchenPrintFailure(
+        order ?? { id: job.orderId ?? jobId, tableNumber: null },
+        error || 'the printer reported a failure',
+        deviceLabel,
+      );
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error: any) {
+    logger.error({ error: error.message || error, stack: error.stack }, 'Failed to acknowledge frontend print job');
+    return res.status(500).json({ error: 'Failed to acknowledge print job', details: error.message });
+  }
 }
 
 // Retry a failed print job (Owner/Manager only)
@@ -275,9 +357,9 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
   }
 
   // Find printer configuration for kitchen
-  const { getPrinterRegistry, buildEscPosKitchenTicket } = await import('../../services/printer.service');
+  const { getPrinterRegistry, buildEscPosKitchenTicket, resolveKitchenPrinter } = await import('../../services/printer.service');
   const printers = await getPrinterRegistry();
-  const kitchenPrinter = printers.find((p: any) => p.station === 'kitchen');
+  const kitchenPrinter = resolveKitchenPrinter(printers);
 
   if (!kitchenPrinter) {
     return res.status(400).json({ error: 'Kitchen printer not configured' });
@@ -300,9 +382,9 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
       orderId: order.id,
       station: kitchenPrinter.station,
       transport: kitchenPrinter.transport as any,
-      printerName: kitchenPrinter.printerName,
-      printerIp: kitchenPrinter.ip,
-      printerPort: kitchenPrinter.port,
+      printerMacAddress: kitchenPrinter.macAddress,
+      printerVendorId: kitchenPrinter.vendorId,
+      printerProductId: kitchenPrinter.productId,
       payloadBase64,
       status: PrintJobStatus.QUEUED,
     },
@@ -321,11 +403,7 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
 
   emitToLiveOrders('printJob:queued', { printJobId: newJob.id, station: kitchenPrinter.station });
 
-  // For TCP, trigger processing
-  if (kitchenPrinter.transport === 'TCP') {
-    const { processTCPPrintJob } = await import('../../services/printer.service');
-    processTCPPrintJob(newJob.id).catch(e => console.error(e));
-  }
+
 
   return res.status(201).json(newJob);
 }
