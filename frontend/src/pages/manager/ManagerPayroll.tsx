@@ -11,8 +11,9 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Sheet } from '../../components/ui/Sheet';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  DollarSign, Plus
+  DollarSign, Plus, ChevronRight, Receipt, X
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -34,10 +35,37 @@ interface PayrollRecord {
   paidAmount: number;
   processedBy: { name: string };
   createdAt: string;
+  recordType?: 'payment' | 'adjustment';
+  reason?: string;
+  note?: string;
+}
+
+/** One Historical Ledger row — a single employee with all their records. */
+interface EmployeeLedger {
+  userId: string;
+  name: string;
+  role: string;
+  payments: PayrollRecord[];
+  adjustments: PayrollRecord[];
+  totalPaid: number;
+  latest: PayrollRecord;
 }
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const YEARS = [2024, 2025, 2026, 2027];
+
+const PayrollStat: React.FC<{
+  label: string;
+  value: string;
+  hint?: string;
+  accent: string;
+}> = ({ label, value, hint, accent }) => (
+  <div className="rounded-2xl border border-border/60 bg-card px-4 py-4 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.25)]">
+    <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <p className={`mt-2 font-mono text-xl font-bold tracking-tight ${accent}`}>{value}</p>
+    {hint && <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p>}
+  </div>
+);
 const SCOPED_ROLES = ['CASHIER', 'WAITER', 'COOKER', 'BARISTA'];
 
 export const ManagerPayroll: React.FC = () => {
@@ -78,6 +106,78 @@ export const ManagerPayroll: React.FC = () => {
   const [refSalary, setRefSalary] = useState<number | null>(null);
   const [isLoadingRef, setIsLoadingRef] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [detailEmployee, setDetailEmployee] = useState<EmployeeLedger | null>(null);
+
+  /** Historical Ledger grouped per employee — click a row for the full history. */
+  const employeeLedger = useMemo<EmployeeLedger[]>(() => {
+    const groups = new Map<string, EmployeeLedger>();
+    for (const record of ledger) {
+      const isAdjustment = record.recordType === 'adjustment';
+      let group = groups.get(record.userId);
+      if (!group) {
+        if (isAdjustment) continue;
+        group = {
+          userId: record.userId,
+          name: record.user?.name ?? '',
+          role: record.user?.role ?? '',
+          payments: [],
+          adjustments: [],
+          totalPaid: 0,
+          latest: record,
+        };
+        groups.set(record.userId, group);
+      }
+      if (isAdjustment) group.adjustments.push(record);
+      else group.payments.push(record);
+      group.totalPaid += record.paidAmount;
+    }
+    const rows = Array.from(groups.values());
+    rows.forEach((row) => {
+      row.latest = row.payments[0];
+    });
+    return rows.sort((a, b) => b.latest.createdAt.localeCompare(a.latest.createdAt));
+  }, [ledger]);
+
+  /** Roster-wide payroll totals — every staff member added up, not one at a time. */
+  const rosterTotalPaid = useMemo(
+    () => ledger.reduce((sum, r) => sum + r.paidAmount, 0),
+    [ledger],
+  );
+  const rosterPaymentCount = useMemo(
+    () => ledger.filter((r) => r.recordType !== 'adjustment').length,
+    [ledger],
+  );
+  const rosterThisMonth = useMemo(() => {
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    return ledger.reduce(
+      (sum, r) => (r.periodMonth === month && r.periodYear === year ? sum + r.paidAmount : sum),
+      0,
+    );
+  }, [ledger]);
+
+  /** Full, newest-first history for the employee whose float card is open. */
+  const detailHistory = useMemo(() => {
+    if (!detailEmployee) return [];
+    return [...detailEmployee.payments, ...detailEmployee.adjustments]
+      .sort(
+        (a, b) =>
+          b.periodYear - a.periodYear ||
+          b.periodMonth - a.periodMonth ||
+          b.createdAt.localeCompare(a.createdAt),
+      )
+      .map((r) => ({
+        key: r.id,
+        period: `${MONTHS[r.periodMonth - 1]} ${r.periodYear}`,
+        paid: r.paidAmount,
+        base: r.recordType === 'adjustment' ? undefined : r.baseSalary,
+        by: r.processedBy?.name,
+        date: new Date(r.createdAt).toLocaleDateString(),
+        note: r.recordType === 'adjustment' ? r.reason : r.note,
+        isAdjustment: r.recordType === 'adjustment',
+      }));
+  }, [detailEmployee]);
 
   const invalidatePayroll = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['payroll'] });
@@ -135,7 +235,11 @@ export const ManagerPayroll: React.FC = () => {
         paidAmount: amount,
         note: note.trim() || undefined,
       });
-      addToast({ type: 'success', title: 'Payroll recorded', message: 'The payment has been recorded successfully.' });
+      addToast({
+        type: 'success',
+        title: 'Payroll recorded',
+        message: 'The payment was recorded and logged in Expenses under Payroll.',
+      });
       setFormOpen(false);
       resetForm();
       invalidatePayroll();
@@ -169,6 +273,34 @@ export const ManagerPayroll: React.FC = () => {
         </CardHeader>
       </Card>
 
+      {/* Payroll totals for the whole roster this manager is responsible for. */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 max-[419px]:grid-cols-1">
+        <PayrollStat
+          label="Total payroll · my roster"
+          value={formatCurrency(rosterTotalPaid)}
+          hint={`${rosterPaymentCount} payment${rosterPaymentCount === 1 ? '' : 's'} recorded`}
+          accent="text-primary"
+        />
+        <PayrollStat
+          label={`This month · ${MONTHS[new Date().getMonth()]}`}
+          value={formatCurrency(rosterThisMonth)}
+          hint="Current payroll period"
+          accent="text-emerald-600"
+        />
+        <PayrollStat
+          label="Staff paid"
+          value={String(employeeLedger.length)}
+          hint={`${staff.length} staff in the roster`}
+          accent="text-sky-600"
+        />
+        <PayrollStat
+          label="Average per payment"
+          value={formatCurrency(rosterPaymentCount ? Math.round(rosterTotalPaid / rosterPaymentCount) : 0)}
+          hint="Across the roster"
+          accent="text-[hsl(var(--warning))]"
+        />
+      </div>
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-bold">{t('payroll.ledgerTitle', { defaultValue: 'Payroll Ledger' })}</CardTitle>
@@ -180,7 +312,7 @@ export const ManagerPayroll: React.FC = () => {
                 <div key={i} className="h-12 rounded-lg bg-secondary/40 animate-pulse" />
               ))}
             </div>
-          ) : ledger.length === 0 ? (
+          ) : employeeLedger.length === 0 ? (
             <EmptyState
               title={t('payroll.emptyTitle', { defaultValue: 'No payroll entries yet' })}
               message={t('payroll.emptyMsg', { defaultValue: 'Record your first entry to log what was actually paid to your team roster.' })}
@@ -197,32 +329,57 @@ export const ManagerPayroll: React.FC = () => {
                 <thead>
                   <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
                     <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.staff', { defaultValue: 'Staff' })}</th>
-                    <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.period', { defaultValue: 'Period' })}</th>
-                    <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.paid', { defaultValue: 'Paid' })}</th>
-                    <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.date', { defaultValue: 'Date' })}</th>
+                    <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.period', { defaultValue: 'Last period' })}</th>
+                    <th className="px-4 py-3 text-center font-semibold">Records</th>
+                    <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.paid', { defaultValue: 'Total paid' })}</th>
+                    <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.date', { defaultValue: 'Last paid' })}</th>
+                    <th className="w-8" />
                   </tr>
                 </thead>
                 <tbody>
-                  {ledger.map((row) => (
+                  {employeeLedger.map((employee) => (
                     <tr
-                      key={row.id}
-                      className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors"
+                      key={employee.userId}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View payroll history for ${employee.name}`}
+                      onClick={() => setDetailEmployee(employee)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setDetailEmployee(employee);
+                        }
+                      }}
+                      className="cursor-pointer border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors focus:outline-none focus-visible:bg-secondary/30"
                     >
-                      <td className="px-4 py-3 font-medium">{row.user?.name}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{employee.name}</div>
+                        <div className="text-[11px] text-muted-foreground">{employee.role}</div>
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">
                         {/* TODO: translate month names if desired, for now use standard abbreviation mapping or keep English fallback */}
-                        {MONTHS[row.periodMonth - 1]} {row.periodYear}
+                        {MONTHS[employee.latest.periodMonth - 1]} {employee.latest.periodYear}
+                      </td>
+                      <td className="px-4 py-3 text-center text-xs text-muted-foreground">
+                        {employee.payments.length}
+                        {employee.adjustments.length > 0 ? ` +${employee.adjustments.length}` : ''}
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-primary">
-                        {formatCurrency(row.paidAmount)}
+                        {formatCurrency(employee.totalPaid)}
                       </td>
                       <td className="px-4 py-3 text-right text-xs text-muted-foreground">
-                        {new Date(row.createdAt).toLocaleDateString()}
+                        {new Date(employee.latest.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-2 py-3 text-muted-foreground">
+                        <ChevronRight className="h-4 w-4" />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <p className="border-t border-border px-4 py-2 text-center text-xs text-muted-foreground">
+                Tap an employee to open their full payroll history.
+              </p>
             </div>
           )}
         </CardContent>
@@ -310,11 +467,11 @@ export const ManagerPayroll: React.FC = () => {
             <Input
               id="mgr-payroll-amount"
               type="number"
-              step="0.01"
+              step="1"
               min="0"
               value={paidAmount}
-              onChange={(e) => setPaidAmount(e.target.value)}
-              placeholder="0.00"
+              onChange={(e) => setPaidAmount(e.target.value.replace(/[^\d]/g, ''))}
+              placeholder="0"
               className="font-mono"
               disabled={isLoadingRef}
             />
@@ -331,8 +488,102 @@ export const ManagerPayroll: React.FC = () => {
               placeholder={t('payroll.form.notePlaceholder', { defaultValue: 'e.g. Paid in cash on the 28th' })}
             />
           </div>
+
+          <div className="flex items-start gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-4">
+            <Receipt className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">
+                Logged in Expenses automatically
+              </span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Every payroll payment is recorded on the Expenses page under the Payroll category — nothing to enter twice.
+              </span>
+            </span>
+          </div>
         </div>
       </Sheet>
+
+      {/* Employee payroll history — float card opened from the ledger */}
+      <AnimatePresence>
+        {detailEmployee && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm"
+              onClick={() => setDetailEmployee(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={`Payroll history for ${detailEmployee.name}`}
+                className="pointer-events-auto flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-border bg-card shadow-2xl"
+              >
+                <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-base font-bold">{detailEmployee.name}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {detailEmployee.role} · {detailEmployee.payments.length} payment{detailEmployee.payments.length === 1 ? '' : 's'}
+                      {detailEmployee.adjustments.length > 0 ? ` · ${detailEmployee.adjustments.length} correction${detailEmployee.adjustments.length === 1 ? '' : 's'}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setDetailEmployee(null)}
+                    aria-label="Close"
+                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-primary/20 bg-primary/5 px-5 py-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">Total paid</span>
+                  <span className="font-mono text-lg font-bold text-primary">{formatCurrency(detailEmployee.totalPaid)}</span>
+                </div>
+
+                <div className="flex-1 divide-y divide-border/50 overflow-y-auto">
+                  {detailHistory.map((row) => (
+                    <div key={row.key} className="px-5 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-medium">{row.period}</span>
+                          {row.isAdjustment && (
+                            <span className="rounded bg-[hsl(var(--warning))]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--warning))]">
+                              Correction
+                            </span>
+                          )}
+                        </div>
+                        <span className={`font-mono text-sm font-bold ${row.isAdjustment ? 'text-[hsl(var(--warning))]' : 'text-primary'}`}>
+                          {formatCurrency(row.paid)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                        {row.base !== undefined && <span>Base {formatCurrency(row.base)}</span>}
+                        {row.by && <span>By {row.by}</span>}
+                        <span>{row.date}</span>
+                      </div>
+                      {row.note && <p className="mt-1 truncate text-xs italic text-muted-foreground">{row.note}</p>}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-border p-4">
+                  <Button variant="outline" onClick={() => setDetailEmployee(null)} className="w-full">
+                    {t('payroll.form.cancel', { defaultValue: 'Close' })}
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
