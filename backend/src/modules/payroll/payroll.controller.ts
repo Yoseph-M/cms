@@ -4,9 +4,17 @@ import { prisma } from '../../services/prisma.service';
 import { recordAudit } from '../../services/audit.service';
 import { createNotification } from '../../services/notification.service';
 import { emitToRoom } from '../../services/socket.service';
-import { Role } from '@prisma/client';
+import { logger } from '../../utils/logger';
+import { ExpenseCategory, Role } from '@prisma/client';
 
 const MANAGER_SCOPED_ROLES: Role[] = [Role.CASHIER, Role.WAITER, Role.COOKER, Role.BARISTA];
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Payroll IS a business expense, so every recorded payment is mirrored into the
+ * expenses ledger automatically — nobody has to re-enter it by hand.
+ */
 
 export async function getPayrollHistory(req: AuthenticatedRequest, res: Response) {
   const { periodMonth, periodYear, userId, scope } = req.query;
@@ -146,9 +154,47 @@ export async function recordPayrollEntry(req: AuthenticatedRequest, res: Respons
       },
     });
 
+    // Mirror the payment into the expenses ledger (category PAYROLL) so payroll
+    // spending shows up in expense reporting without being re-entered by hand.
+    let expenseId: string | null = null;
+    {
+      try {
+        const periodLabel = `${MONTH_LABELS[(periodMonth as number) - 1] ?? periodMonth} ${periodYear}`;
+        const expense = await prisma.expense.create({
+          data: {
+            category: ExpenseCategory.PAYROLL,
+            amount: payment.paidAmount,
+            description: `Payroll — ${user.name} (${periodLabel})`,
+            date: payment.createdAt,
+            recordedById: processedById,
+          },
+        });
+        expenseId = expense.id;
+        await recordAudit({
+          actorId: processedById,
+          actionType: 'EXPENSE_CREATED',
+          targetType: 'Expense',
+          targetId: expense.id,
+          details: {
+            source: 'PAYROLL',
+            paymentId: payment.id,
+            userId: user.id,
+            userName: user.name,
+            amount: payment.paidAmount,
+            periodMonth,
+            periodYear,
+          },
+        });
+      } catch (error) {
+        // The payroll record is authoritative — never fail it because the
+        // expense mirror could not be written.
+        logger.error({ error, paymentId: payment.id }, 'Failed to mirror payroll payment into expenses');
+      }
+    }
+
     emitToRoom('managers', 'finance:updated', {});
 
-    return res.status(201).json(payment);
+    return res.status(201).json({ ...payment, expenseId });
   } catch {
     return res.status(409).json({
       error: 'Payroll recording failed.',
