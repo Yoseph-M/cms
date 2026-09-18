@@ -12,9 +12,12 @@ vi.mock('../store/authStore', () => ({
   useAuthStore: vi.fn(),
 }));
 // Mock other stores
-vi.mock('../store/socketStore', () => ({
-  useSocketStore: () => ({ connect: vi.fn(), disconnect: vi.fn(), isConnected: false }),
-}));
+vi.mock('../store/socketStore', () => {
+  const mockState = { connect: vi.fn(), disconnect: vi.fn(), isConnected: false, socket: null };
+  const useSocketStore: any = () => mockState;
+  useSocketStore.getState = () => mockState;
+  return { useSocketStore };
+});
 // Mock offlineSyncStore
 vi.mock('../store/offlineSyncStore', () => ({
   useOfflineSyncStore: () => ({ initListeners: vi.fn(), isOnline: true, pendingCount: 0 }),
@@ -155,7 +158,10 @@ describe('Layout Architecture Regression Tests', () => {
         </MemoryRouter>
       );
 
-      expect(screen.queryByText(/Menu Catalog/i)).not.toBeInTheDocument();
+      // The cashier lands on their own layout. Cashiers may see the menu catalog
+      // (they can manage it by default now), but never manager-only areas.
+      expect(screen.queryByText(/Payroll/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/End of Day/i)).not.toBeInTheDocument();
     });
   });
 });
