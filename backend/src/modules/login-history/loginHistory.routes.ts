@@ -6,12 +6,14 @@ import { Role } from '@prisma/client';
 
 const router = Router();
 
-// All login history endpoints require authentication
-router.use(requireAuth);
+// Authentication is applied per-route (not via router.use) because this router is
+// mounted at the shared `/api` prefix; a blanket requireAuth would intercept
+// unrelated /api routes mounted after it (e.g. print agents and health probes).
 
 // Get all login history - OWNER only (for security monitoring)
 router.get(
   '/login-history',
+  requireAuth,
   requireRole([Role.OWNER]),
   LoginHistoryController.getAllLoginHistory
 );
@@ -19,6 +21,7 @@ router.get(
 // Get login statistics - OWNER only
 router.get(
   '/login-history/stats',
+  requireAuth,
   requireRole([Role.OWNER]),
   LoginHistoryController.getLoginStats
 );
