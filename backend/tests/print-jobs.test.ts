@@ -10,8 +10,9 @@ import { prisma } from '../src/services/prisma.service';
 import { Role, OrderStatus, PrintJobStatus, PrintTransport } from '@prisma/client';
 import crypto from 'crypto';
 import { hashPassword } from '../src/utils/security';
+import { cleanDb } from './helpers';
 
-// Simple helper to create test users
+// Simple helper to create test users. Accounts log in with a username.
 async function createTestUser(role: Role, phone?: string) {
   const phoneNum = phone || `+1555${Date.now()}${Math.random().toString().slice(2, 5)}`;
   return prisma.user.create({
@@ -19,6 +20,7 @@ async function createTestUser(role: Role, phone?: string) {
       name: `Test ${role}`,
       role,
       phone: phoneNum,
+      username: `${role.toLowerCase()}-${Math.random().toString(36).slice(2, 10)}`,
       passwordHash: await hashPassword('password123'),
       salaryAmount: 3000,
     },
@@ -26,10 +28,10 @@ async function createTestUser(role: Role, phone?: string) {
 }
 
 // Simple helper to login
-async function loginTestUser(phone: string): Promise<string> {
+async function loginTestUser(username: string): Promise<string> {
   const res = await request(app)
     .post('/api/auth/login')
-    .send({ phone, password: 'password123' });
+    .send({ username, password: 'password123' });
   return res.body.accessToken;
 }
 
@@ -45,6 +47,24 @@ async function createTestMenuItem(data: { name: string; price: number }) {
   });
 }
 
+// Helper to create a print job for a station. The order service queues a NETWORK
+// job from the configured printer, while agents only ever claim hardware jobs
+// (USB/Bluetooth), so the claim-path tests create their jobs explicitly.
+async function createTestPrintJob(
+  orderId: string,
+  overrides: { station?: string; transport?: PrintTransport; status?: PrintJobStatus } = {},
+) {
+  return prisma.printJob.create({
+    data: {
+      orderId,
+      station: overrides.station || 'kitchen',
+      transport: overrides.transport || PrintTransport.USB,
+      payloadBase64: Buffer.from('test ticket').toString('base64'),
+      status: overrides.status || PrintJobStatus.QUEUED,
+    },
+  });
+}
+
 // Simple helper to create order
 async function createTestOrder(data: { items: any[]; waiterId?: string }) {
   const waiter = data.waiterId ? await prisma.user.findUnique({ where: { id: data.waiterId } }) :
@@ -52,7 +72,7 @@ async function createTestOrder(data: { items: any[]; waiterId?: string }) {
   
   return prisma.order.create({
     data: {
-      clientOrderId: `test-${Date.now()}-${Math.random().toString().slice(2, 8)}`,
+      clientOrderId: crypto.randomUUID(),
       tableNumber: '1',
       waiterId: waiter!.id,
       items: data.items,
@@ -81,29 +101,29 @@ describe('Print Jobs and Print Agents', () => {
     const waiter = await createTestUser(Role.WAITER, '+15551000004');
 
     ownerId = owner.id;
-    ownerToken = await loginTestUser(owner.phone);
-    managerToken = await loginTestUser(manager.phone);
-    cashierToken = await loginTestUser(cashier.phone);
-    waiterToken = await loginTestUser(waiter.phone);
+    ownerToken = await loginTestUser(owner.username!);
+    managerToken = await loginTestUser(manager.username!);
+    cashierToken = await loginTestUser(cashier.username!);
+    waiterToken = await loginTestUser(waiter.username!);
 
-    // Configure kitchen printer for Windows
+    // Configure a server-side network kitchen printer
     await prisma.printerStation.deleteMany({});
     await prisma.printerStation.create({
       data: {
         station: 'kitchen',
-        transport: PrintTransport.WINDOWS,
-        printerName: 'Test Kitchen Printer',
+        transport: PrintTransport.NETWORK,
+        ip: '192.168.1.100',
+        port: 9100,
       },
     });
   });
 
   afterAll(async () => {
-    await prisma.printerStation.deleteMany({});
-    await prisma.printAgent.deleteMany({});
+    // cleanDb handles the relation-safe teardown order for every domain model;
+    // print agents/jobs are not part of it yet, so clear them first.
     await prisma.printJob.deleteMany({});
-    await prisma.order.deleteMany({});
-    await prisma.menuItem.deleteMany({});
-    await prisma.user.deleteMany({});
+    await prisma.printAgent.deleteMany({});
+    await cleanDb();
   });
 
   describe('Print Agent Registration', () => {
@@ -213,7 +233,7 @@ describe('Print Jobs and Print Agents', () => {
 
     it('should create print job when order is created', async () => {
       const orderData = {
-        clientOrderId: `test-order-${Date.now()}`,
+        clientOrderId: crypto.randomUUID(),
         tableNumber: '5',
         items: [{ menuItemId: testItem1.id, quantity: 2, notes: 'No onions' }],
       };
@@ -233,7 +253,7 @@ describe('Print Jobs and Print Agents', () => {
 
       expect(printJobs).toHaveLength(1);
       expect(printJobs[0].station).toBe('kitchen');
-      expect(printJobs[0].transport).toBe(PrintTransport.WINDOWS);
+      expect(printJobs[0].transport).toBe(PrintTransport.NETWORK);
       expect(printJobs[0].status).toBe(PrintJobStatus.QUEUED);
       expect(printJobs[0].payloadBase64).toBeDefined();
     });
@@ -263,11 +283,16 @@ describe('Print Jobs and Print Agents', () => {
     let pendingJob: any;
 
     beforeAll(async () => {
-      const jobs = await prisma.printJob.findMany({
-        where: { status: PrintJobStatus.QUEUED },
-        orderBy: { createdAt: 'asc' },
+      const item = await createTestMenuItem({ name: 'Agent Claim Burger', price: 700 });
+      const waiter = await createTestUser(Role.WAITER);
+      const order = await createTestOrder({
+        items: [{ menuItemId: item.id, name: item.name, unitPrice: item.price, quantity: 1 }],
+        waiterId: waiter.id,
       });
-      pendingJob = jobs[0];
+      pendingJob = await createTestPrintJob(order.id, {
+        station: 'kitchen',
+        transport: PrintTransport.USB,
+      });
     });
 
     it('should allow agent to fetch pending jobs for its station', async () => {
@@ -297,16 +322,10 @@ describe('Print Jobs and Print Agents', () => {
         waiterId: barWaiter.id,
       });
 
-      // Manually create a bar print job
-      await prisma.printJob.create({
-        data: {
-          orderId: barOrder.id,
-          station: 'bar',
-          transport: PrintTransport.WINDOWS,
-          printerName: 'Bar Printer',
-          payloadBase64: Buffer.from('test').toString('base64'),
-          status: PrintJobStatus.QUEUED,
-        },
+      // Manually create a bar print job the agent could otherwise claim
+      await createTestPrintJob(barOrder.id, {
+        station: 'bar',
+        transport: PrintTransport.USB,
       });
 
       const res = await request(app)
@@ -398,10 +417,11 @@ describe('Print Jobs and Print Agents', () => {
       });
 
       // Get the print job
-      const job = await prisma.printJob.findFirst({
-        where: { orderId: order.id },
+      const job = await createTestPrintJob(order.id, {
+        station: 'kitchen',
+        transport: PrintTransport.USB,
       });
-      failedJobId = job!.id;
+      failedJobId = job.id;
 
       // Simulate failure
       await request(app)
@@ -481,11 +501,12 @@ describe('Print Jobs and Print Agents', () => {
       testOrderId = order.id;
 
       // Complete original print job
-      const originalJob = await prisma.printJob.findFirst({
-        where: { orderId: testOrderId },
+      const originalJob = await createTestPrintJob(testOrderId, {
+        station: 'kitchen',
+        transport: PrintTransport.USB,
       });
       await prisma.printJob.update({
-        where: { id: originalJob!.id },
+        where: { id: originalJob.id },
         data: { status: PrintJobStatus.PRINTED },
       });
     });
@@ -566,7 +587,7 @@ describe('Print Jobs and Print Agents', () => {
           stations: [
             {
               station: 'kitchen',
-              transport: 'TCP',
+              transport: 'NETWORK',
               ip: 'invalid-ip',
               port: 9100,
             },
@@ -575,7 +596,7 @@ describe('Print Jobs and Print Agents', () => {
         .expect(400);
     });
 
-    it('should require printer name for Windows transport', async () => {
+    it('should require an IP address for network transport', async () => {
       await request(app)
         .post('/api/settings/printers')
         .set('Authorization', `Bearer ${ownerToken}`)
@@ -583,8 +604,7 @@ describe('Print Jobs and Print Agents', () => {
           stations: [
             {
               station: 'kitchen',
-              transport: 'WINDOWS',
-              printerName: '',
+              transport: 'NETWORK',
             },
           ],
         })
@@ -599,7 +619,7 @@ describe('Print Jobs and Print Agents', () => {
           stations: [
             {
               station: 'kitchen',
-              transport: 'TCP',
+              transport: 'NETWORK',
               ip: '192.168.1.100',
               port: 9100,
             },
@@ -618,17 +638,57 @@ describe('Print Jobs and Print Agents', () => {
 
       expect(auditLogs).toHaveLength(1);
     });
+
+    it('makes the first printer the ticket printer when no station is sent', async () => {
+      const res = await request(app)
+        .post('/api/settings/printers')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          stations: [
+            { transport: 'NETWORK', ip: '192.168.1.50', port: 9100 },
+            { transport: 'NETWORK', ip: '192.168.1.51', port: 9100 },
+          ],
+        })
+        .expect(200);
+
+      // The first printer leads the list and owns the `kitchen` routing key, so
+      // kitchen tickets print without the owner ever choosing a station.
+      expect(res.body.map((p: any) => p.station)).toEqual(['kitchen', 'printer-2']);
+      expect(res.body[0].ip).toBe('192.168.1.50');
+
+      const item = await createTestMenuItem({ name: 'Stationless Latte', price: 120 });
+      const waiter = await createTestUser(Role.WAITER);
+      const order = await createTestOrder({
+        items: [{ menuItemId: item.id, name: item.name, unitPrice: item.price, quantity: 1 }],
+        waiterId: waiter.id,
+      });
+
+      const reprint = await request(app)
+        .post(`/api/print-jobs/reprint/${order.id}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(201);
+
+      expect(reprint.body.station).toBe('kitchen');
+      expect(reprint.body.printerProductId ?? null).toBeNull();
+    });
   });
 
   describe('Idempotency and Concurrency', () => {
     it('should prevent two agents from claiming the same job', async () => {
-      // Register second agent for kitchen station
-      const agent2Res = await request(app)
+      // Register two fresh kitchen agents. The agent registered at the top of the
+      // suite is revoked by the revocation tests, so it cannot claim anything.
+      const agentARes = await request(app)
         .post('/api/print-agents/register')
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ name: 'Test Agent 2', station: 'kitchen' });
+        .send({ name: 'Concurrency Agent A', station: 'kitchen' });
 
-      const agent2Token = agent2Res.body.token;
+      const agentBRes = await request(app)
+        .post('/api/print-agents/register')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Concurrency Agent B', station: 'kitchen' });
+
+      const agentAToken = agentARes.body.token;
+      const agentBToken = agentBRes.body.token;
 
       // Create test order with print job
       const item = await createTestMenuItem({ name: 'Drink', price: 300 });
@@ -643,26 +703,24 @@ describe('Print Jobs and Print Agents', () => {
         waiterId: waiter.id,
       });
 
-      const job = await prisma.printJob.findFirst({
-        where: { orderId: order.id },
+      const job = await createTestPrintJob(order.id, {
+        station: 'kitchen',
+        transport: PrintTransport.USB,
       });
 
       // Both agents try to claim simultaneously
       const [claim1, claim2] = await Promise.all([
         request(app)
-          .post(`/api/print-jobs/${job!.id}/claim`)
-          .set('X-Agent-Token', testAgentToken),
+          .post(`/api/print-jobs/${job.id}/claim`)
+          .set('X-Agent-Token', agentAToken),
         request(app)
-          .post(`/api/print-jobs/${job!.id}/claim`)
-          .set('X-Agent-Token', agent2Token),
+          .post(`/api/print-jobs/${job.id}/claim`)
+          .set('X-Agent-Token', agentBToken),
       ]);
 
       // One should succeed, one should fail
-      const succeeded = [claim1, claim2].filter(r => r.status === 200);
-      const failed = [claim1, claim2].filter(r => r.status === 409);
-
-      expect(succeeded).toHaveLength(1);
-      expect(failed).toHaveLength(1);
+      const statuses = [claim1.status, claim2.status].sort();
+      expect(statuses).toEqual([200, 409]);
     });
 
     it('should prevent agent from ACKing another agents job', async () => {
@@ -694,19 +752,20 @@ describe('Print Jobs and Print Agents', () => {
         waiterId: waiter.id,
       });
 
-      const job = await prisma.printJob.findFirst({
-        where: { orderId: order.id },
+      const job = await createTestPrintJob(order.id, {
+        station: 'kitchen',
+        transport: PrintTransport.USB,
       });
 
       // Agent 2 claims
       await request(app)
-        .post(`/api/print-jobs/${job!.id}/claim`)
+        .post(`/api/print-jobs/${job.id}/claim`)
         .set('X-Agent-Token', agent2Token)
         .expect(200);
 
       // Agent 3 tries to ACK
       await request(app)
-        .post(`/api/print-jobs/${job!.id}/ack`)
+        .post(`/api/print-jobs/${job.id}/ack`)
         .set('X-Agent-Token', agent3Token)
         .send({ status: 'PRINTED' })
         .expect(403);
