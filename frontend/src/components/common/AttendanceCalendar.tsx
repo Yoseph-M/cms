@@ -300,7 +300,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
               <Button 
                 size="sm" 
                 onClick={handleMarkAllPresent} 
-                disabled={markingAll || staff.length === 0 || (isOwner && !ownerCanEdit) || (!isOwner && selectedDateStr !== todayLocal)}
+                disabled={markingAll || staff.length === 0 || (isOwner && !ownerCanEdit) || selectedDateStr !== todayLocal}
               >
                 <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
                 {markingAll ? 'Marking...' : 'Mark all Present'}
@@ -431,10 +431,14 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                     const isSelected = d === selectedDay;
                     
                     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                    let canEdit = true;
+                    const isToday = dateStr === todayLocal;
+                    // Clocking someone in is only ever done for the current day.
+                    // Owners additionally need the ownerCanEditAttendance setting
+                    // switched on before they can touch the grid at all.
+                    let canEdit: boolean;
                     if (rec?.source === 'SYSTEM_LOGIN') canEdit = false;
-                    else if (isOwner) canEdit = ownerCanEdit;
-                    else canEdit = dateStr === todayLocal;
+                    else if (isOwner) canEdit = ownerCanEdit && isToday;
+                    else canEdit = isToday;
 
                     return (
                       <td
@@ -444,7 +448,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                         <button
                           onClick={() => canEdit && openPopover(s.id, d)}
                           disabled={!canEdit}
-                          title={!canEdit ? 'Editing restricted' : cfg?.label || 'Log attendance'}
+                          title={!canEdit ? 'Only today can be logged or edited' : cfg?.label || 'Log attendance'}
                           className={`w-8 h-7 rounded-md border text-[10px] font-bold transition-all ${
                             isSelected ? 'ring-1 ring-primary/50 ring-offset-1' : ''
                           } ${
@@ -461,6 +465,9 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
               </tbody>
           </table>
         </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Clocking in is limited to today — past and future days stay locked.
+        </p>
         </>
       )}
 
