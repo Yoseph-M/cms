@@ -3,13 +3,11 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
-import { Calculator, UtensilsCrossed, Receipt, Settings, Ticket } from 'lucide-react';
+import { Calculator, UtensilsCrossed, Receipt, Settings, Ticket, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
 import { cn } from '../../lib/utils';
-
-import { useSettingsStore } from '../../store/settingsStore';
 
 const GROUP_ORDER: string[] = ['core', 'ops'];
 
@@ -25,17 +23,15 @@ const GROUP_ORDER: string[] = ['core', 'ops'];
  */
 const CashierLayoutInner: React.FC = () => {
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebar();
-  const { settings } = useSettingsStore();
   const { t } = useTranslation('cashier');
   const location = useLocation();
   const isDashboard = location.pathname === '/cashier' || location.pathname === '/cashier/' || location.pathname === '/cashier/tickets';
+  const sidebarCollapsed = collapsed && !mobileOpen;
 
   const CASHIER_NAV = [
     { to: '/cashier', label: t('nav.dashboard', { defaultValue: 'Dashboard' }), icon: Calculator, end: true, group: 'core' },
     { to: '/cashier/tickets', label: t('nav.tickets', { defaultValue: 'Tickets' }), icon: Ticket, end: true, group: 'core' },
-    ...(settings['cashierMenuManagementEnabled'] === 'true'
-      ? [{ to: '/cashier/menu', label: t('nav.menu', { defaultValue: 'Menu Catalog' }), icon: UtensilsCrossed, end: false, group: 'ops' as const }]
-      : []),
+    { to: '/cashier/menu', label: t('nav.menu', { defaultValue: 'Menu Catalog' }), icon: UtensilsCrossed, end: false, group: 'ops' as const },
     { to: '/cashier/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, end: false, group: 'ops' as const },
   ] as const;
 
@@ -58,7 +54,7 @@ const CashierLayoutInner: React.FC = () => {
   return (
     <div
       className={cn(
-        'h-screen w-screen flex overflow-hidden text-foreground relative',
+        'h-screen max-[767px]:h-[100dvh] w-screen flex overflow-hidden text-foreground relative',
         // Warm cream for the live POS dashboard, cool slate for everything else —
         // same convention as the Owner layout.
         isDashboard ? 'bg-[hsl(var(--canvas-warm))]' : 'bg-[hsl(var(--canvas-cool))]',
@@ -85,10 +81,10 @@ const CashierLayoutInner: React.FC = () => {
 
       <motion.aside
         initial={false}
-        animate={{ width: collapsed ? 80 : 260 }}
+        animate={{ width: sidebarCollapsed ? 80 : 260 }}
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
         className={cn(
-          'shrink-0 h-screen flex flex-col z-50 transition-transform duration-300',
+          'shrink-0 h-screen max-[767px]:h-[100dvh] flex flex-col z-50 transition-transform duration-300',
           'bg-[hsl(var(--sidebar))] border-r border-[hsl(var(--shell-border))]',
           'sticky top-0 max-[767px]:fixed max-[767px]:inset-y-0 max-[767px]:left-0',
           mobileOpen ? 'max-[767px]:translate-x-0' : 'max-[767px]:-translate-x-full'
@@ -96,14 +92,24 @@ const CashierLayoutInner: React.FC = () => {
       >
         <div
           className={cn(
-            'h-[72px] sm:h-[88px] px-6 flex items-center shrink-0',
-            collapsed ? 'justify-center' : 'justify-end',
+            'h-[72px] sm:h-[88px] px-6 max-[767px]:px-5 flex items-center shrink-0',
+            sidebarCollapsed ? 'justify-center' : 'justify-end',
           )}
         >
-          <Tooltip label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} side="right">
+          <span className="hidden max-[767px]:block mr-auto text-sm font-semibold tracking-tight text-foreground">
+            Navigation
+          </span>
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="hidden max-[767px]:inline-flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/70 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            aria-label="Close sidebar"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <Tooltip label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} side="right" className="max-[767px]:hidden">
             <button
               onClick={toggle}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
             >
               <PanelLeftRounded className="w-5 h-5" />
@@ -111,10 +117,10 @@ const CashierLayoutInner: React.FC = () => {
           </Tooltip>
         </div>
 
-        <nav className="flex-1 px-4 py-6 overflow-y-auto space-y-6 overflow-x-hidden">
+        <nav className="flex-1 px-4 py-6 max-[767px]:py-5 overflow-y-auto space-y-6 max-[767px]:space-y-5 overflow-x-hidden">
           {grouped.map(({ group, items }) => (
             <div key={group}>
-              {!collapsed && GROUP_LABELS[group] !== 'Insights' && (
+              {!sidebarCollapsed && GROUP_LABELS[group] !== 'Insights' && (
                 <p className="px-4 mb-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                   {GROUP_LABELS[group]}
                 </p>
@@ -126,9 +132,10 @@ const CashierLayoutInner: React.FC = () => {
                   const navLink = (
                     <NavLink
                       to={link.to}
+                      onClick={() => setMobileOpen(false)}
                       end={'end' in link ? link.end : false}
                       className={({ isActive }) =>
-                        `group relative flex items-center ${collapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
+                        `group relative flex items-center ${sidebarCollapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
                           ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
                         }`
@@ -143,7 +150,7 @@ const CashierLayoutInner: React.FC = () => {
                               }`}
                             strokeWidth={2.5}
                           />
-                          {!collapsed && (
+                          {!sidebarCollapsed && (
                             <span className="relative truncate whitespace-nowrap">
                               {link.label}
                             </span>
@@ -152,7 +159,7 @@ const CashierLayoutInner: React.FC = () => {
                       )}
                     </NavLink>
                   );
-                  return collapsed ? (
+                  return sidebarCollapsed ? (
                     <Tooltip key={link.to} label={link.label} side="right" className="block w-full">
                       {navLink}
                     </Tooltip>
@@ -169,15 +176,16 @@ const CashierLayoutInner: React.FC = () => {
         <div
           className={cn(
             'shrink-0 border-t border-[hsl(var(--shell-border))] p-3',
-            collapsed ? 'flex justify-center' : '',
+            sidebarCollapsed ? 'flex justify-center' : '',
           )}
         >
           <NavLink
             to={SYSTEM_SETTINGS.to}
+            onClick={() => setMobileOpen(false)}
             className={({ isActive }) =>
               cn(
                 'group relative flex items-center rounded-2xl text-[14px] font-medium transition-colors',
-                collapsed
+                sidebarCollapsed
                   ? 'justify-center w-12 h-12 mx-auto'
                   : 'gap-3 px-4 h-11 w-full',
                 isActive
@@ -195,7 +203,7 @@ const CashierLayoutInner: React.FC = () => {
                   )}
                   strokeWidth={2.25}
                 />
-                {!collapsed && (
+                {!sidebarCollapsed && (
                   <span className="truncate whitespace-nowrap">
                     {SYSTEM_SETTINGS.label}
                   </span>
@@ -206,7 +214,7 @@ const CashierLayoutInner: React.FC = () => {
         </div>
       </motion.aside>
 
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-screen max-[767px]:h-[100dvh] overflow-hidden">
         <Header />
 
         {/* Main canvas — give non-dashboard pages breathing room around their
