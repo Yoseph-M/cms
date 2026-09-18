@@ -89,6 +89,7 @@
     },
     "cart": {
       "title": "New Order",
+      "line": "{{count}} line",
       "line_one": "{{count}} line",
       "line_other": "{{count}} lines",
       "tableNumber": "Table number",
@@ -131,5 +132,28 @@
     "payment": "1 2 3 — Cash / Card / Mobile",
     "pay": "Enter — Mark paid",
     "close": "Esc — Close / deselect"
+  },
+  "shiftManager": {
+    "startShift": "Start Shift",
+    "starting": "Starting...",
+    "openShiftPrompt": "Please enter your opening cash balance to start serving customers.",
+    "openingCashLabel": "Opening Cash Drawer Amount",
+    "shiftOpenedSuccess": "Shift opened successfully",
+    "shiftOpenedFail": "Failed to open shift",
+    "closeRegister": "Close Register",
+    "closeRegisterPrompt": "Enter the exact amount of cash in your drawer.",
+    "declaredCash": "Declared Cash Amount",
+    "declaredCard": "Declared Card Amount",
+    "declaredMobile": "Declared Mobile Amount",
+    "closingNotes": "Closing Notes (Optional)",
+    "closingNotesPlaceholder": "Any explanations for revenue variances...",
+    "cancel": "Cancel",
+    "closeShift": "Close Shift",
+    "closing": "Closing...",
+    "shiftClosedSuccess": "Shift closed successfully. Pending variance review.",
+    "shiftClosedFail": "Failed to close shift",
+    "checkingStatus": "Checking shift status...",
+    "loadFail": "Failed to load shift status",
+    "endShift": "End Shift"
   }
 }
