@@ -6,6 +6,20 @@ export type OrderStatus = 'SUBMITTED' | 'IN_KITCHEN' | 'SERVED' | 'PAID' | 'CANC
 
 export type PaymentMethod = 'CASH' | 'CARD' | 'MOBILE' | 'NONE';
 
+export type PrintJobStatus = 'QUEUED' | 'PRINTING' | 'PRINTED' | 'FAILED' | 'CANCELLED';
+
+/** Latest kitchen ticket for an order — what actually reached the printer. */
+export interface OrderPrintJob {
+  id: string;
+  station: string;
+  status: PrintJobStatus;
+  attempts: number;
+  maxAttempts: number;
+  lastError?: string | null;
+  createdAt: string;
+  printedAt?: string | null;
+}
+
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LEAVE' | 'HOLIDAY' | 'HALF_DAY';
 
 export interface User {
@@ -60,6 +74,8 @@ export interface Order {
   paidAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Newest kitchen print job, when one exists for this order. */
+  latestPrintJob?: OrderPrintJob | null;
   // Local client-side status flag for offline sync
   isPendingSync?: boolean;
 }
