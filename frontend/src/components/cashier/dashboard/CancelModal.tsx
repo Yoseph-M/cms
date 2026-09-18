@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { cn } from '../../../lib/utils';
@@ -22,11 +22,42 @@ const DEFAULT_QUICK_REASONS = [
   'Kitchen out of item',
 ];
 
+const CUSTOM_REASONS_KEY = 'cms:cancel-reasons';
+const MAX_CUSTOM_REASONS = 10;
+
+/** Read saved custom cancel reasons from localStorage. */
+function loadCustomReasons(): string[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_REASONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((r: unknown) => typeof r === 'string' && r.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Save a new custom reason (de-duped, most-recent-first, capped). */
+function saveCustomReason(reason: string, defaults: string[]): void {
+  const trimmed = reason.trim();
+  if (!trimmed) return;
+  // Don't save if it's one of the built-in defaults
+  if (defaults.some((d) => d.toLowerCase() === trimmed.toLowerCase())) return;
+  const existing = loadCustomReasons();
+  // Don't save duplicates (case-insensitive)
+  const filtered = existing.filter((r) => r.toLowerCase() !== trimmed.toLowerCase());
+  const updated = [trimmed, ...filtered].slice(0, MAX_CUSTOM_REASONS);
+  try {
+    localStorage.setItem(CUSTOM_REASONS_KEY, JSON.stringify(updated));
+  } catch { /* ignore storage errors */ }
+}
+
 /**
  * Cancellation dialog. Cashier-facing: deliberately a little more
  * friction than other dialogs because this is a destructive action.
  *
  * Requires a non-empty reason. Offers quick-pick reasons for speed.
+ * Custom reasons are automatically saved and displayed as quick-picks.
  */
 export const CancelModal: React.FC<CancelModalProps> = ({
   open,
@@ -38,15 +69,35 @@ export const CancelModal: React.FC<CancelModalProps> = ({
   quickReasons = DEFAULT_QUICK_REASONS,
 }) => {
   const [reason, setReason] = useState('');
+  const [customReasons, setCustomReasons] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Load custom reasons when the modal opens
   useEffect(() => {
     if (open) {
       setReason('');
-      // Focus on next tick so the input is mounted
+      setCustomReasons(loadCustomReasons());
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
+
+  // Merge defaults + custom reasons (de-duped)
+  const allReasons = useMemo(() => {
+    const seen = new Set(quickReasons.map((r) => r.toLowerCase()));
+    const extra = customReasons.filter((r) => !seen.has(r.toLowerCase()));
+    return [...quickReasons, ...extra];
+  }, [quickReasons, customReasons]);
+
+  const handleConfirm = useCallback(
+    (r: string) => {
+      const trimmed = r.trim();
+      if (!trimmed) return;
+      // Persist the reason for future use
+      saveCustomReason(trimmed, quickReasons);
+      onConfirm(trimmed);
+    },
+    [onConfirm, quickReasons],
+  );
 
   return (
     <AnimatePresence>
@@ -73,7 +124,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
               {/* Header accent */}
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-rose-500" />
 
-              <div className="p-6">
+              <div className="p-6 max-[767px]:p-4">
                 {completed ? (
                   <div className="text-center py-4">
                     <div className="mx-auto w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600">
@@ -115,27 +166,32 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                   </button>
                 </div>
 
-                {/* Quick reasons */}
+                {/* Quick reasons (defaults + previously used custom reasons) */}
                 <div className="mt-5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
                     Quick reason
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {quickReasons.map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        onClick={() => setReason(q)}
-                        className={cn(
-                          'text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors',
-                          reason === q
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-secondary/40 text-muted-foreground hover:text-foreground hover:border-border',
-                        )}
-                      >
-                        {q}
-                      </button>
-                    ))}
+                    {allReasons.map((q) => {
+                      const isCustom = !quickReasons.includes(q);
+                      return (
+                        <button
+                          key={q}
+                          type="button"
+                          onClick={() => setReason(q)}
+                          className={cn(
+                            'text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors',
+                            reason === q
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : isCustom
+                                ? 'border-dashed border-border bg-secondary/20 text-muted-foreground hover:text-foreground hover:border-border'
+                                : 'border-border bg-secondary/40 text-muted-foreground hover:text-foreground hover:border-border',
+                          )}
+                        >
+                          {q}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -155,7 +211,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && reason.trim() && !busy) onConfirm(reason.trim());
+                      if (e.key === 'Enter' && reason.trim() && !busy) handleConfirm(reason);
                     }}
                     placeholder="e.g. Customer walked out"
                     className={cn(
@@ -174,7 +230,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                   </Button>
                   <Button
                     variant="destructive"
-                    onClick={() => onConfirm(reason.trim())}
+                    onClick={() => handleConfirm(reason)}
                     disabled={!reason.trim() || busy}
                     className="shadow-sm"
                   >
