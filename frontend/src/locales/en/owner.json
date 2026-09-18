@@ -7,9 +7,12 @@
     "expenses": "Expenses",
     "attendance": "Attendance",
     "payroll": "Payroll",
+    "settlements": "Settlements",
     "audit": "Audit Logs",
     "printers": "LAN Printers",
     "settings": "Settings",
+    "systemAdmin": "System Admin",
+    "systemSettings": "System Settings",
     "consoleSubtitle": "Owner Console",
     "openSidebar": "Open sidebar",
     "closeSidebar": "Close sidebar",
@@ -85,10 +88,6 @@
       "access": "Access & permissions"
     },
     "sections": {
-      "business": {
-        "title": "Business profile",
-        "description": "Name, address, and currency shown on receipts and reports."
-      },
       "language": {
         "title": "Language",
         "description": "Choose how the app reads. Saved to your account so it follows you across devices."
