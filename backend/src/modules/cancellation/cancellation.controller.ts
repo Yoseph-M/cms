@@ -67,6 +67,12 @@ export async function approveCancellationRequest(req: AuthenticatedRequest, res:
   } catch (error: any) {
     logger.error({ error, requestId, approvedById }, 'Cancellation approval failed');
 
+    // Typed errors carry their own HTTP status (AppError.statusCode) —
+    // e.g. conflicts surface as 409, not a generic 400/500.
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    }
+
     if (error.message.includes('not found')) {
       return res.status(404).json({ error: error.message });
     }
@@ -103,6 +109,11 @@ export async function rejectCancellationRequest(req: AuthenticatedRequest, res: 
     return res.json(request);
   } catch (error: any) {
     logger.error({ error, requestId, approvedById }, 'Cancellation rejection failed');
+
+    // Typed errors carry their own HTTP status (AppError.statusCode).
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    }
 
     if (error.message.includes('not found')) {
       return res.status(404).json({ error: error.message });
