@@ -6,6 +6,7 @@ import { useSocketStore } from './store/socketStore';
 import { useOfflineSyncStore } from './store/offlineSyncStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useThemeStore } from './store/themeStore';
+import { useHardwarePrinter } from './hooks/useHardwarePrinter';
 
 import { ToastContainer } from './components/common/ToastContainer';
 
@@ -15,8 +16,6 @@ import { OwnerLayout } from './components/layout/OwnerLayout';
 import { ManagerLayout } from './components/layout/ManagerLayout';
 import { CashierLayout } from './components/layout/CashierLayout';
 
-
-import { ShiftManager } from './components/cashier/ShiftManager';
 
 import { LoginPage } from './pages/login/LoginPage';
 import { NotFoundPage } from './pages/error/NotFoundPage';
@@ -118,20 +117,11 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
 }) => {
   const { user, isAuthenticated, isLoading } = useAuthStore();
 
-  // A hard refresh wipes the in-memory access token, so every reload has to
-  // silently restore the session from the HttpOnly refresh cookie. When we
-  // already know who the user is (cached) and the restore is still running,
-  // keep the page mounted (layout + content) and let the data reload in place —
-  // redirecting to /login mid-bootstrap is what reads as "it logs me out when
-  // I refresh". Requests fired before the refresh finishes get a 401, which
-  // axiosClient resolves by waiting on the single-flight /auth/refresh and
-  // retrying with the new access token.
-  if (isLoading && user && user.role === allowedRole) {
-    return <>{children}</>;
-  }
-
-  // Still bootstrapping and no cached user yet — nothing to show.
-  if (isLoading && !user) {
+  // Do not mount protected pages until session restoration has finished.  A
+  // cached user has no in-memory access token after a hard reload; mounting
+  // their page early starts protected requests that inevitably produce 401s
+  // before the refresh cookie can restore that token.
+  if (isLoading) {
     return <PageSkeleton />;
   }
 
@@ -186,6 +176,8 @@ export const AppRoutes: React.FC = () => {
   const { connect, disconnect } = useSocketStore();
   const { initListeners } = useOfflineSyncStore();
   const { settings, fetchSettings } = useSettingsStore();
+
+  useHardwarePrinter();
 
   // Bootstrap session on app load - uses HttpOnly refresh cookie
   useEffect(() => {
@@ -258,7 +250,7 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<OwnerDashboard />} />
-          <Route path="menu" element={<MenuCatalog canEdit={false} showAvailability={false} />} />
+          <Route path="menu" element={<MenuCatalog canEdit />} />
           <Route path="finance" element={<OwnerFinance />} />
           <Route path="expenses" element={<OwnerExpenses />} />
           <Route path="attendance" element={<AttendanceCalendar isOwner />} />
@@ -284,7 +276,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="staff" element={<Lazy><ManagerStaff /></Lazy>} />
           <Route path="attendance" element={<Lazy><ManagerAttendance /></Lazy>} />
           <Route path="reconciliation" element={<Lazy><OperationalReconciliation /></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit={false} showAvailability={false} /></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit /></Lazy>} />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
           <Route path="expenses" element={<Lazy><ManagerExpenses /></Lazy>} />
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
@@ -301,9 +293,9 @@ export const AppRoutes: React.FC = () => {
             </RoleGuard>
           }
         >
-          <Route index element={<Lazy><ShiftManager><CashierDashboard /></ShiftManager></Lazy>} />
-          <Route path="tickets" element={<Lazy><ShiftManager><CashierTicketsPage /></ShiftManager></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit={settings['cashierMenuManagementEnabled'] === 'true'} allowCsvImport={false} /></Lazy>} />
+          <Route index element={<Lazy><CashierDashboard /></Lazy>} />
+          <Route path="tickets" element={<Lazy><CashierTicketsPage /></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit={settings['cashierMenuEditRestricted'] !== 'true'} /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="settings" element={<Lazy><CashierSettings /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
