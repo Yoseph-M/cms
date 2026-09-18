@@ -2,7 +2,7 @@ import { prisma } from './prisma.service';
 import { createNotification } from './notification.service';
 import { emitToLiveOrders } from './socket.service';
 import { recordAudit, SYSTEM_USER_ID } from './audit.service';
-import { Role, OrderStatus, SettlementStatus } from '@prisma/client';
+import { Role, OrderStatus, SettlementStatus, PaymentMethod } from '@prisma/client';
 import { logger } from '../utils/logger';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -48,7 +48,7 @@ async function checkMissingAttendance() {
     await createNotification({
       type: 'MISSING_ATTENDANCE',
       severity: 'warning',
-      message: `${user.name} hasn't clocked in today (${formattedDate}). Please mark their attendance.`,
+      message: `${user.name} has no attendance marked for ${formattedDate}. Tap to mark it.`,
       relatedId: user.id,
     });
   }
@@ -95,7 +95,7 @@ async function checkPayrollPeriodDue() {
     await createNotification({
       type: 'PAYROLL_PERIOD_DUE',
       severity: 'info',
-      message: `Payroll reminder: ${user.name}'s salary for ${monthName} ${periodYear} hasn't been recorded yet.`,
+      message: `${user.name}'s ${monthName} ${periodYear} salary hasn't been recorded yet.`,
       relatedId: user.id,
     });
   }
@@ -120,20 +120,31 @@ async function checkUnavailableMenuItems() {
     await createNotification({
       type: 'MENU_ITEM_UNAVAILABLE',
       severity: 'info',
-      message: `"${item.name}" has been marked as unavailable for over a week. Consider making it available again or removing it from the menu.`,
+      message: `${item.name} has been off the menu for over a week. Make it available again, or remove it.`,
       relatedId: item.id,
     });
   }
 }
 
+/**
+ * Stuck / failed kitchen tickets are owned by the print dispatch service, which
+ * alerts within ~3 minutes and marks the job FAILED after ~10 — see
+ * `print-dispatch.service.ts`.
+ */
+
+/** Open orders with no settlement inside this window are auto-cancelled. */
+export const AUTO_CANCEL_WINDOW_HOURS = 3;
+
+const AUTO_CANCEL_REASON = `Auto-cancelled: no settlement received within ${AUTO_CANCEL_WINDOW_HOURS} hours`;
+
 export async function autoCancelStaleOrders() {
-  const twoHoursAgo = new Date(Date.now() - 2 * HOUR_MS);
+  const staleCutoff = new Date(Date.now() - AUTO_CANCEL_WINDOW_HOURS * HOUR_MS);
   
   const staleOrders = await prisma.order.findMany({
     where: {
       status: { notIn: [OrderStatus.PAID, OrderStatus.CANCELLED] },
       settlementStatus: { not: SettlementStatus.SETTLED },
-      createdAt: { lt: twoHoursAgo }
+      createdAt: { lt: staleCutoff }
     },
     include: {
       waiter: { select: { id: true, name: true } },
@@ -153,7 +164,7 @@ export async function autoCancelStaleOrders() {
         where: { id: order.id },
         data: {
           status: OrderStatus.CANCELLED,
-          cancellationReason: 'Auto-cancelled: No settlement received within 2 hours',
+          cancellationReason: AUTO_CANCEL_REASON,
         },
         include: {
           waiter: { select: { id: true, name: true } },
@@ -167,8 +178,35 @@ export async function autoCancelStaleOrders() {
         actionType: 'ORDER_CANCELLED',
         targetType: 'Order',
         targetId: order.id,
-        details: { reason: 'Auto-cancelled: No settlement received within 2 hours', note: 'System background job' },
+        details: { reason: AUTO_CANCEL_REASON, note: 'System background job' },
       });
+
+      // Record a void settlement so the auto-cancellation shows up in the
+      // settlement history alongside manual cancellations. Non-critical: the
+      // cancellation itself has already succeeded either way.
+      try {
+        const alreadyLogged = await prisma.settlement.findFirst({
+          where: { orderId: order.id, reference: 'VOID' },
+          select: { id: true },
+        });
+        // Attribute the void record to a real user (the cashier or waiter on
+        // the order) — settlements carry a required relation to User.
+        const recordedById = order.cashierId ?? order.waiterId;
+        if (!alreadyLogged && recordedById) {
+          await prisma.settlement.create({
+            data: {
+              orderId: order.id,
+              amountMinor: Math.max(order.totalAmount, 0),
+              method: PaymentMethod.NONE,
+              reference: 'VOID',
+              note: AUTO_CANCEL_REASON,
+              recordedById,
+            },
+          });
+        }
+      } catch (settlementErr) {
+        logger.warn({ err: settlementErr, orderId: order.id }, 'Failed to record void settlement for auto-cancelled order');
+      }
 
       emitToLiveOrders('order:cancelled', updated as any);
       logger.info({ orderId: order.id }, 'Auto-cancelled stale order');
