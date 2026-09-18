@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { formatCurrency, formatCurrencyCompact } from '../utils/currency';
 
 describe('formatCurrency', () => {
-  it('renders grouped amounts with two decimals', () => {
-    expect(formatCurrency(1234.5)).toBe('1,234.50 ETB');
+  it('renders grouped amounts with no cents', () => {
+    expect(formatCurrency(1234.5)).toBe('1,235 ETB');
+    expect(formatCurrency(1200)).toBe('1,200 ETB');
+    expect(formatCurrency(0)).toBe('0 ETB');
   });
 });
 
