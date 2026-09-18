@@ -40,9 +40,12 @@
     "expenses": "ወጪዎች",
     "attendance": "የስራ ክትትል",
     "payroll": "የደመወዝ ክፍያ",
+    "settlements": "ክፍያዎች",
     "audit": "የኦዲት መዝገቦች",
     "printers": "ፕሪንተሮች",
     "settings": "ቅንብሮች",
+    "systemAdmin": "የስርዓት አስተዳደር",
+    "systemSettings": "የስርዓት ቅንብሮች",
     "consoleSubtitle": "የባለቤት መቆጣጠሪያ",
     "openSidebar": "የጎን አሞሌ ክፈት",
     "closeSidebar": "የጎን አሞሌ ዝጋ",
@@ -88,10 +91,6 @@
       "access": "መዳረሻ እና ፈቃዶች"
     },
     "sections": {
-      "business": {
-        "title": "የንግድ መገለጫ",
-        "description": "በደረሰኝ እና ሪፖርቶች ላይ የሚታይ ስም፣ አድራሻ እና ምንዛሬ።"
-      },
       "language": {
         "title": "ቋንቋ",
         "description": "መተግበሪያው እንዴት እንደሚወራ ይምረጡ። ወደ መለያዎ ይቀመጣል።"
