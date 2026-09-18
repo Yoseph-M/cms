@@ -276,7 +276,7 @@ export const ProfilePage: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-fade-in">
       {/* ═══════════ Executive Bento Cover & Identity Station ═══════════ */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6 shadow-sm sm:p-8">
+      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6 shadow-sm sm:p-8 max-[767px]:p-4">
         {/* Ambient Glow Aura */}
         <div
           aria-hidden
@@ -409,7 +409,7 @@ export const ProfilePage: React.FC = () => {
         {/* Right Column: Personal Details & Password Forms */}
         <main className="space-y-6">
           {/* Card 1: Personal Details Studio */}
-          <section className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md sm:p-7">
+          <section className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md sm:p-7 max-[767px]:p-4">
             <div className="flex items-start justify-between gap-4 border-b border-border/50 pb-5 mb-6">
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 shadow-sm">
@@ -571,7 +571,7 @@ export const ProfilePage: React.FC = () => {
           </section>
 
           {/* Card 2: Security & Password Station */}
-          <section className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md sm:p-7">
+          <section className="rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:shadow-md sm:p-7 max-[767px]:p-4">
             <div className="flex items-start justify-between gap-4 border-b border-border/50 pb-5 mb-6">
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 ring-1 ring-inset ring-violet-500/20 shadow-sm">
