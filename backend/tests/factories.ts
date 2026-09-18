@@ -8,7 +8,7 @@
  * - Proper relationships and constraints
  */
 
-import { PrismaClient, Role, OrderStatus, SettlementStatus, ShiftStatus } from '@prisma/client';
+import { PrismaClient, Role, OrderStatus, SettlementStatus, ShiftStatus, PrintTransport } from '@prisma/client';
 import crypto from 'crypto';
 
 const uuid = () => crypto.randomBytes(12).toString('hex');
@@ -46,7 +46,8 @@ export async function createUser(
       name: overrides.name || `Test User ${Date.now()}`,
       role: overrides.role || Role.CASHIER,
       phone: overrides.phone || `+1555${Date.now().toString().slice(-7)}`,
-      email: overrides.email || `test-${uuid().slice(0, 8)}@pos.com`,
+      // Accounts are identified by phone/username; the legacy `email` option is
+      // accepted but intentionally ignored (the User model has no email field).
       salaryAmount: overrides.salaryAmount ?? 3000,
       passwordHash: overrides.passwordHash || defaultPasswordHash,
     },
@@ -438,6 +439,7 @@ export async function createPrinterStation(
   return prisma.printerStation.create({
     data: {
       station: overrides.station || 'KITCHEN',
+      transport: PrintTransport.NETWORK,
       ip: overrides.ip || '192.168.1.100',
       port: overrides.port || 9100,
     },
