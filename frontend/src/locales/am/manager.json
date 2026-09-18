@@ -1,4 +1,11 @@
 {
+  "nav": {
+    "dashboard": "ዳሽቦርድ", "staff": "ሠራተኞች", "people": "ሰዎች", "menu": "የምናሌ ዝርዝር",
+    "reconciliation": "የቀን መጨረሻ", "settlements": "ክፍያዎች", "expenses": "ወጪዎች",
+    "attendance": "መገኘት", "payroll": "ደመወዝ", "systemSettings": "የስርዓት ቅንብሮች",
+    "groups": { "core": "አጠቃላይ እይታ", "people": "ሰዎች እና የሰው ኃይል", "ops": "ሥራዎች" }
+  },
+  "staff": { "title": "የሠራተኞች ዝርዝር", "description": "የቡድንዎን መገኘት እና ሁኔታ ያስተዳድሩ።" },
   "dashboard": {
     "subtitle": "ሥራ አስኪያጅ",
     "title": "የሰራተኞች ዝርዝር",
@@ -68,9 +75,7 @@
     },
     "filters": {
       "category": "ምድብ",
-      "allCategories": "ሁሉም ምድቦች",
-      "from": "ከ",
-      "to": "እስከ"
+      "allCategories": "ሁሉም ምድቦች"
     },
     "table": {
       "date": "ቀን",
@@ -107,6 +112,16 @@
       "deleted": "ወጪ ተሰርዟል",
       "deleteFailed": "መሰረዝ አልተሳካም",
       "loadFailed": "ወጪዎችን መጫን አልተቻለም።"
+    },
+    "payrollAuto": {
+      "hint": "የደመወዝ ወጪዎች በወር ይደራጃሉ። በዚህ ወር ጠቅላላ የተከፈለው፦ ",
+      "empty": "እስካሁን የደመወዝ መዝገብ የለም። መዝገቦች ሲቀመጡ ወርሃዊ ድምር እዚህ ይታያል።"
+    },
+    "payrollHistory": {
+      "title": "የደመወዝ ታሪክ",
+      "subtitle": "እያንዳንዱ ወር በራሱ መስመር ይታያል — ከተመዘገበ ደመወዝ በራስ-ሰር ይሞላል።",
+      "empty": "እስካሁን የደመወዝ መዝገብ የለም። መዝገብ ሲቀመጥ ወርሃዊ ድምር እዚህ ይታያል።",
+      "average": "አማካይ"
     }
   },
   "toasts": {
