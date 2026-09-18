@@ -5,7 +5,7 @@ import { SettingsRow } from '../ui/SettingsRow';
 import { useToastStore } from '../../store/toastStore';
 import { axiosClient } from '../../api/axiosClient';
 import { useSettingsStore } from '../../store/settingsStore';
-import { LayoutDashboard, ShieldCheck, UtensilsCrossed, TimerReset } from 'lucide-react';
+import { LayoutDashboard, ShieldCheck } from 'lucide-react';
 
 interface FeatureToggle {
   key: string;
@@ -35,25 +35,6 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
     icon: ShieldCheck,
     iconClassName: 'text-emerald-600 dark:text-emerald-400',
     iconBgClassName: 'bg-emerald-500/10',
-  },
-  {
-    key: 'cashierMenuManagementEnabled',
-    name: 'Cashier Menu Management',
-    description: 'Allow cashiers to add, edit, or toggle availability of menu items.',
-    action: 'Cashiers can now',
-    icon: UtensilsCrossed,
-    iconClassName: 'text-orange-600 dark:text-orange-400',
-    iconBgClassName: 'bg-orange-500/10',
-  },
-  {
-    key: 'shiftManagementEnabled',
-    name: 'Shift Management',
-    description:
-      'Require cashiers to open and close shifts for cash drawer tracking. Disable for small cafés without shift-based operations.',
-    action: 'Cashiers must now',
-    icon: TimerReset,
-    iconClassName: 'text-violet-600 dark:text-violet-400',
-    iconBgClassName: 'bg-violet-500/10',
   },
 ];
 
