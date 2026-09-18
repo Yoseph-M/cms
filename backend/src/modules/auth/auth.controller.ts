@@ -163,16 +163,41 @@ export async function getUsersByRole(req: Request, res: Response) {
 }
 
 /**
+ * Resolve a typed username to an account, forgiving the two mistakes people
+ * make on a shared terminal: surrounding whitespace and the wrong case.
+ *
+ * The exact-match lookup stays first so normal logins keep the unique-index
+ * fast path; the case-insensitive sweep only runs when that misses (Prisma's
+ * MongoDB connector has no `mode: 'insensitive'` filter).
+ */
+async function findUserByUsername(rawUsername: unknown) {
+  const username = String(rawUsername ?? '').trim();
+  if (!username) return { username, user: null };
+
+  const exact = await prisma.user.findUnique({ where: { username } });
+  if (exact) return { username, user: exact };
+
+  const lower = username.toLowerCase();
+  const candidates = await prisma.user.findMany({
+    where: { username: { not: null } },
+    select: { id: true, username: true },
+  });
+  const match = candidates.find((c) => c.username?.trim().toLowerCase() === lower);
+  if (!match) return { username, user: null };
+
+  const caseInsensitiveMatch = await prisma.user.findUnique({ where: { id: match.id } });
+  return { username, user: caseInsensitiveMatch };
+}
+
+/**
  * POST /auth/login
  * Password-based authentication for ALL roles.
  * Uses standard lockout logic if brute forced.
  */
 export async function login(req: Request, res: Response) {
-  const { username, password } = req.body;
+  const { password } = req.body;
 
-  const user = await prisma.user.findUnique({
-    where: { username },
-  });
+  const { username, user } = await findUserByUsername(req.body.username);
 
   if (!user || !user.isActive) {
     logger.info({ username, found: !!user, isActive: user?.isActive, role: user?.role, outcome: 'failure' }, 'auth.login.failure');
