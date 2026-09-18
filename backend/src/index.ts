@@ -5,6 +5,7 @@ import { connectDatabase, prisma } from './services/prisma.service';
 import { initSocketService } from './services/socket.service';
 import { startNotificationScheduler } from './services/notification.scheduler';
 import { printJobRecoveryService } from './services/print-job-recovery.service';
+import { printDispatchService } from './services/print-dispatch.service';
 import { logger } from './utils/logger';
 import { requireTransactionSupport, detectTransactionSupport, getTransactionCapability } from './utils/transaction';
 import { initBusinessTimezone } from './utils/businessTime';
@@ -80,6 +81,9 @@ async function startServer() {
   if (config.nodeEnv !== 'test') {
     printJobRecoveryService.start();
     logger.info('Print job recovery service started');
+
+    // Server-side kitchen printing (NETWORK printers) + stuck-ticket escalation.
+    printDispatchService.start();
   }
 
   server.listen(config.port, () => {
