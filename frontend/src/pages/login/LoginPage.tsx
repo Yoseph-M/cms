@@ -8,13 +8,32 @@ import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
 import { applyUserLanguage } from '../../i18nUserPrefs';
 
+/** Last user to sign in on this device — pre-filled so shifts change fast. */
+const LAST_USERNAME_KEY = 'pos.lastUsername';
+
+function readLastUsername(): string {
+  try {
+    return localStorage.getItem(LAST_USERNAME_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberLastUsername(value: string): void {
+  try {
+    localStorage.setItem(LAST_USERNAME_KEY, value);
+  } catch {
+    /* storage unavailable (private mode) — not worth failing the login over */
+  }
+}
+
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const { setAuth, isAuthenticated, user } = useAuthStore();
   const { addToast } = useToastStore();
   const { t } = useTranslation('auth');
 
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(readLastUsername);
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -39,14 +58,18 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) return;
+    // Usernames are typed by hand on shared terminals — never send stray
+    // whitespace to the server, and don't make the user match its casing.
+    const cleanUsername = username.trim();
+    if (!cleanUsername || !password) return;
 
     setIsLoading(true);
     setErrorMsg('');
 
     try {
-      const res = await axiosClient.post('/auth/login', { username, password });
+      const res = await axiosClient.post('/auth/login', { username: cleanUsername, password });
       const { user: authUser, accessToken } = res.data;
+      rememberLastUsername(cleanUsername);
 
       // Restore THIS user's preferred language on login (falls back to the
       // device language when the account has no preference — never keep the
@@ -162,9 +185,18 @@ export const LoginPage: React.FC = () => {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 onFocus={() => setFocusedField('username')}
-                onBlur={() => setFocusedField(null)}
-                placeholder={t('username') || 'usermane'}
+                onBlur={() => {
+                  setFocusedField(null);
+                  // Drop trailing/leading spaces as soon as the field is left,
+                  // so the value shown is the one that will be sent.
+                  setUsername((current) => current.trim());
+                }}
+                placeholder={t('fields.username')}
                 autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                autoFocus={!username}
                 required
                 className="login-input flex-1 min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
               />
@@ -198,6 +230,7 @@ export const LoginPage: React.FC = () => {
                 onBlur={() => setFocusedField(null)}
                 placeholder={t('fields.password')}
                 autoComplete="off"
+                autoFocus={Boolean(username)}
                 required
                 className="login-input flex-1 min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
               />
@@ -218,7 +251,7 @@ export const LoginPage: React.FC = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isLoading || !username || !password}
+              disabled={isLoading || !username.trim() || !password}
               className={cn(
                 'relative w-full flex items-center justify-center gap-2 h-12 rounded-full',
                 'bg-primary text-primary-foreground hover:opacity-90 text-sm font-semibold',
