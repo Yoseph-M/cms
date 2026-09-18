@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkles, ShieldCheck } from 'lucide-react';
 import { SettingsShell, type SettingsShellCategory } from '../../components/settings/SettingsShell';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
-import { CashierOrderingToggle } from '../../components/settings/CashierOrderingToggle';
+import { MenuEditToggle } from '../../components/settings/MenuEditToggle';
 import { TableCountSetting } from '../../components/settings/TableCountSetting';
 import { WorkOnSundaysToggle } from '../../components/settings/WorkOnSundaysToggle';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
@@ -61,19 +61,19 @@ export const ManagerSettings: React.FC = () => {
     {
       id: 'access',
       label: 'Operations & Access',
-      description: 'Dining room tables, cashier ordering, and schedule settings',
+      description: 'Menu editing, dining room tables, and schedule settings',
       icon: ShieldCheck,
       iconClassName: 'text-emerald-600 dark:text-emerald-400',
       iconBgClassName: 'bg-emerald-500/10',
       items: [
         {
-          id: 'ordering-tables',
-          title: 'Cashier Ordering & Dining Tables',
-          description: 'Control cashier checkout permissions and dining room table allocation.',
-          keywords: ['ordering', 'cashier', 'tables', 'pos', 'capacity'],
+          id: 'menu-tables',
+          title: 'Menu Editing & Dining Tables',
+          description: 'Control whether cashiers can change menu items, and set dining room table allocation.',
+          keywords: ['menu', 'cashier', 'tables', 'capacity', 'edit'],
           content: (
             <div className="space-y-4">
-              <CashierOrderingToggle />
+              <MenuEditToggle />
               <div className="border-t border-border/50 pt-4">
                 <TableCountSetting />
               </div>
