@@ -2,8 +2,9 @@
  * Daily Close Service
  * 
  * Manages the End of Day process.
- * Verifies all shifts are closed, all variances reviewed, and integrity checks pass
- * before finalizing the day's operations.
+ * Verifies integrity checks pass before finalizing the day's operations.
+ * Shift management has been removed, so no open shifts or variance reviews
+ * stand between the operator and the daily close.
  * 
  * CRITICAL SECURITY: Daily Close Totals are SERVER-AUTHORITATIVE
  * ===============================================================
@@ -23,7 +24,7 @@
 import { prisma } from '../../services/prisma.service';
 import { recordAudit, SYSTEM_USER_ID } from '../../services/audit.service';
 import { emitToRoom } from '../../services/socket.service';
-import { DailyCloseStatus, ShiftStatus, VarianceReviewStatus } from '@prisma/client';
+import { DailyCloseStatus } from '@prisma/client';
 import { executeInCriticalTransaction } from '../../utils/transaction';
 import { ValidationError, ConflictError, NotFoundError } from '../../utils/errors';
 import { runIntegrityChecks } from '../integrity/integrity.service';
@@ -134,44 +135,17 @@ export async function startDailyClose(params: StartDailyCloseParams) {
     }
   }
 
-  // 2. Check for open shifts
-  const openShifts = await prisma.cashierShift.count({
-    where: { status: { in: [ShiftStatus.OPEN, ShiftStatus.PENDING_REVIEW] } },
-  });
-
-  if (openShifts > 0) {
-    throw new ConflictError(
-      `Cannot start daily close. ${openShifts} shifts are still open or pending review.`,
-      'SHIFTS_NOT_CLOSED'
-    );
-  }
-
-  // 3. Verify no unresolved variance reviews
-  const pendingReviews = await prisma.varianceReview.count({
-    where: { reviewStatus: VarianceReviewStatus.PENDING },
-  });
-
-  if (pendingReviews > 0) {
-    throw new ConflictError(
-      `Cannot start daily close. ${pendingReviews} variance reviews are pending.`,
-      'VARIANCES_PENDING'
-    );
-  }
-
   // Calculate aggregates using server-authoritative date boundaries
   const todayStart = getBusinessDayStart(new Date(businessDate));
   const todayEnd = getBusinessDayEnd(new Date(businessDate));
 
   // Query ALL relevant records for the business day (single source of truth)
-  const [orders, settlements, shifts] = await Promise.all([
+  const [orders, settlements] = await Promise.all([
     prisma.order.findMany({
       where: { createdAt: { gte: todayStart, lte: todayEnd } },
     }),
     prisma.settlement.findMany({
       where: { createdAt: { gte: todayStart, lte: todayEnd } },
-    }),
-    prisma.cashierShift.findMany({
-      where: { openedAt: { gte: todayStart, lte: todayEnd } },
     }),
   ]);
 
@@ -188,10 +162,12 @@ export async function startDailyClose(params: StartDailyCloseParams) {
   const mobileSettledMinor = settlements.filter(s => s.method === 'MOBILE').reduce((sum, s) => sum + s.amountMinor, 0);
   const otherSettledMinor = settlements.filter(s => s.method === 'NONE').reduce((sum, s) => sum + s.amountMinor, 0);
 
-  // Cash drawer totals from shifts
-  const cashExpectedMinor = shifts.reduce((sum, s) => sum + (s.expectedCashMinor || 0), 0);
-  const cashDeclaredMinor = shifts.reduce((sum, s) => sum + (s.declaredCashMinor || 0), 0);
-  const cashVarianceMinor = shifts.reduce((sum, s) => sum + (s.varianceMinor || 0), 0);
+  // Cash drawer totals. Without shifts there is no separate physical count, so
+  // the cash actually received from customers is the expected drawer figure and
+  // there is no variance to report.
+  const cashExpectedMinor = cashSettledMinor;
+  const cashDeclaredMinor = cashSettledMinor;
+  const cashVarianceMinor = 0;
 
   // Order status counts
   const unsettledOrderCount = orders.filter(o => o.settlementStatus === 'UNSETTLED').length;
