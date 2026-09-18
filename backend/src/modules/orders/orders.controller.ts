@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { emitToLiveOrders } from '../../services/socket.service';
-import { enqueueKitchenPrintJob, processTCPPrintJob } from '../../services/printer.service';
+import { enqueueKitchenPrintJob, notifyKitchenPrintFailure } from '../../services/printer.service';
 import { OrderStatus, PaymentMethod, Role, PrintTransport } from '@prisma/client';
 import { executeInTransaction } from '../../utils/transaction';
 import { canTransition } from '../../utils/orderStateMachine';
@@ -12,14 +12,8 @@ import { getBusinessDayStart, getBusinessDayEnd, parseBusinessDate } from '../..
 export async function createOrder(req: AuthenticatedRequest, res: Response) {
   const callerRole = req.user!.role as Role;
 
-  if (callerRole === Role.CASHIER) {
-    const setting = await prisma.systemSetting.findUnique({ where: { key: 'cashierOrderingEnabled' } });
-    if (setting?.value !== 'true') {
-      return res.status(403).json({
-        error: 'Cashier order creation is currently disabled. Ask a Manager or Owner to enable it in Settings.',
-      });
-    }
-  }
+  // Cashiers can always create orders — POS ordering is no longer gated behind
+  // a system setting.
 
   // Determine the waiter and cashier for this order.
   // If the caller is a non-waiter role (CASHIER, MANAGER, OWNER), they must
@@ -132,6 +126,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   }
 
   // Enqueue kitchen print job OUTSIDE the transaction to avoid timeout
+  let printWarning: string | null = null;
   try {
     const printJob = await enqueueKitchenPrintJob(prisma, {
       id: order.id,
@@ -145,17 +140,21 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     if (printJob) {
       createdPrintJobId = printJob.id;
       printTransport = printJob.transport;
+    } else {
+      printWarning = 'No kitchen printer has been set up yet.';
     }
   } catch (printErr) {
-    // Print failure should never block order creation
+    // Print failure should never block order creation — but it must never be
+    // silent either. The order is created and visible on the Tickets page.
     console.error('Failed to enqueue kitchen print job:', printErr);
+    printWarning = 'The kitchen ticket could not be sent to the printer.';
   }
 
-  // Trigger server-side kitchen thermal print over TCP if legacy
-  if (createdPrintJobId && printTransport === PrintTransport.TCP) {
-    processTCPPrintJob(createdPrintJobId).catch(e => console.error(e));
-  } else if (createdPrintJobId && printTransport === PrintTransport.WINDOWS) {
+  if (createdPrintJobId) {
     emitToLiveOrders('printJob:queued', { printJobId: createdPrintJobId, station: 'kitchen' });
+  } else if (printWarning) {
+    // Banner for the cashier + notification for Owner/Manager.
+    await notifyKitchenPrintFailure(order, printWarning);
   }
 
   // Broadcast live event to Socket.io orders room
@@ -164,6 +163,8 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   return res.status(201).json({
     isNew: true,
     order,
+    printQueued: Boolean(createdPrintJobId),
+    printWarning,
   });
 }
 
@@ -209,6 +210,22 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
         waiter: { select: { id: true, name: true } },
         cashier: { select: { id: true, name: true } },
         cancelledBy: { select: { id: true, name: true } },
+        // Newest kitchen ticket per order — lets the Tickets page show whether
+        // the ticket actually reached paper (queued / printed / failed).
+        printJobs: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            station: true,
+            status: true,
+            attempts: true,
+            maxAttempts: true,
+            lastError: true,
+            createdAt: true,
+            printedAt: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       skip,
@@ -217,8 +234,13 @@ export async function getOrders(req: AuthenticatedRequest, res: Response) {
     prisma.order.count({ where: whereClause })
   ]);
 
+  const data = orders.map(({ printJobs, ...order }) => ({
+    ...order,
+    latestPrintJob: printJobs?.[0] ?? null,
+  }));
+
   return res.json({
-    data: orders,
+    data,
     pagination: {
       page: pageNum,
       limit: pageSize,
@@ -398,6 +420,23 @@ export async function cancelOrder(req: AuthenticatedRequest, res: Response) {
     return res.status(409).json({ error: 'Concurrent update detected. Please try again.' });
   }
 
+  // Create a void settlement record so the cancellation is visible in the settlement history audit log
+  // This is non-critical — if it fails, the cancellation itself should still succeed
+  try {
+    await prisma.settlement.create({
+      data: {
+        orderId: id,
+        amountMinor: Math.max(order.totalAmount, 0), // log the original value for context
+        method: PaymentMethod.NONE,     // NONE maps to VOID/CANCELLED on the frontend
+        reference: 'VOID',
+        note: `Cancelled: ${reason || order.cancellationReason || 'Cancelled by staff'}`,
+        recordedById: cancelledById,
+      },
+    });
+  } catch (settlementErr) {
+    console.warn('[cancelOrder] Failed to create void settlement record:', settlementErr);
+  }
+
   const updated = await prisma.order.findUnique({
     where: { id },
     include: {
@@ -444,9 +483,7 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
     items: order.items as any,
   });
 
-  if (printJob?.transport === PrintTransport.TCP) {
-    processTCPPrintJob(printJob.id).catch(e => console.error(e));
-  } else if (printJob?.transport === PrintTransport.WINDOWS) {
+  if (printJob) {
     emitToLiveOrders('printJob:queued', { printJobId: printJob.id, station: 'kitchen' });
   }
 
