@@ -181,7 +181,8 @@ export type SocketEventName =
   | 'settlement:recorded'
   | 'menu:updated'
   | 'menu:availabilityChanged'
-  | 'settings:cashierOrderingChanged'
+  | 'settings:menuEditChanged'
+  | 'settings:tableCountChanged'
   | 'printer:recovered'
   | 'printer:failed'
   | 'notification:new'
@@ -191,9 +192,6 @@ export type SocketEventName =
   | 'printJob:recovered'
   | 'printJob:failed'
   | 'integrity:alert'
-  | 'variance:reviewed'
-  | 'shift:opened'
-  | 'shift:closed'
   | 'daily-close:completed'
   | 'finance:updated';
 
