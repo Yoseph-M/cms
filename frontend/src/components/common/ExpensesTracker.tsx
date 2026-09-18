@@ -13,6 +13,8 @@ import { AlertDialog } from '../ui/AlertDialog';
 import { CalendarDays, FilterX, Pencil, Plus, ReceiptText, Tag, Trash2, Wallet } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { usePayrollQuery } from '../../hooks/useCachedQueries';
+import { groupPayrollByMonth, type PayrollLedgerRecord } from './PayrollHistoryCard';
 
 type ExpenseCategory =
   | 'RENT'
@@ -28,8 +30,13 @@ interface Expense {
   amount: number;
   description: string;
   date: string;
-  recordedBy: { id: string; name: string };
-  createdAt: string;
+  recordedBy: { id: string; name: string } | null;
+  createdAt?: string;
+  /** Derived, read-only row (the payroll summary) rather than a stored record. */
+  isAggregated?: boolean;
+  /** Full payroll total behind the payroll row's average, shown on hover. */
+  payrollTotal?: number;
+  payrollMonths?: number;
 }
 
 const CATEGORIES: ExpenseCategory[] = [
@@ -40,6 +47,13 @@ const CATEGORIES: ExpenseCategory[] = [
   'PAYROLL',
   'OTHER',
 ];
+
+/**
+ * Payroll is written straight from the payroll ledger, so it is filtered for on
+ * but never entered (or edited) by hand — that keeps payroll out of the books
+ * exactly once.
+ */
+const MANUAL_CATEGORIES = CATEGORIES.filter((c) => c !== 'PAYROLL');
 
 const CATEGORY_BADGE: Record<
   ExpenseCategory,
@@ -97,19 +111,15 @@ export const ExpensesTracker: React.FC = () => {
   };
 
   const [categoryFilter, setCategoryFilter] = useState<string>('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
 
   const queryClient = useQueryClient();
 
   // Cached per-filter query: switching tabs/pages and coming back renders the
   // cached records instantly instead of re-fetching the whole list.
   const { data: expenses = [], isLoading, error: queryError, refetch } = useQuery<Expense[]>({
-    queryKey: ['expenses', categoryFilter, from, to],
+    queryKey: ['expenses', categoryFilter],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      if (from) params.from = from;
-      if (to) params.to = to;
       if (categoryFilter) params.category = categoryFilter;
       const res = await axiosClient.get('/expenses', { params });
       return res.data;
@@ -133,15 +143,71 @@ export const ExpensesTracker: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Full payroll ledger (all months, with corrections) for the payroll table row.
+  const payrollQuery = usePayrollQuery();
+  const payrollLedger: PayrollLedgerRecord[] = useMemo(
+    () => (Array.isArray(payrollQuery.data) ? (payrollQuery.data as PayrollLedgerRecord[]) : []),
+    [payrollQuery.data],
+  );
+
+  /**
+   * Payroll takes part in Expense activity like every other category, but as a
+   * single row: what a month of payroll costs on average. The server's per-month
+   * payroll rows are dropped here so payroll is never counted twice.
+   */
+  const payrollExpenseRow = useMemo<Expense | null>(() => {
+    if (categoryFilter && categoryFilter !== 'PAYROLL') return null;
+
+    // A payroll period is a month, not a day.
+    const months = groupPayrollByMonth(payrollLedger);
+    if (months.length === 0) return null;
+
+    const total = months.reduce((sum, month) => sum + month.total, 0);
+    const paymentDates = months.flatMap((month) => month.payments.map((p) => p.createdAt));
+    const latestPaidAt = paymentDates.length
+      ? paymentDates.reduce((newest, iso) =>
+          new Date(iso) > new Date(newest) ? iso : newest,
+        )
+      : `${months[0].year}-${String(months[0].month).padStart(2, '0')}-01T00:00:00.000Z`;
+
+    return {
+      id: 'payroll-average',
+      category: 'PAYROLL',
+      amount: Math.round(total / months.length),
+      description: `Average monthly payroll — ${months.length} ${
+        months.length === 1 ? 'month' : 'months'
+      }`,
+      date: latestPaidAt,
+      recordedBy: null,
+      isAggregated: true,
+      payrollTotal: total,
+      payrollMonths: months.length,
+    };
+  }, [payrollLedger, categoryFilter]);
+
+  /**
+   * What the table lists: the stored expense records plus the single payroll
+   * row, newest first. The headline numbers come from these rows, so what is on
+   * screen always adds up.
+   */
+  const tableExpenses = useMemo(() => {
+    const rows = [
+      ...expenses.filter((expense) => !expense.isAggregated),
+      ...(payrollExpenseRow ? [payrollExpenseRow] : []),
+    ];
+    return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [expenses, payrollExpenseRow]);
+
   const totalSpent = useMemo(
-    () => expenses.reduce((total, expense) => total + expense.amount, 0),
-    [expenses],
+    () => tableExpenses.reduce((total, expense) => total + expense.amount, 0),
+    [tableExpenses],
   );
+  const recordCount = tableExpenses.length;
   const categoryCount = useMemo(
-    () => new Set(expenses.map((expense) => expense.category)).size,
-    [expenses],
+    () => new Set(tableExpenses.map((expense) => expense.category)).size,
+    [tableExpenses],
   );
-  const hasFilters = Boolean(categoryFilter || from || to);
+  const hasFilters = Boolean(categoryFilter);
 
 
 
@@ -225,13 +291,11 @@ export const ExpensesTracker: React.FC = () => {
 
   const clearFilters = () => {
     setCategoryFilter('');
-    setFrom('');
-    setTo('');
   };
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between max-[767px]:flex-col max-[767px]:items-start max-[767px]:gap-3">
         <h1 className="text-2xl font-bold tracking-tight">{t('expenses.title', { defaultValue: 'Expenses' })}</h1>
         <Button id="add-expense-btn" onClick={openCreate}>
           <Plus className="w-4 h-4" />{t('expenses.addExpense', { defaultValue: 'Add Expense' })}
@@ -240,7 +304,7 @@ export const ExpensesTracker: React.FC = () => {
 
       <div className="grid gap-3 grid-cols-3">
         <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Total in view" value={formatCurrency(totalSpent)} accent="text-primary" />
-        <SummaryCard icon={<ReceiptText className="h-4 w-4" />} label="Expense records" value={String(expenses.length)} accent="text-sky-600" />
+        <SummaryCard icon={<ReceiptText className="h-4 w-4" />} label="Expense records" value={String(recordCount)} accent="text-sky-600" />
         <SummaryCard icon={<Tag className="h-4 w-4" />} label="Categories used" value={String(categoryCount)} accent="text-violet-600" />
       </div>
 
@@ -248,11 +312,11 @@ export const ExpensesTracker: React.FC = () => {
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex flex-col gap-1">
             <CardTitle className="text-base font-bold">Find expense records</CardTitle>
-            <p className="text-sm text-muted-foreground">Filter by category or date range. Results update automatically.</p>
+            <p className="text-sm text-muted-foreground">Filter by category. Results update automatically.</p>
           </div>
         </CardHeader>
         <CardContent className="pt-5">
-          <div className="grid grid-cols-4 gap-3 items-end">
+          <div className="grid grid-cols-2 gap-3 items-end max-[419px]:grid-cols-1">
             <div>
               <label htmlFor="expense-category-filter" className="text-xs font-medium text-muted-foreground block mb-1.5">
                 {t('expenses.filters.category', { defaultValue: 'Category' })}
@@ -267,28 +331,6 @@ export const ExpensesTracker: React.FC = () => {
                   <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
                 ))}
               </Select>
-            </div>
-            <div>
-              <label htmlFor="expense-from" className="text-xs font-medium text-muted-foreground block mb-1.5">
-                {t('expenses.filters.from', { defaultValue: 'From' })}
-              </label>
-              <Input
-                id="expense-from"
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="expense-to" className="text-xs font-medium text-muted-foreground block mb-1.5">
-                {t('expenses.filters.to', { defaultValue: 'To' })}
-              </label>
-              <Input
-                id="expense-to"
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
             </div>
             <div className="flex gap-2">
               {hasFilters && (
@@ -305,7 +347,10 @@ export const ExpensesTracker: React.FC = () => {
         <CardHeader className="flex-row items-center justify-between border-b border-border/50 py-4">
           <div>
             <CardTitle className="text-base">Expense activity</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">{isLoading ? 'Loading records…' : `${expenses.length} record${expenses.length === 1 ? '' : 's'} shown`}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isLoading ? 'Loading records…' : `${tableExpenses.length} record${tableExpenses.length === 1 ? '' : 's'} shown`}
+              {' · '}payroll appears as one average row
+            </p>
           </div>
           {hasFilters && <Badge variant="secondary">Filtered view</Badge>}
         </CardHeader>
@@ -323,14 +368,25 @@ export const ExpensesTracker: React.FC = () => {
                 {t('expenses.retry', { defaultValue: 'Retry' })}
               </Button>
             </div>
-          ) : expenses.length === 0 ? (
+          ) : tableExpenses.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary">
                 <Wallet className="w-6 h-6 opacity-60" />
               </div>
-              <p className="font-medium text-foreground">{hasFilters ? 'No records match these filters.' : t('expenses.emptyTitle', { defaultValue: 'No expenses recorded yet.' })}</p>
-              <p className="mt-1 text-sm">{hasFilters ? 'Clear or adjust the filters to see more records.' : 'Add the first one to begin tracking business spending.'}</p>
-              {hasFilters ? <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>Clear filters</Button> : <Button size="sm" className="mt-4" onClick={openCreate}><Plus className="h-3.5 w-3.5" />Add expense</Button>}
+              {categoryFilter === 'PAYROLL' ? (
+                <>
+                  <p className="font-medium text-foreground">No payroll recorded yet.</p>
+                  <p className="mt-1 text-sm">
+                    Once payroll is saved it appears here as a monthly average.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium text-foreground">{hasFilters ? 'No records match these filters.' : t('expenses.emptyTitle', { defaultValue: 'No expenses recorded yet.' })}</p>
+                  <p className="mt-1 text-sm">{hasFilters ? 'Clear or adjust the filters to see more records.' : 'Add the first one to begin tracking business spending.'}</p>
+                  {hasFilters ? <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>Clear filters</Button> : <Button size="sm" className="mt-4" onClick={openCreate}><Plus className="h-3.5 w-3.5" />Add expense</Button>}
+                </>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -346,7 +402,7 @@ export const ExpensesTracker: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {expenses.map((expense) => (
+                  {tableExpenses.map((expense) => (
                     <tr
                       key={expense.id}
                       className="border-b border-border/50 last:border-0 hover:bg-primary/[0.035] transition-colors"
@@ -362,34 +418,50 @@ export const ExpensesTracker: React.FC = () => {
                           {CATEGORY_LABELS[expense.category]}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 font-medium max-w-[16rem] truncate">
-                        {expense.description}
+                      <td className="px-4 py-3 font-medium max-w-[16rem] truncate" title={expense.description}>
+                        <span className="truncate">{expense.description}</span>
+                        {expense.isAggregated && (
+                          <span
+                            className="ml-2 inline-flex items-center rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground align-middle"
+                            title={
+                              expense.payrollTotal !== undefined
+                                ? `Average of ${expense.payrollMonths} payroll ${
+                                    expense.payrollMonths === 1 ? 'month' : 'months'
+                                  } · ${formatCurrency(expense.payrollTotal)} recorded in total`
+                                : undefined
+                            }
+                          >
+                            Monthly average
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-bold text-primary whitespace-nowrap">
                         {formatCurrency(expense.amount)}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs hidden md:table-cell">
-                        {expense.recordedBy?.name}
+                        {expense.isAggregated ? '—' : expense.recordedBy?.name}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label="Edit expense"
-                            onClick={() => openEdit(expense)}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label="Delete expense"
-                            onClick={() => setDeleteTarget(expense)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                          </Button>
-                        </div>
+                        {!expense.isAggregated && (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label="Edit expense"
+                              onClick={() => openEdit(expense)}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label="Delete expense"
+                              onClick={() => setDeleteTarget(expense)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -432,10 +504,16 @@ export const ExpensesTracker: React.FC = () => {
                 setForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))
               }
             >
-              {CATEGORIES.map((c) => (
+              {(editing?.category === 'PAYROLL'
+                ? [...MANUAL_CATEGORIES, 'PAYROLL' as ExpenseCategory]
+                : MANUAL_CATEGORIES
+              ).map((c) => (
                 <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
               ))}
             </Select>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Payroll entries are added automatically when you record payroll.
+            </p>
           </div>
 
           <div>
@@ -445,11 +523,11 @@ export const ExpensesTracker: React.FC = () => {
             <Input
               id="expense-amount"
               type="number"
-              step="0.01"
+              step="1"
               min="0"
               value={form.amount}
-              onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-              placeholder={t('expenses.form.amountPlaceholder', { defaultValue: '0.00' })}
+              onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d]/g, '') }))}
+              placeholder={t('expenses.form.amountPlaceholder', { defaultValue: '0' })}
               className="font-mono"
             />
           </div>
