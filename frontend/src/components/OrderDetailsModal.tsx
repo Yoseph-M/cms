@@ -48,9 +48,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'settlements'>('details');
 
-  const formatAmount = (amountMinor: number) => {
-    return `$${amountMinor.toFixed(2)}`;
-  };
+  const formatAmount = (amountMinor: number) => `${Math.round(amountMinor).toLocaleString('en-US')} ETB`;
 
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { bg: string; text: string; label: string }> = {
@@ -102,11 +100,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90dvh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800">Order Details</h2>
+        <div className="px-4 py-4 sm:px-6 border-b border-gray-200 flex justify-between items-start gap-3 bg-gray-50">
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Order Details</h2>
             <p className="text-sm text-gray-600 mt-1">
               Order #{order.clientOrderId} • Table {order.tableNumber}
             </p>
@@ -121,10 +119,10 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 px-6">
+        <div className="flex overflow-x-auto border-b border-gray-200 px-3 sm:px-6">
           <button
             onClick={() => setActiveTab('details')}
-            className={`px-4 py-3 font-semibold transition ${
+            className={`shrink-0 px-3 sm:px-4 py-3 font-semibold transition ${
               activeTab === 'details'
                 ? 'border-b-2 border-blue-600 text-blue-600'
                 : 'text-gray-600 hover:text-gray-800'
@@ -134,7 +132,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('settlements')}
-            className={`px-4 py-3 font-semibold transition ${
+            className={`shrink-0 px-3 sm:px-4 py-3 font-semibold transition ${
               activeTab === 'settlements'
                 ? 'border-b-2 border-blue-600 text-blue-600'
                 : 'text-gray-600 hover:text-gray-800'
@@ -145,12 +143,12 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 max-[767px]:p-4">
           {activeTab === 'details' && (
             <div className="space-y-6">
               {/* Status Section */}
               <div className="bg-gray-50 rounded-lg p-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">Order Status</p>
                     {getStatusBadge(order.status)}
@@ -165,7 +163,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               {/* Order Info */}
               <div>
                 <h3 className="font-semibold text-lg mb-3">Order Information</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4 text-sm">
                   <div>
                     <p className="text-gray-600">Waiter</p>
                     <p className="font-semibold">{order.waiter?.name || 'N/A'}</p>
