@@ -11,15 +11,13 @@ import {
   ProgressBar,
   Grid,
 } from '@tremor/react';
-import { AlertCircle, RotateCcw, Download } from 'lucide-react';
+import { AlertCircle, RotateCcw } from 'lucide-react';
 import { Button } from './Button';
 import { EmptyState } from '../common/EmptyState';
 import { cn } from '../../lib/utils';
 
 export interface TremorWidgetProps {
   title: string;
-  onExportCSV?: () => void;
-  onExportPDF?: () => void;
   loading: boolean;
   error: string | null;
   onRetry: () => void;
@@ -35,8 +33,6 @@ export interface TremorWidgetProps {
 /** Tremor Card wrapper with loading, error, and empty states for analytics widgets. */
 export const TremorWidget: React.FC<TremorWidgetProps> = ({
   title,
-  onExportCSV,
-  onExportPDF,
   loading,
   error,
   onRetry,
@@ -55,18 +51,8 @@ export const TremorWidget: React.FC<TremorWidgetProps> = ({
       className="flex-wrap gap-2 border-b border-border/40 px-4 py-3"
     >
       <Title className="text-sm font-bold text-foreground">{title}</Title>
-      <Flex alignItems="center" className="flex-wrap gap-2">
+      <Flex alignItems="center" className="flex-wrap gap-2 ml-auto">
         {headerExtra}
-        {onExportCSV && (
-          <Button variant="outline" size="sm" onClick={onExportCSV}>
-            <Download className="w-3 h-3 mr-1.5" />CSV
-          </Button>
-        )}
-        {onExportPDF && (
-          <Button variant="outline" size="sm" onClick={onExportPDF}>
-            <Download className="w-3 h-3 mr-1.5" />PDF
-          </Button>
-        )}
       </Flex>
     </Flex>
     <div className="p-4">
