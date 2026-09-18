@@ -17,10 +17,10 @@ router.get(
   IntegrityController.getIssues
 );
 
-// Manually trigger integrity check — OWNER
+// Manually trigger integrity check — OWNER, MANAGER
 router.post(
   '/run',
-  requireRole([Role.OWNER]),
+  requireRole([Role.OWNER, Role.MANAGER]),
   IntegrityController.runCheck
 );
 
