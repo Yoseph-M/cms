@@ -19,9 +19,9 @@ afterAll(async () => {
 });
 
 describe('Currency formatCurrency', () => {
-  it('renders as "1,234.50 ETB"', () => {
-    expect(formatCurrency(123450)).toBe('1,234.50 ETB');
-    expect(formatCurrency(0)).toBe('0.00 ETB');
+  it('renders whole ETB with grouped thousands and no decimals', () => {
+    expect(formatCurrency(123450)).toBe('123,450 ETB');
+    expect(formatCurrency(0)).toBe('0 ETB');
   });
 });
 
@@ -52,6 +52,8 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         totalAmount: 10000,
         status: OrderStatus.PAID,
         settlementStatus: 'SETTLED',
+        // Anchored to the range boundary — analytics filter on createdAt.
+        createdAt: fromBoundary,
       },
     });
     await p.settlement.create({
@@ -73,6 +75,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         totalAmount: 25000,
         status: OrderStatus.PAID,
         settlementStatus: 'SETTLED',
+        createdAt: mid,
       },
     });
     await p.settlement.create({
@@ -94,6 +97,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         totalAmount: 5000,
         status: OrderStatus.PAID,
         settlementStatus: 'SETTLED',
+        createdAt: toBoundary,
       },
     });
     await p.settlement.create({
@@ -117,6 +121,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         status: OrderStatus.CANCELLED,
         settlementStatus: 'UNSETTLED',
         cancellationReason: 'test',
+        createdAt: mid,
       },
     });
     // Outside range — excluded
@@ -129,6 +134,7 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
         totalAmount: 1000,
         status: OrderStatus.PAID,
         settlementStatus: 'SETTLED',
+        createdAt: outside,
       },
     });
 
@@ -181,13 +187,19 @@ describe('Profit/loss hand-computed correctness (§4)', () => {
       },
     });
 
+    // Full ISO boundaries, exactly as the Finance page sends them: the range is
+    // anchored to local start-of-day / end-of-day rather than UTC midnight.
     const res = await request(app)
-      .get('/api/analytics/profit-loss?from=2026-06-01&to=2026-06-30')
+      .get(
+        '/api/analytics/profit-loss?from=2026-06-01T00:00:00.000Z&to=2026-06-30T23:59:59.999Z',
+      )
       .set('Authorization', `Bearer ${owner.accessToken}`);
 
     expect(res.status).toBe(200);
     // Hand-computed — do not re-derive aggregation logic here
     expect(res.body.revenue).toBe(40000);
+    // Payroll is reported as part of total expenses rather than on its own.
+    expect(res.body.expenses).toBe(15000);
     expect(res.body.payrollCost).toBe(10000);
     expect(res.body.otherExpenses).toBe(5000);
     expect(res.body.netProfit).toBe(25000);
@@ -354,8 +366,12 @@ describe('Notification triggers (§6)', () => {
     const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'v-ov-waiter@pos.com' });
     const p = getPrisma();
 
+    // Clocking in is a same-day action, so the correction an owner can make is
+    // a same-day one — history can no longer be rewritten.
+    const today = new Date().toISOString().split('T')[0];
+
     await p.attendance.create({
-      data: { userId: waiter.id, date: '2026-06-01', status: 'PRESENT', note: '' },
+      data: { userId: waiter.id, date: today, status: 'PRESENT', note: '' },
     });
 
     await p.systemSetting.create({
@@ -367,7 +383,7 @@ describe('Notification triggers (§6)', () => {
       .set('Authorization', `Bearer ${owner.accessToken}`)
       .send({
         userId: waiter.id,
-        date: '2026-06-01',
+        date: today,
         status: 'ABSENT',
         note: 'Correcting mistaken mark',
       });
@@ -377,6 +393,30 @@ describe('Notification triggers (§6)', () => {
       .get('/api/notifications')
       .set('Authorization', `Bearer ${owner.accessToken}`);
     expect(list.body.some((n: { type: string }) => n.type === 'SYSTEM_OVERRIDE')).toBe(true);
+  });
+
+  it('rejects attendance recorded for any day other than today', async () => {
+    const owner = await seedTestUser({ role: 'OWNER' as any, email: 'v-day-owner@pos.com' });
+    const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'v-day-waiter@pos.com' });
+    const p = getPrisma();
+
+    // Owners keep their attendance privilege only while the setting is on, so
+    // the day rule below is what actually has to reject the request.
+    await p.systemSetting.create({
+      data: { key: 'ownerCanEditAttendance', value: 'true' },
+    });
+
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    for (const date of [yesterday, tomorrow]) {
+      const res = await request(app)
+        .post('/api/attendance')
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ userId: waiter.id, date, status: 'PRESENT' });
+
+      expect(res.status).toBe(403);
+    }
   });
 
   it('mark-as-read and mark-all-read persist', async () => {
