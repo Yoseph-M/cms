@@ -33,7 +33,10 @@ describe('Payroll (§2.1, §5)', () => {
       .send(payload);
 
     expect(res1.status).toBe(201);
-    expect(res1.body.paidAmount).toBe(1200000);
+    // Amounts are whole ETB — no cents are added or stored.
+    expect(res1.body.paidAmount).toBe(12000);
+    // Payroll is mirrored into the expenses ledger automatically.
+    expect(res1.body.expenseId).toBeTruthy();
 
     const res2 = await request(app)
       .post('/api/payroll/entries')
@@ -43,6 +46,12 @@ describe('Payroll (§2.1, §5)', () => {
     expect(res2.status).toBe(409);
     expect(res2.body.error).toMatch(/failed/i);
     expect(res2.body.details[0].error).toMatch(/already been recorded/i);
+
+    // The rejected duplicate must not leave a second payroll expense behind.
+    const p = getPrisma();
+    const payrollExpenses = await p.expense.findMany({ where: { category: 'PAYROLL' } });
+    expect(payrollExpenses).toHaveLength(1);
+    expect(payrollExpenses[0].amount).toBe(12000);
   });
 
   it('enforces append-only discipline (no update routes exist)', async () => {
