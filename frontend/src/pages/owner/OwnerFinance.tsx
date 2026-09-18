@@ -16,15 +16,6 @@ import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
 import { useSocketStore } from '../../store/socketStore';
 
-function exportPDF(title: string, rows: string[][]) {
-  const body = rows.map((r) => r.join('\t')).join('\n');
-  const content = `${title}\n${'='.repeat(title.length)}\n\n${body}`;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
-  a.download = `${title.toLowerCase().replace(/\s+/g, '-')}.txt`;
-  a.click();
-}
-
 function useWidget<T>(endpoint: string, deps: Record<string, string> = {}) {
   // React Query backs every finance widget so results are cached across page
   // switches — navigating back to Finance renders instantly instead of
@@ -160,6 +151,8 @@ export const OwnerFinance: React.FC = () => {
 
   const pnl = useWidget<{
     revenue: number;
+    /** Total spending for the period — payroll included, never a separate line. */
+    expenses: number;
     payrollCost: number;
     otherExpenses: number;
     netProfit: number;
@@ -270,7 +263,7 @@ export const OwnerFinance: React.FC = () => {
 
       <Grid numItems={1} numItemsSm={2} className="gap-4">
         {[
-          { label: 'MTD Revenue', value: daily.data ? formatCurrency(daily.data.mtdRevenue ?? 0) : '—', delta: daily.data?.deltas?.mtdVsPriorMonth, icon: TrendingUp },
+          { label: 'Overall Revenue', value: daily.data ? formatCurrency(daily.data.mtdRevenue ?? 0) : '—', delta: daily.data?.deltas?.mtdVsPriorMonth, icon: TrendingUp },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
@@ -301,11 +294,10 @@ export const OwnerFinance: React.FC = () => {
       >
         {pnl.data && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 gap-3 max-[419px]:grid-cols-1">
               {[
                 { label: 'Revenue', value: pnl.data.revenue, tone: 'text-foreground' },
-                { label: 'Payroll', value: pnl.data.payrollCost, tone: 'text-[hsl(var(--warning))]' },
-                { label: 'Other expenses', value: pnl.data.otherExpenses, tone: 'text-destructive' },
+                { label: 'Expenses', value: pnl.data.expenses, tone: 'text-destructive' },
                 {
                   label: 'Net',
                   value: pnl.data.netProfit,
@@ -322,8 +314,7 @@ export const OwnerFinance: React.FC = () => {
               labels={['Period']}
               series={[
                 { label: 'Revenue', values: [pnl.data.revenue] },
-                { label: 'Payroll', values: [pnl.data.payrollCost] },
-                { label: 'Other expenses', values: [pnl.data.otherExpenses] },
+                { label: 'Expenses', values: [pnl.data.expenses] },
               ]}
               height={160}
               yTickFormat={moneyTickFormat}
@@ -342,7 +333,6 @@ export const OwnerFinance: React.FC = () => {
         onRetry={trend.refetch}
         empty={!trend.data?.length}
         emptyMsg="No revenue in this date range."
-        onExportPDF={() => trend.data && exportPDF('Revenue Trend', [['Date', 'Revenue', 'Orders'], ...trend.data.map((d) => [d.date, String(d.revenue), String(d.orderCount)])])}
         headerExtra={
           <Flex alignItems="center" className="gap-2">
             <ChartToggle
@@ -410,7 +400,7 @@ export const OwnerFinance: React.FC = () => {
         />
       </TremorWidget>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4">
         <TremorWidget
           title="Staff Leaderboard"
           loading={staffP.loading}
@@ -490,7 +480,7 @@ export const OwnerFinance: React.FC = () => {
         <PeakHoursHeatmap grid={heatmap} dayLabels={DAYS} />
       </TremorWidget>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4">
         <TremorWidget
           title="Revenue by Category"
           loading={catSpl.loading}
