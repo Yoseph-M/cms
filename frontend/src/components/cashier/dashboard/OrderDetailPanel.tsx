@@ -1,9 +1,9 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Hash, Receipt, AlertTriangle, User, Clock, X } from 'lucide-react';
+import { Hash, Receipt, AlertTriangle, User, Clock, X, Printer, RefreshCw, Ban } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { useTranslation } from 'react-i18next';
-import type { Order, PaymentMethod } from '../../../types';
+import type { Order, PaymentMethod, PrintJobStatus } from '../../../types';
 import { getOrderStatus, statusAccent, STATUS_LABEL } from './utils';
 import { useElapsedTime } from './hooks/useElapsedTime';
 import { OrderItemsList } from './OrderItemsList';
@@ -17,6 +17,8 @@ export interface OrderDetailPanelProps {
   onCollect: () => void;
   onCancel: () => void;
   onClose?: () => void;
+  /** Re-send the kitchen ticket when the first attempt never reached paper. */
+  onReprint?: (orderId: string) => void;
   className?: string;
 }
 
@@ -32,6 +34,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
   onCollect,
   onCancel,
   onClose,
+  onReprint,
   className,
 }) => {
   return (
@@ -56,6 +59,7 @@ export const OrderDetailPanel: React.FC<OrderDetailPanelProps> = ({
             onCollect={onCollect}
             onCancel={onCancel}
             onClose={onClose}
+            onReprint={onReprint}
           />
         ) : (
           <EmptyDetail key="empty" />
@@ -73,12 +77,20 @@ const DetailBody: React.FC<{
   onCollect: () => void;
   onCancel: () => void;
   onClose?: () => void;
-}> = ({ order, paymentMethod, onPaymentMethodChange, phase, onCollect, onCancel, onClose }) => {
+  onReprint?: (orderId: string) => void;
+}> = ({ order, paymentMethod, onPaymentMethodChange, phase, onCollect, onCancel, onClose, onReprint }) => {
   const { t } = useTranslation('cashier');
   const elapsed = useElapsedTime(order.createdAt);
   const status = getOrderStatus(order);
   const accent = statusAccent(status);
   const isClosed = order.status === 'PAID' || order.status === 'CANCELLED';
+
+  // A ticket that never reached paper is food the kitchen never saw. Money only
+  // changes hands once it has, so the whole total/settle block stays hidden
+  // until the kitchen copy reports back as PRINTED.
+  const printStatus = order.latestPrintJob?.status;
+  const isPrinted = printStatus === 'PRINTED';
+  const awaitingPrint = !isClosed && !isPrinted;
 
   return (
     <motion.div
@@ -147,21 +159,96 @@ const DetailBody: React.FC<{
 
       {/* Payment summary remains visible regardless of the number of items. */}
       <div className="relative shrink-0 p-4 sm:p-5 bg-white border-t border-slate-100 text-slate-950">
-        <PaymentPad
-          total={order.totalAmount}
-          method={paymentMethod}
-          onMethodChange={onPaymentMethodChange}
-          phase={phase}
-          onCollect={onCollect}
-          onCancel={onCancel}
-          showCancel={!isClosed}
-          isSettled={order.status === 'PAID'}
-          isCancelled={order.status === 'CANCELLED'}
-        />
+        {awaitingPrint ? (
+          <PrintGateNotice
+            status={printStatus}
+            onReprint={onReprint ? () => onReprint(order.id) : undefined}
+            onCancel={onCancel}
+          />
+        ) : (
+          <PaymentPad
+            total={order.totalAmount}
+            method={paymentMethod}
+            onMethodChange={onPaymentMethodChange}
+            phase={phase}
+            onCollect={onCollect}
+            onCancel={onCancel}
+            showCancel={!isClosed}
+            isSettled={order.status === 'PAID'}
+            isCancelled={order.status === 'CANCELLED'}
+          />
+        )}
       </div>
     </motion.div>
   );
 };
+
+/**
+ * Replaces the total/payment block while the kitchen ticket is unprinted.
+ * Explains exactly where the ticket got stuck and offers the two useful actions:
+ * send it again, or void the ticket — cancelling must not require a printed
+ * ticket.
+ */
+const PRINT_STATE_MESSAGE: Record<PrintJobStatus | 'NONE', string> = {
+  NONE: 'This ticket was never sent to the kitchen printer.',
+  QUEUED: 'The kitchen ticket is queued but has not reached paper.',
+  PRINTING: 'The kitchen ticket is still printing.',
+  FAILED: 'The kitchen printer rejected this ticket.',
+  CANCELLED: 'The kitchen ticket print was cancelled.',
+  PRINTED: 'The kitchen ticket printed.',
+};
+
+const PrintGateNotice: React.FC<{
+  status?: PrintJobStatus;
+  onReprint?: () => void;
+  /** Voiding must not require a printed ticket, so the cancel action lives here too. */
+  onCancel?: () => void;
+}> = ({ status, onReprint, onCancel }) => (
+  <div
+    role="status"
+    className="rounded-xl border border-amber-300/70 bg-amber-50 p-4"
+  >
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+        <Printer className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-amber-900">Not printed yet</p>
+        <p className="mt-0.5 text-xs text-amber-800">
+          {PRINT_STATE_MESSAGE[status ?? 'NONE']}
+        </p>
+        <p className="mt-1 text-xs font-semibold text-amber-900">
+          Total and payment stay hidden until the kitchen copy is on paper — but you can still
+          cancel the ticket.
+        </p>
+        {(onReprint || onCancel) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {onReprint && (
+              <button
+                type="button"
+                onClick={onReprint}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-bold text-amber-900 transition-colors hover:bg-amber-100"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Print again
+              </button>
+            )}
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-white px-3 py-1.5 text-xs font-bold text-destructive transition-colors hover:bg-destructive/10"
+              >
+                <Ban className="w-3.5 h-3.5" />
+                Cancel order
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
 const EmptyDetail: React.FC = () => {
   const { t } = useTranslation('cashier');
