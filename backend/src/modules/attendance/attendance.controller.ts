@@ -88,8 +88,10 @@ export async function createOrUpdateAttendance(req: AuthenticatedRequest, res: R
     }
   }
 
-  // MANAGER: only allowed to create for today's date
-  if (callerRole === Role.MANAGER && date !== todayLocal) {
+  // Clocking in is a "now" action: both managers and owners may only record
+  // attendance against the current business day — never a past or future one.
+  // (Owners still need the ownerCanEditAttendance setting to record at all.)
+  if (date !== todayLocal) {
     return res.status(403).json({ error: 'Attendance can only be recorded for today.' });
   }
 
@@ -192,8 +194,8 @@ export async function updateAttendance(req: AuthenticatedRequest, res: Response)
     }
   }
 
-  // MANAGER: only allowed to edit today's records
-  if (callerRole === Role.MANAGER && before.date !== todayLocal) {
+  // Edits follow the same rule as clocking in — today only, for every role.
+  if (before.date !== todayLocal) {
     return res.status(403).json({ error: 'Attendance can only be edited for today.' });
   }
 
