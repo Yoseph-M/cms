@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AttendanceHistory } from '../components/common/AttendanceHistory';
 import { axiosClient } from '../api/axiosClient';
 
@@ -29,9 +29,13 @@ beforeEach(() => {
   );
 });
 
-/** Tremor renders one block per day; all three responsive trackers are in the DOM. */
+/**
+ * Tremor renders one block per day; all three responsive trackers are in the
+ * DOM. Scoped to the staff list so the legend/key swatches — which are also
+ * Tremor blocks — don't inflate the count.
+ */
 const blocks = (container: HTMLElement) =>
-  container.querySelectorAll('[class*="tremor-Tracker-trackingBlock"]');
+  container.querySelectorAll('ul [class*="tremor-Tracker-trackingBlock"]');
 
 describe('AttendanceHistory', () => {
   it('renders a tracker per staff member over the selected window', async () => {
@@ -41,13 +45,41 @@ describe('AttendanceHistory', () => {
 
     // 90-day window: full strip, a 60-day tail for sm, a 30-day tail for mobile.
     expect(blocks(container)).toHaveLength((90 + 60 + 30) * 2);
-    expect(screen.getAllByText('90 days ago')).toHaveLength(2);
-    expect(screen.getAllByText('60 days ago')).toHaveLength(2);
-    expect(screen.getAllByText('30 days ago')).toHaveLength(2);
-    expect(screen.getAllByText('Today')).toHaveLength(2);
-    // Overall chip plus one row per staff member.
-    expect(screen.getAllByText(/^\d+% present$/)).toHaveLength(3);
+    // The window axis and legend are stated once for the whole list, not once
+    // per staff member — the rows stay bare trackers.
+    expect(screen.getAllByText('90 days ago')).toHaveLength(1);
+    expect(screen.getAllByText('60 days ago')).toHaveLength(1);
+    expect(screen.getAllByText('30 days ago')).toHaveLength(1);
+    expect(screen.getAllByText('Today')).toHaveLength(1);
+    // Overall chip plus one row per staff member, each counted in days.
+    expect(screen.getAllByText(/^\d+ days present$/)).toHaveLength(3);
   });
+
+  // The tracker strips are heavy to render and the suite runs in parallel, so
+  // these two get more headroom than the 5s default.
+  it('opens a staff sheet with the counts and the logged days', async () => {
+    render(<AttendanceHistory />);
+    await waitFor(() => expect(screen.getByText('Abebe')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Abebe attendance details'));
+
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    const sheet = within(screen.getByRole('dialog'));
+    // Counts per status, including the days nobody marked.
+    expect(sheet.getByText('Days logged')).toBeInTheDocument();
+    expect(sheet.getByText('No record')).toBeInTheDocument();
+    expect(sheet.getByText('1 logged')).toBeInTheDocument();
+    // The one logged day for Abebe, with how it was recorded.
+    expect(sheet.getByText('Manual')).toBeInTheDocument();
+    // Present shows twice: the status tile and the day's own badge.
+    expect(sheet.getAllByText('Present')).toHaveLength(2);
+
+    // Sara's sheet is separate: she is the ABSENT record.
+    fireEvent.click(screen.getByLabelText('Close'));
+    fireEvent.click(screen.getByLabelText('Sara attendance details'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    expect(within(screen.getByRole('dialog')).getAllByText('Absent')).toHaveLength(2);
+  }, 20_000);
 
   it('re-fetches and re-scales the tracker when the range filter changes', async () => {
     const { container } = render(<AttendanceHistory />);
@@ -56,14 +88,14 @@ describe('AttendanceHistory', () => {
     fireEvent.click(screen.getByRole('button', { name: '7d' }));
 
     await waitFor(() => expect(blocks(container)).toHaveLength(7 * 3 * 2));
-    // Below 30 days every breakpoint shows the same window.
-    expect(screen.getAllByText('7 days ago')).toHaveLength(6);
+    // Below 30 days every breakpoint shows the same window, once per breakpoint.
+    expect(screen.getAllByText('7 days ago')).toHaveLength(3);
     const start = new Date();
     start.setDate(start.getDate() - 6);
     expect(getMock.mock.calls.at(-1)?.[0]).toBe(
       `/attendance?startDate=${start.toISOString().split('T')[0]}&endDate=${today}`,
     );
-  });
+  }, 20_000);
 
   it('drops the owner from the list but keeps managers for owners', async () => {
     getMock.mockImplementation((url: string) =>
