@@ -50,11 +50,17 @@ export async function seedTestUser(overrides: {
   username?: string;
   phone?: string;
   salaryAmount?: number;
+  /** Legacy: accounts are identified by username — accepted for older call sites. */
+  email?: string;
 } = {}): Promise<TestUser> {
   const p = getPrisma();
   const name = overrides.name || 'Test User';
   const role = overrides.role || Role.OWNER;
-  const username = overrides.username || `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // Note: the legacy `email` option is intentionally ignored — usernames must
+  // stay unique per seeded user, and deriving them from a shared email caused
+  // collisions inside a single suite.
+  const username =
+    overrides.username || `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const phone = overrides.phone || `+1555${Date.now().toString().slice(-7)}`;
   const salaryAmount = overrides.salaryAmount ?? 3000;
 
@@ -181,6 +187,8 @@ export async function createAuthenticatedUser(
     username?: string;
     phone?: string;
     salaryAmount?: number;
+    /** Legacy: accounts are identified by username — accepted for older call sites. */
+    email?: string;
   } = {}
 ): Promise<TestUser> {
   const p = factoryOptions.prisma;
