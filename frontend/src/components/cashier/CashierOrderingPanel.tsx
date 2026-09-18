@@ -1,7 +1,32 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, Minus, Trash2, X, ShoppingCart, UtensilsCrossed, CheckCircle2, ImageIcon, UserRound } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  Minus,
+  Trash2,
+  X,
+  ShoppingCart,
+  UtensilsCrossed,
+  CheckCircle2,
+  ImageIcon,
+  UserRound,
+  ArrowUpDown,
+  LayoutGrid,
+  Coffee,
+  CakeSlice,
+  Sparkles,
+  FilterX,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../ui/Dropdown';
+import { cn } from '../../lib/utils';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useMenuQuery } from '../../hooks/useCachedQueries';
@@ -27,7 +52,26 @@ interface CashierOrderingPanelProps {
   /** Called after a successful order submission — parent can refresh its queue. */
   onOrderCreated?: (order: unknown) => void;
   initialTableNumber?: string;
+  /** Menu search to open with (used when a global search hit is clicked). */
+  initialSearch?: string;
 }
+
+/* Category presentation — mirrors the menu list page filter bar. */
+const CATEGORY_META: Record<'ALL' | 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER', { icon: LucideIcon; label: string }> = {
+  ALL: { icon: LayoutGrid, label: 'All' },
+  FOOD: { icon: UtensilsCrossed, label: 'Food' },
+  DRINK: { icon: Coffee, label: 'Drinks' },
+  DESSERT: { icon: CakeSlice, label: 'Desserts' },
+  OTHER: { icon: Sparkles, label: 'Other' },
+};
+
+const SORT_OPTIONS = [
+  { value: 'name-asc', label: 'Name (A–Z)' },
+  { value: 'price-asc', label: 'Price (Low → High)' },
+  { value: 'price-desc', label: 'Price (High → Low)' },
+] as const;
+
+type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 
 const CATEGORY_BADGE: Record<string, 'success' | 'default' | 'warning' | 'neutral'> = {
   FOOD: 'success',
@@ -49,22 +93,37 @@ const CATEGORY_BADGE: Record<string, 'success' | 'default' | 'warning' | 'neutra
  * idempotent on `clientOrderId`, so a retry (e.g. flaky network) returns the
  * existing order rather than creating a duplicate.
  */
-export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOrderCreated, initialTableNumber = '' }) => {
+export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOrderCreated, initialTableNumber = '', initialSearch = '' }) => {
   const { addToast } = useToastStore();
   const { t } = useTranslation('cashier');
   const menuQuery = useMenuQuery();
   const items: MenuItem[] = menuQuery.data ?? [];
 
-  const CATEGORIES: Array<{ key: 'ALL' | 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER'; label: string }> = [
-    { key: 'ALL', label: t('ordering.categories.all') },
-    { key: 'FOOD', label: t('ordering.categories.food') },
-    { key: 'DRINK', label: t('ordering.categories.drinks') },
-    { key: 'DESSERT', label: t('ordering.categories.desserts') },
-    { key: 'OTHER', label: t('ordering.categories.other') },
-  ];
+  type CategoryKey = 'ALL' | 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER';
 
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<'ALL' | 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER'>('ALL');
+  // Icons come from the menu-list presentation, labels stay localised.
+  const CATEGORY_LABELS: Record<CategoryKey, string> = {
+    ALL: t('ordering.categories.all'),
+    FOOD: t('ordering.categories.food'),
+    DRINK: t('ordering.categories.drinks'),
+    DESSERT: t('ordering.categories.desserts'),
+    OTHER: t('ordering.categories.other'),
+  };
+
+  const CATEGORIES: Array<{ key: CategoryKey; label: string; count: number }> = (
+    ['ALL', 'FOOD', 'DRINK', 'DESSERT', 'OTHER'] as CategoryKey[]
+  ).map((key) => ({
+    key,
+    label: CATEGORY_LABELS[key],
+    count:
+      key === 'ALL'
+        ? items.filter((i) => i.isAvailable).length
+        : items.filter((i) => i.isAvailable && i.category === key).length,
+  }));
+
+  const [search, setSearch] = useState(initialSearch);
+  const [sortBy, setSortBy] = useState<SortValue>('name-asc');
+  const [category, setCategory] = useState<CategoryKey>('ALL');
   const [tableNumber, setTableNumber] = useState(initialTableNumber);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,13 +142,29 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
   }, []);
 
   const filtered = useMemo(() => {
-    return items.filter((i) => {
+    const q = search.trim().toLowerCase();
+    const rows = items.filter((i) => {
       if (!i.isAvailable) return false;
       if (category !== 'ALL' && i.category !== category) return false;
-      if (search && !i.name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (q && !i.name.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [items, category, search]);
+    return rows.sort((a, b) => {
+      if (sortBy === 'price-asc') return a.price - b.price;
+      if (sortBy === 'price-desc') return b.price - a.price;
+      return a.name.localeCompare(b.name);
+    });
+  }, [items, category, search, sortBy]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<CategoryKey, number> = { ALL: 0, FOOD: 0, DRINK: 0, DESSERT: 0, OTHER: 0 };
+    for (const item of items) {
+      if (!item.isAvailable) continue;
+      counts.ALL += 1;
+      counts[item.category as CategoryKey] = (counts[item.category as CategoryKey] ?? 0) + 1;
+    }
+    return counts;
+  }, [items]);
 
   const total = useMemo(
     () => cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
@@ -169,6 +244,17 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           count: totalQty,
         }),
       });
+
+      // The order is saved either way — but the kitchen ticket must never fail
+      // silently. Tell the cashier straight away if it never reached the printer.
+      const printWarning: string | null = res.data?.printWarning ?? null;
+      if (printWarning) {
+        addToast({
+          type: 'warning',
+          title: 'Ticket not printed',
+          message: `${printWarning} The order is on the Tickets page — reprint it from there once the printer is back.`,
+        });
+      }
       setCart([]);
       setTableNumber('');
       setSelectedWaiterId('');
@@ -191,37 +277,96 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
     <div className="h-full min-h-0 flex-1 flex bg-background text-foreground overflow-hidden relative">
       {/* Menu column */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-r border-border max-[767px]:pb-16 relative">
-        <div className="px-6 py-4 border-b border-border bg-card/40 space-y-3 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        {/* Filter bar — same shape as the menu list page: search, sort, category. */}
+        <div className="px-5 py-3 border-b border-border bg-card/40 space-y-3 shrink-0 max-[767px]:px-4">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap">
+            <div className="relative flex-1 min-w-[180px] max-[419px]:min-w-0">
+              <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('ordering.searchPlaceholder')}
-                className="pl-9"
+                className="h-10 pl-9 max-[767px]:h-10"
+                aria-label="Search menu items"
               />
             </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger aria-label="Sort menu items" className="shrink-0 h-10 w-[168px] max-[419px]:w-full">
+                <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+                <span className="truncate">{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label}</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {SORT_OPTIONS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    selected={sortBy === opt.value}
+                    onSelect={() => setSortBy(opt.value)}
+                  >
+                    {opt.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0 h-10 max-[419px]:w-full">
+                {React.createElement(CATEGORY_META[category].icon, {
+                  className: 'w-4 h-4 text-muted-foreground',
+                })}
+                <span>{CATEGORY_LABELS[category]}</span>
+                <span className="text-[10px] font-bold rounded-md bg-background px-1.5 py-0.5 border border-border/60">
+                  {categoryCounts[category] ?? 0}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {CATEGORIES.map((cat) => {
+                  const Icon = CATEGORY_META[cat.key].icon;
+                  return (
+                    <DropdownMenuItem
+                      key={cat.key}
+                      selected={category === cat.key}
+                      onSelect={() => setCategory(cat.key)}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span>{cat.label}</span>
+                      <span className="ml-auto text-xs text-muted-foreground font-mono">
+                        {categoryCounts[cat.key] ?? 0}
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <div className="flex gap-1 p-1 bg-secondary/40 rounded-lg w-fit border border-border/50">
-            {CATEGORIES.map((c) => (
+
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs text-muted-foreground font-medium">
+              Showing <span className="font-bold text-foreground">{filtered.length}</span> of{' '}
+              <span className="font-bold text-foreground">{items.filter((i) => i.isAvailable).length}</span> items
+            </p>
+            {(search.trim() || category !== 'ALL' || sortBy !== 'name-asc') && (
               <button
-                key={c.key}
-                onClick={() => setCategory(c.key)}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                  category === c.key
-                    ? 'bg-background text-foreground shadow-sm border border-border'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  setCategory('ALL');
+                  setSortBy('name-asc');
+                }}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-semibold text-muted-foreground',
+                  'transition-colors hover:border-primary/40 hover:text-foreground',
+                )}
               >
-                {c.label}
+                <FilterX className="w-3 h-3" />
+                Clear filters
               </button>
-            ))}
+            )}
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 max-[767px]:p-4">
           {menuQuery.isLoading ? (
             <LoadingState message={t('ordering.loadingMenu')} />
           ) : filtered.length === 0 ? (
@@ -236,7 +381,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
             />
           ) : (
             <motion.div
-              className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4"
+              className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 max-[767px]:gap-3"
               initial="hidden"
               animate="show"
               variants={{ show: { transition: { staggerChildren: 0.04 } } }}
