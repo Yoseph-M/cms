@@ -4,8 +4,10 @@ import { AlertTriangle, X as XIcon } from 'lucide-react';
 
 export interface PrinterFailureEvent {
   station: string;
-  ip: string;
-  port: number;
+  /** Human-readable device label (Bluetooth MAC or USB vendor:product). */
+  device?: string;
+  ip?: string;
+  port?: number;
   orderId?: string;
   failedAt: string;
 }
@@ -31,7 +33,10 @@ export const PrinterFailureBanner: React.FC<PrinterFailureBannerProps> = ({ fail
             Printer problem detected — {failures.length} receipt{failures.length === 1 ? '' : 's'} didn't print.
           </p>
           <span className="hidden sm:inline text-xs opacity-90">
-            {failures[0].station} @ {failures[0].ip}:{failures[0].port}
+            {failures[0].station}
+            {failures[0].device || failures[0].ip
+              ? ` @ ${failures[0].device || failures[0].ip}${failures[0].port ? `:${failures[0].port}` : ''}`
+              : ''}
             {failures.length > 1 ? `, +${failures.length - 1} more` : ''}
           </span>
           <button
