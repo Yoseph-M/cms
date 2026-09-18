@@ -73,7 +73,7 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className="relative bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full pointer-events-auto"
+            className="relative bg-card border border-border rounded-xl shadow-2xl p-6 max-w-sm w-full pointer-events-auto max-[767px]:p-4"
             role="alertdialog"
             aria-modal="true"
           >
