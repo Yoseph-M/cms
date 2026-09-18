@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useSocketStore } from '../../store/socketStore';
@@ -241,13 +242,8 @@ export const CashierTicketsPage: React.FC = () => {
   }, [setPageTitle, setShowDateRange]);
 
   /* ── Settings ── */
-  const settingQuery = useSystemSettingQuery('cashierOrderingEnabled');
   const tableCountQuery = useSystemSettingQuery('tableCount');
-  const [cashierOrderingEnabled, setCashierOrderingEnabled] = useState(false);
   const [tableCount, setTableCount] = useState(12);
-  useEffect(() => {
-    if (settingQuery.data) setCashierOrderingEnabled(settingQuery.data.value === 'true');
-  }, [settingQuery.data]);
   useEffect(() => {
     if (tableCountQuery.data) {
       const v = parseInt(tableCountQuery.data.value ?? '', 10);
@@ -258,6 +254,10 @@ export const CashierTicketsPage: React.FC = () => {
   /* ── View mode ── */
   const [mode, setMode] = useState<'queue' | 'tables' | 'order'>('queue');
   const [tableForNewOrder, setTableForNewOrder] = useState('');
+  // Menu search the new-order picker should open with (set by a global search hit).
+  const [orderItemSearch, setOrderItemSearch] = useState('');
+  const location = useLocation();
+  const navigate = useNavigate();
 
   /* ── Orders + selection ── */
   const [orders, setOrders] = useState<Order[]>([]);
@@ -276,13 +276,27 @@ export const CashierTicketsPage: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [phase, setPhase] = useState<PaymentPhase>('idle');
   const isSettlingRef = useRef(false);
+  // A retry belongs to one payment attempt.  Without this guard, a retry timer
+  // from a previously selected ticket can submit again after the cashier has
+  // moved on (or after a socket event has already settled the order).
+  const settlementAttemptRef = useRef(0);
+  const settlementRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset payment state when selecting a different order
   useEffect(() => {
     setPhase('idle');
     setPaymentMethod('CASH');
     isSettlingRef.current = false;
+    settlementAttemptRef.current += 1;
+    if (settlementRetryTimerRef.current) {
+      clearTimeout(settlementRetryTimerRef.current);
+      settlementRetryTimerRef.current = null;
+    }
   }, [selectedOrderId]);
+
+  useEffect(() => () => {
+    if (settlementRetryTimerRef.current) clearTimeout(settlementRetryTimerRef.current);
+  }, []);
 
   /* ── Cancellation ── */
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -352,6 +366,16 @@ export const CashierTicketsPage: React.FC = () => {
     [orders, selectedOrderId],
   );
 
+  /* Open-order count per table, for the new-order table picker. */
+  const openOrdersByTable = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const order of activeOrders) {
+      if (!order.tableNumber) continue;
+      counts[order.tableNumber] = (counts[order.tableNumber] ?? 0) + 1;
+    }
+    return counts;
+  }, [activeOrders]);
+
   // Only active tickets are fetched from the server — paid/cancelled history
   // stays out of the queue (and out of every background poll).
   const ACTIVE_STATUSES = 'SUBMITTED,IN_KITCHEN,SERVED';
@@ -401,12 +425,6 @@ export const CashierTicketsPage: React.FC = () => {
   /* Settings realtime */
   useEffect(() => {
     if (!socket) return;
-    const onOrdering = (p: { value: string }) => {
-      setCashierOrderingEnabled(p.value === 'true');
-      queryClient.setQueryData(['systemSetting', 'cashierOrderingEnabled'], (old: any) =>
-        old ? { ...old, value: p.value } : old,
-      );
-    };
     const onTableCount = (p: { value: string }) => {
       const v = parseInt(p.value, 10);
       setTableCount(isNaN(v) ? 12 : v);
@@ -414,10 +432,8 @@ export const CashierTicketsPage: React.FC = () => {
         old ? { ...old, value: p.value } : old,
       );
     };
-    socket.on('settings:cashierOrderingChanged', onOrdering);
     socket.on('settings:tableCountChanged', onTableCount);
     return () => {
-      socket.off('settings:cashierOrderingChanged', onOrdering);
       socket.off('settings:tableCountChanged', onTableCount);
     };
   }, [socket, queryClient]);
@@ -429,25 +445,43 @@ export const CashierTicketsPage: React.FC = () => {
     const onUpdate = (o: Order) => setOrders((p) => p.map((x) => (x.id === o.id ? o : x)));
     const onCancel = (o: Order) => setOrders((p) => p.map((x) => (x.id === o.id ? o : x)));
     const onPrinterFail = (p: PrinterFailureEvent) => setPrinterFailures((prev) => [...prev, p]);
+    // A kitchen ticket changing state (queued → printed/failed) should refresh
+    // the badges on the cards, so the cashier sees what reached paper.
+    const onPrintJobChange = () => void fetchOrdersRef.current(true);
     socket.on('order:new', onNew);
     socket.on('order:updated', onUpdate);
     socket.on('order:cancelled', onCancel);
     socket.on('printer:failed', onPrinterFail);
+    socket.on('printJob:updated', onPrintJobChange);
+    socket.on('printJob:failed', onPrintJobChange);
+    socket.on('printJob:queued', onPrintJobChange);
     return () => {
       socket.off('order:new', onNew);
       socket.off('order:updated', onUpdate);
       socket.off('order:cancelled', onCancel);
       socket.off('printer:failed', onPrinterFail);
+      socket.off('printJob:updated', onPrintJobChange);
+      socket.off('printJob:failed', onPrintJobChange);
+      socket.off('printJob:queued', onPrintJobChange);
     };
   }, [socket, addToast]);
 
   /* ─── Actions ─── */
-  const MAX_SETTLE_RETRIES = 5;
-  const SETTLE_BACKOFF_MS = [500, 1000, 2000, 4000, 5000];
+  // A 409 can mean our first request actually committed but its response raced
+  // with another order update.  Reconcile with the server before one bounded
+  // retry; repeatedly posting the same payment only creates a noisy conflict
+  // loop and cannot make a genuinely busy order succeed.
+  const MAX_SETTLE_RETRIES = 1;
+  const SETTLE_BACKOFF_MS = [500];
 
-  const handleMarkPaid = async (orderId: string, retryCount = 0) => {
+  const handleMarkPaid = async (orderId: string, retryCount = 0, attemptId?: number) => {
     if (retryCount === 0 && isSettlingRef.current) return;
-    if (retryCount === 0) isSettlingRef.current = true;
+    if (retryCount === 0) {
+      isSettlingRef.current = true;
+      settlementAttemptRef.current += 1;
+      attemptId = settlementAttemptRef.current;
+    }
+    if (attemptId !== settlementAttemptRef.current) return;
     setPhase('processing');
 
     try {
@@ -462,6 +496,20 @@ export const CashierTicketsPage: React.FC = () => {
         return;
       }
 
+      // Money never changes hands for a ticket the kitchen never received.
+      // The detail panel hides the CTA in this case; this guard also covers the
+      // keyboard shortcut and any stale retry that still holds an order id.
+      if (order.latestPrintJob?.status !== 'PRINTED') {
+        setPhase('idle');
+        isSettlingRef.current = false;
+        addToast({
+          type: 'warning',
+          title: 'Kitchen ticket not printed',
+          message: 'Re-send the ticket to the printer before settling it.',
+        });
+        return;
+      }
+
       const res = await axiosClient.post(
         `/orders/${orderId}/settlements`,
         {
@@ -472,6 +520,8 @@ export const CashierTicketsPage: React.FC = () => {
         },
         { headers: { 'Idempotency-Key': `settle-full-${orderId}-${user?.id || 'anon'}` } },
       );
+
+      if (attemptId !== settlementAttemptRef.current) return;
 
       setOrders((prev) => prev.map((o) => (o.id === orderId ? res.data.order : o)));
       isSettlingRef.current = false; // Clear ref on success
@@ -490,6 +540,8 @@ export const CashierTicketsPage: React.FC = () => {
         }, 1400);
       }, 500);
     } catch (err: any) {
+      if (attemptId !== settlementAttemptRef.current) return;
+
       const errorDetails = extractErrorDetails(err);
       const isConcurrent = errorDetails.code === 'CONCURRENT_MODIFICATION';
       const isAlreadySettled = errorDetails.code === 'ALREADY_SETTLED';
@@ -525,24 +577,40 @@ export const CashierTicketsPage: React.FC = () => {
         return;
       }
       
-      // Retry only for concurrent modification errors, with a max of 5 attempts
+      // Reconcile first. A settlement can have committed while the order update
+      // raced, or another cashier may have completed it. In both cases there is
+      // nothing to retry and the stale retry closure must stop here.
       if (isConcurrent && retryCount < MAX_SETTLE_RETRIES) {
-        const delay = SETTLE_BACKOFF_MS[retryCount];
-        if (retryCount === 0) {
-          addToast({
-            type: 'info',
-            title: 'Retrying…',
-            message: 'Order is being updated. Retrying automatically.',
-          });
-        } else if (retryCount === 2) {
-          // Additional notification for persistent conflicts
-          addToast({
-            type: 'warning',
-            title: 'Busy Order',
-            message: 'This order is still being modified. Still trying…',
-          });
+        try {
+          const latest = await axiosClient.get(`/orders/${orderId}`);
+          if (attemptId !== settlementAttemptRef.current) return;
+
+          setOrders((prev) => prev.map((o) => (o.id === orderId ? latest.data : o)));
+          if (latest.data.status === 'PAID' || latest.data.settlementStatus === 'SETTLED') {
+            setPhase('printed');
+            isSettlingRef.current = false;
+            addToast({
+              type: 'success',
+              title: 'Payment recorded',
+              message: 'This order was settled while the payment was being confirmed.',
+            });
+            return;
+          }
+        } catch {
+          // The payment request's normal error path below will show a useful
+          // message if the reconciliation request cannot be completed.
         }
-        setTimeout(() => handleMarkPaid(orderId, retryCount + 1), delay);
+
+        const delay = SETTLE_BACKOFF_MS[retryCount];
+        addToast({
+          type: 'info',
+          title: 'Confirming payment…',
+          message: 'The order changed while payment was recorded. Checking once more.',
+        });
+        settlementRetryTimerRef.current = setTimeout(() => {
+          settlementRetryTimerRef.current = null;
+          void handleMarkPaid(orderId, retryCount + 1, attemptId);
+        }, delay);
         return;
       }
       
@@ -556,9 +624,6 @@ export const CashierTicketsPage: React.FC = () => {
       if (errorDetails.statusCode === 401) {
         errorMessage = 'Your session has expired. Please log in again.';
         errorTitle = 'Session Expired';
-      } else if (errorDetails.message?.includes('cashier shift')) {
-        errorMessage = 'CASH settlements require an active cashier shift. Please open a shift first.';
-        errorTitle = 'Shift Required';
       } else if (isConcurrent) {
         errorMessage = 'Order is being modified by another user or process. Please try again.';
         // Also refresh the order
@@ -575,6 +640,25 @@ export const CashierTicketsPage: React.FC = () => {
     } finally {
       // Only clear the ref if we are not retrying and not in a nested call
       // The catch block already handles terminal errors and retries
+    }
+  };
+
+  /** One-tap kitchen reprint from a ticket card. */
+  const handleReprint = async (orderId: string) => {
+    try {
+      await axiosClient.post(`/print-jobs/reprint/${orderId}`, {});
+      addToast({
+        type: 'success',
+        title: 'Reprint sent',
+        message: 'The kitchen ticket was sent to the printer again.',
+      });
+      void fetchOrdersRef.current(true);
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Could not reprint',
+        message: extractErrorMessage(err, 'Please try again in a moment.'),
+      });
     }
   };
 
@@ -607,10 +691,26 @@ export const CashierTicketsPage: React.FC = () => {
     setCancelledOrderLabel('');
   };
 
-  /* Force queue mode if cashier-ordering is disabled */
+  /* Global-search deep links: focus the order builder on a menu item, or focus
+     the queue on a table / order reference. */
   useEffect(() => {
-    if (!cashierOrderingEnabled && mode === 'order') setMode('queue');
-  }, [cashierOrderingEnabled, mode]);
+    const state = location.state as
+      | { newOrderItemSearch?: string; queueSearch?: string }
+      | null;
+    if (!state?.newOrderItemSearch && !state?.queueSearch) return;
+
+    if (state.newOrderItemSearch) {
+      setOrderItemSearch(state.newOrderItemSearch);
+      setTableForNewOrder('');
+      setMode('order');
+    }
+    if (state.queueSearch) {
+      setSearch(state.queueSearch);
+      setMode('queue');
+    }
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   /* Keyboard shortcuts */
   useCashierShortcuts({
@@ -646,10 +746,10 @@ export const CashierTicketsPage: React.FC = () => {
   /* ─────────────────────────────────────────────────────────
    * Render
    * ───────────────────────────────────────────────────────── */
-  if (mode === 'order' && cashierOrderingEnabled) {
+  if (mode === 'order') {
     return (
       <div className="h-full flex flex-col bg-app-gradient text-foreground overflow-hidden">
-        <header className="h-16 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-6 shrink-0 relative">
+        <header className="h-16 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-4 sm:px-6 shrink-0 relative">
           <span aria-hidden className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
           <div className="flex items-center gap-3">
             <button
@@ -672,6 +772,7 @@ export const CashierTicketsPage: React.FC = () => {
           <Suspense fallback={<PageSkeleton />}>
             <CashierOrderingPanel
               initialTableNumber={tableForNewOrder}
+              initialSearch={orderItemSearch}
               onOrderCreated={() => {
                 void fetchOrders();
                 setMode('queue');
@@ -683,20 +784,23 @@ export const CashierTicketsPage: React.FC = () => {
     );
   }
 
-  if (mode === 'tables' && cashierOrderingEnabled) {
+  if (mode === 'tables') {
     return (
       <TableMap
         tableCount={tableCount}
-        activeOrders={activeOrders}
+        openOrderCounts={openOrdersByTable}
         onTableClick={(tableNumber) => {
-          const existing = activeOrders.find((o) => o.tableNumber === tableNumber);
-          if (existing) {
-            setSelectedOrderId(existing.id);
-            setMode('queue');
-          } else {
-            setTableForNewOrder(tableNumber);
-            setMode('order');
-          }
+          // Always a brand-new ticket — an open order on the table is never
+          // hijacked, so one table can carry several concurrent orders.
+          setOrderItemSearch('');
+          setTableForNewOrder(tableNumber);
+          setMode('order');
+        }}
+        onViewOrders={(tableNumber) => {
+          setSearch(tableNumber);
+          const only = activeOrders.find((o) => o.tableNumber === tableNumber);
+          setSelectedOrderId(only ? only.id : null);
+          setMode('queue');
         }}
         onBack={() => setMode('queue')}
       />
@@ -719,18 +823,16 @@ export const CashierTicketsPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {cashierOrderingEnabled && (
-              <Button
-                id="cashier-new-order-btn"
-                size="sm"
-                onClick={() => setMode('tables')}
-                className="h-10 px-4"
-              >
-                <ShoppingCart className="w-4 h-4 mr-1.5" />
-                New order
+            <Button
+              id="cashier-new-order-btn"
+              size="sm"
+              onClick={() => setMode('tables')}
+              className="h-10 px-4"
+            >
+              <ShoppingCart className="w-4 h-4 mr-1.5" />
+              New order
             </Button>
-          )}
-        </div>
+          </div>
         </div>
       </header>
 
@@ -756,6 +858,7 @@ export const CashierTicketsPage: React.FC = () => {
             onSelect={(id) => setSelectedOrderId(id)}
             onRetry={fetchOrders}
             searchActive={search.trim().length > 0}
+            onReprint={handleReprint}
           />
           {sortedQueue.length > QUEUE_PAGE_SIZE && (
             <div className="flex items-center justify-between gap-3 px-4 py-2 border-t border-slate-200 bg-white/60 shrink-0">
@@ -807,6 +910,7 @@ export const CashierTicketsPage: React.FC = () => {
                 onCollect={() => phase === 'idle' && handleMarkPaid(selectedOrder.id)}
                 onCancel={() => setShowCancelModal(true)}
                 onClose={() => setSelectedOrderId(null)}
+                onReprint={handleReprint}
                 className="w-full h-full border-0 rounded-none shadow-none"
               />
             </motion.aside>
