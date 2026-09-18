@@ -19,7 +19,7 @@ export function clearFeatureFlagCache(): void {
   flagCache.clear();
 }
 
-async function readFlag(key: string): Promise<boolean> {
+async function readFlag(key: string, defaultWhenMissing = true): Promise<boolean> {
   const cached = flagCache.get(key);
   if (cached && Date.now() < cached.expiresAt) {
     return cached.value;
@@ -27,7 +27,7 @@ async function readFlag(key: string): Promise<boolean> {
 
   try {
     const setting = await prisma.systemSetting.findUnique({ where: { key } });
-    const value = setting ? setting.value === 'true' : true;
+    const value = setting ? setting.value === 'true' : defaultWhenMissing;
     flagCache.set(key, { value, expiresAt: Date.now() + FLAG_TTL_MS });
     return value;
   } catch (error) {
@@ -58,6 +58,36 @@ export function requireFeatureFlag(key: string) {
       next(error);
     }
   };
+}
+
+/**
+ * Menu editing is open to Owners and Managers by default. Cashiers may add,
+ * edit, hide, or delete menu items unless a Manager has turned on the
+ * "restrict menu editing" setting (`cashierMenuEditRestricted`). That flag
+ * defaults to false — cashiers can manage the menu out of the box.
+ */
+export async function requireMenuEditAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const role = req.user?.role;
+
+  if (role === 'OWNER' || role === 'MANAGER') {
+    return next();
+  }
+
+  if (role === 'CASHIER') {
+    try {
+      const restricted = await readFlag('cashierMenuEditRestricted', false);
+      if (restricted) {
+        return res.status(403).json({
+          error: 'Menu editing is turned off. Ask a manager to allow menu changes.',
+        });
+      }
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  return res.status(403).json({ error: 'Not allowed to edit the menu.' });
 }
 
 export const requireManagerDashboard = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
