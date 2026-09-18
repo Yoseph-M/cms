@@ -19,11 +19,10 @@ import settingsRoutes from './modules/settings/settings.routes';
 import searchRoutes from './modules/search/search.routes';
 import settlementsRoutes from './modules/settlements/settlements.routes';
 import loginHistoryRoutes from './modules/login-history/loginHistory.routes';
+import cancellationRoutes from './modules/cancellation/cancellation.routes';
+import backupRoutes from './modules/backup/backup.routes';
 
 // Phase 9 Domains
-import cashierShiftsRoutes from './modules/cashier-shifts/cashierShifts.routes';
-import cashDrawerRoutes from './modules/cash-drawer/cashDrawer.routes';
-import varianceReviewRoutes from './modules/variance-review/varianceReview.routes';
 import dailyCloseRoutes from './modules/daily-close/dailyClose.routes';
 import integrityRoutes from './modules/integrity/integrity.routes';
 import printAgentsRoutes from './modules/print-agents/print-agents.routes';
@@ -34,7 +33,6 @@ import { prisma } from './services/prisma.service';
 import { hashPassword } from './utils/security';
 import { Role, MenuCategory } from '@prisma/client';
 import { logger, requestContext } from './utils/logger';
-import { ensureDefaultPrinters } from './services/printer.service';
 import crypto from 'crypto';
 import * as Sentry from '@sentry/node';
 import client from 'prom-client';
@@ -54,15 +52,18 @@ Sentry.init({
 const collectDefaultMetrics = client.collectDefaultMetrics;
 collectDefaultMetrics({ register: client.register });
 
-const allowedOrigins =
+const normalizeOrigin = (o: string | undefined) => o ? o.replace(/\/$/, '') : '';
+
+const allowedOrigins = (
   config.nodeEnv === 'production'
-    ? [config.webAppUrl, ...config.extraCorsOrigins].filter(Boolean)
+    ? [config.webAppUrl, ...config.extraCorsOrigins]
     : [
         'http://localhost:3000',
         'http://localhost:5173',
         config.webAppUrl,
         ...config.extraCorsOrigins,
-      ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i);
+      ]
+).filter(Boolean).map(normalizeOrigin).filter((v, i, a) => a.indexOf(v) === i);
 
 app.use(helmet());
 app.use(compression());
@@ -70,7 +71,7 @@ app.use(
   cors({
     origin: (origin, callback) => {
       // Allow non-browser clients (curl, server-to-server) with no Origin header
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(normalizeOrigin(origin))) {
         callback(null, true);
         return;
       }
@@ -85,6 +86,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use((req: Request, res: Response, next: NextFunction) => {
   const requestId = (req.headers['x-request-id'] as string) || crypto.randomUUID();
   res.setHeader('X-Request-ID', requestId);
+  // The error handler reads req.requestId to include it in error responses.
+  (req as any).requestId = requestId;
   requestContext.run({ requestId }, () => {
     next();
   });
@@ -115,17 +118,19 @@ app.use('/api/expenses', requireManagerDashboard, expensesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api', cancellationRoutes); // /orders/:orderId/cancellation-request + /cancellation-requests review flow
 app.use('/api', settlementsRoutes); // Settlements routes include /orders/:orderId/settlements
 app.use('/api', loginHistoryRoutes); // Login history - OWNER only for security monitoring
 
 // Phase 9 API Routes
-app.use('/api/shifts', cashierShiftsRoutes); // Used by Cashier
-app.use('/api/cash-drawer', cashDrawerRoutes); // Used by Cashier
-app.use('/api/variance', varianceReviewRoutes); // Only owner? Actually variance is probably owner.
+// Shift management has been removed: cash settlement and the end-of-day close
+// work directly off orders and settlements, with no open shift required.
 app.use('/api/daily-close', requireManagerDashboard, dailyCloseRoutes);
 app.use('/api/integrity', requireManagerDashboard, integrityRoutes);
 app.use('/api/print-agents', printAgentsRoutes);
 app.use('/api/print-jobs', printJobsRoutes);
+// System Admin → Backup & restore (OWNER only, enforced in the router).
+app.use('/api/backup', backupRoutes);
 
 // Liveness probe — always responds 200 if the process is up
 app.get('/api/health', (req: Request, res: Response) => {
@@ -235,30 +240,12 @@ export async function seedInitialData() {
       logger.info('Seeded default menu items.');
     }
 
-    await ensureDefaultPrinters();
-
-    const cashierSetting = await prisma.systemSetting.findUnique({
-      where: { key: 'cashierOrderingEnabled' },
-    });
-    if (!cashierSetting) {
-      await prisma.systemSetting.create({
-        data: { key: 'cashierOrderingEnabled', value: 'false' },
-      });
-      logger.info('Seeded cashierOrderingEnabled system setting (default: off).');
-    }
-
     const businessDefaults: Record<string, string> = {
-      businessName: 'Enterprise POS Restaurant',
-      businessAddress: '123 Culinary Boulevard, Suite 100',
-      businessPhone: '+1 (555) 019-2831',
       taxRate: '0',
-      currency: 'ETB',
-      receiptFooter: 'Thank you for dining with us!',
-      receiptLogo: '',
       managerDashboardEnabled: 'true',
       systemAdministrationEnabled: 'true',
-      cashierMenuManagementEnabled: 'true',
-      shiftManagementEnabled: 'true',
+      // Cashiers can manage the menu out of the box; a manager can restrict it.
+      cashierMenuEditRestricted: 'false',
     };
     for (const [key, value] of Object.entries(businessDefaults)) {
       const existing = await prisma.systemSetting.findUnique({ where: { key } });
