@@ -11,7 +11,6 @@ import {
   LogOut,
   Shield,
   ChevronDown,
-  CalendarDays,
   User,
   Search,
   Calendar,
@@ -22,11 +21,7 @@ import {
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { CommandPalette } from './CommandPalette';
-import {
-  getCalendarPreference,
-  setCalendarPreference,
-  type CalendarSystem,
-} from '../../utils/calendar';
+import { GlobalSearch } from './GlobalSearch';
 import { cn } from '../../lib/utils';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -37,12 +32,9 @@ export const Header: React.FC = () => {
   const { dateRange, showDateRange, setDateRange, pageTitle } = useHeaderStore();
   const { toggleMobile } = useSidebar();
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const [calendar, setCalendar] = React.useState<CalendarSystem>(() => getCalendarPreference());
   const [dateOpen, setDateOpen] = React.useState(false);
-  const [searchFocused, setSearchFocused] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
   const dateRef = React.useRef<HTMLDivElement>(null);
-  const searchRef = React.useRef<HTMLInputElement>(null);
 
   const showSidebarNav = user?.role === 'OWNER' || user?.role === 'MANAGER';
 
@@ -68,35 +60,6 @@ export const Header: React.FC = () => {
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, [dateOpen]);
-
-  useEffect(() => {
-    const onCal = (e: Event) => {
-      const detail = (e as CustomEvent<CalendarSystem>).detail;
-      if (detail) setCalendar(detail);
-    };
-    window.addEventListener('cafeflow:calendar-changed', onCal);
-    return () => window.removeEventListener('cafeflow:calendar-changed', onCal);
-  }, []);
-
-  const toggleCalendar = () => {
-    const next: CalendarSystem = calendar === 'gregorian' ? 'ethiopian' : 'gregorian';
-    setCalendarPreference(next);
-    setCalendar(next);
-  };
-
-  // Global Ctrl/Cmd + K shortcut → focus the search input
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const isFinderShortcut = (e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey);
-      if (isFinderShortcut) {
-        e.preventDefault();
-        searchRef.current?.focus();
-        searchRef.current?.select();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 
   const formatShort = (iso: string) => {
     if (!iso) return '';
@@ -247,59 +210,11 @@ export const Header: React.FC = () => {
 
       {/* Right-side actions */}
       <div className="flex items-center gap-1.5 sm:gap-2">
-        {/* Search bar with Ctrl/Cmd+K shortcut */}
-        <div className="relative">
-          <Search
-            className={cn(
-              'pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors',
-              searchFocused ? 'text-primary' : 'text-muted-foreground',
-            )}
-          />
-          <input
-            ref={searchRef}
-            type="text"
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            placeholder="Search…"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                const q = (e.target as HTMLInputElement).value;
-                window.dispatchEvent(new CustomEvent('cafeflow:open-command-palette', { detail: { q } }));
-              } else if (e.key === 'Escape') {
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-            className={cn(
-              'h-9 w-44 sm:w-64 lg:w-80 rounded-lg border border-input bg-card pl-9 pr-14 text-sm text-foreground placeholder:text-muted-foreground shadow-sm outline-none transition-all',
-              'focus:border-primary/50 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.10)]',
-              'max-[767px]:w-28 max-[767px]:pr-2 max-[767px]:focus:w-40'
-            )}
-          />
-          <kbd
-            aria-hidden
-            className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground sm:inline-flex"
-          >
-            ⌘K
-          </kbd>
-        </div>
+        {/* Inline search — always rendered (even on phones), results in a
+            dropdown anchored to the header. */}
+        <GlobalSearch />
 
-        {showSidebarNav && (
-          <>
-            <Tooltip
-              label={calendar === 'gregorian' ? 'Switch to Ethiopian calendar' : 'Switch to Gregorian calendar'}
-              side="bottom"
-            >
-              <button
-                onClick={toggleCalendar}
-                className="hidden h-9 items-center gap-1.5 rounded-lg border border-input bg-card px-2.5 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:text-foreground hover:border-primary/40 lg:inline-flex"
-              >
-                <CalendarDays className="h-3.5 w-3.5" />
-                {calendar === 'gregorian' ? 'Gregorian' : 'Ethiopian'}
-              </button>
-            </Tooltip>
-            <NotificationBell />
-          </>
-        )}
+        {showSidebarNav && <NotificationBell />}
 
         {/* Help shortcut */}
         <Tooltip label="Help & shortcuts" side="bottom">
