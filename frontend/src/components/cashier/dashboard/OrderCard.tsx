@@ -8,10 +8,12 @@ import {
   CircleDot,
   X,
   Timer,
+  Printer,
+  RefreshCw,
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { formatCurrency } from '../../../utils/currency';
-import type { Order } from '../../../types';
+import type { Order, OrderPrintJob } from '../../../types';
 import { useElapsedTime } from './hooks/useElapsedTime';
 import { getOrderStatus, statusAccent, STATUS_LABEL } from './utils';
 
@@ -23,6 +25,8 @@ export interface OrderCardProps {
   selectMode?: boolean;
   bulkSelected?: boolean;
   onToggleSelect?: () => void;
+  /** One-tap kitchen reprint for this ticket. */
+  onReprint?: (orderId: string) => void;
 }
 
 /**
@@ -30,7 +34,7 @@ export interface OrderCardProps {
  * so the cashier can scan ready-to-pay vs in-kitchen at a glance.
  */
 export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
-  ({ order, isSelected, onClick, cardRef, selectMode, bulkSelected, onToggleSelect }, ref) => {
+  ({ order, isSelected, onClick, cardRef, selectMode, bulkSelected, onToggleSelect, onReprint }, ref) => {
     const elapsed = useElapsedTime(order.createdAt);
     const status = getOrderStatus(order);
     const accent = statusAccent(status);
@@ -116,6 +120,32 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
           </div>
           {!selectMode && <StatusBadge status={status} />}
         </div>
+        {!selectMode && (
+          <div className="mt-2.5 flex items-center justify-between gap-2">
+            <KitchenPrintChip job={order.latestPrintJob ?? null} />
+            {onReprint && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReprint(order.id);
+                }}
+                onKeyDown={(e) => e.stopPropagation()}
+                aria-label="Reprint kitchen ticket"
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors shrink-0',
+                  'border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                  order.latestPrintJob?.status === 'FAILED' &&
+                    'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15'
+                )}
+              >
+                <RefreshCw className="w-3 h-3" />
+                Reprint
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
           <div className="min-w-0 text-[11px] text-slate-500">
             <p>
@@ -140,6 +170,67 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
   },
 );
 OrderCard.displayName = 'OrderCard';
+
+/**
+ * "Did the kitchen ticket actually reach paper?" — the one thing a cashier
+ * needs at a glance before sending food. Queued = not yet printed, Failed =
+ * send it again.
+ */
+const KitchenPrintChip: React.FC<{ job: OrderPrintJob | null }> = ({ job }) => {
+  const config = (() => {
+    if (!job) {
+      return {
+        label: 'Not sent to kitchen',
+        className: 'bg-slate-100 text-slate-500 border-slate-200',
+        icon: <Printer className="w-3 h-3" />,
+      };
+    }
+    switch (job.status) {
+      case 'PRINTED':
+        return {
+          label: 'Kitchen printed',
+          className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          icon: <CheckCircle2 className="w-3 h-3" />,
+        };
+      case 'FAILED':
+        return {
+          label: 'Kitchen failed',
+          className: 'bg-red-50 text-red-700 border-red-200',
+          icon: <AlertTriangle className="w-3 h-3" />,
+        };
+      case 'PRINTING':
+        return {
+          label: 'Printing…',
+          className: 'bg-sky-50 text-sky-700 border-sky-200',
+          icon: <Printer className="w-3 h-3" />,
+        };
+      case 'CANCELLED':
+        return {
+          label: 'Print cancelled',
+          className: 'bg-slate-100 text-slate-500 border-slate-200',
+          icon: <X className="w-3 h-3" />,
+        };
+      default:
+        return {
+          label: 'Kitchen queued',
+          className: 'bg-amber-50 text-amber-700 border-amber-200',
+          icon: <Clock className="w-3 h-3" />,
+        };
+    }
+  })();
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+        config.className,
+      )}
+    >
+      {config.icon}
+      {config.label}
+    </span>
+  );
+};
 
 const StatusBadge: React.FC<{ status: ReturnType<typeof getOrderStatus> }> = ({ status }) => {
   const accent = statusAccent(status);
