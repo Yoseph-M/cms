@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
-import { Inbox, Search } from 'lucide-react';
+import { ChevronDown, Inbox, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Order } from '../../../types';
 import { OrderCard } from './OrderCard';
@@ -9,28 +9,84 @@ import { LoadingState } from '../../common/LoadingState';
 import { ErrorState } from '../../common/ErrorState';
 import { getOrderStatus } from './utils';
 
-export interface OrderListProps { orders: Order[]; selectedId: string | null; isLoading: boolean; error: string | null; hasAnyOrders: boolean; cardRef: (id: string, node: HTMLDivElement | null) => void; onSelect: (id: string) => void; onRetry: () => void; searchActive: boolean; selectMode?: boolean; bulkSelectedIds?: Set<string>; onToggleSelect?: (id: string) => void; }
+export interface OrderListProps { orders: Order[]; selectedId: string | null; isLoading: boolean; error: string | null; hasAnyOrders: boolean; cardRef: (id: string, node: HTMLDivElement | null) => void; onSelect: (id: string) => void; onRetry: () => void; searchActive: boolean; selectMode?: boolean; bulkSelectedIds?: Set<string>; onToggleSelect?: (id: string) => void; onReprint?: (orderId: string) => void; }
 
 export const OrderList: React.FC<OrderListProps> = (props) => {
-  const { orders, selectedId, isLoading, error, hasAnyOrders, cardRef, onSelect, onRetry, searchActive, selectMode, bulkSelectedIds, onToggleSelect } = props;
+  const { orders, selectedId, isLoading, error, hasAnyOrders, cardRef, onSelect, onRetry, searchActive, selectMode, bulkSelectedIds, onToggleSelect, onReprint } = props;
   const { t } = useTranslation('cashier');
   const ready = orders.filter((order) => getOrderStatus(order) === 'ready');
   const working = orders.filter((order) => getOrderStatus(order) === 'cooking');
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Show hint when there's significant hidden content below (>80px)
+    const hasHiddenContent = el.scrollHeight - el.scrollTop - el.clientHeight > 80;
+    setShowScrollHint(hasHiddenContent);
+  }, []);
+
+  useEffect(() => {
+    checkScroll();
+  }, [orders.length, checkScroll]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', checkScroll, { passive: true });
+    // Also check on resize
+    const ro = new ResizeObserver(checkScroll);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', checkScroll);
+      ro.disconnect();
+    };
+  }, [checkScroll]);
+
   if (isLoading) return <div className="flex-1"><LoadingState message={t('queue.loadingQueue')} /></div>;
   if (error) return <div className="flex-1"><ErrorState message={error} onRetry={onRetry} /></div>;
   if (!orders.length) return <div className="flex-1"><EmptyState icon={hasAnyOrders ? <Search className="w-7 h-7" /> : <Inbox className="w-7 h-7" />} title={hasAnyOrders ? 'No tickets found' : 'The queue is clear'} message={hasAnyOrders ? 'Try another search.' : 'New tickets will arrive here automatically.'} /></div>;
-  const sectionProps = { selectedId, cardRef, onSelect, selectMode, bulkSelectedIds, onToggleSelect };
+  const sectionProps = { selectedId, cardRef, onSelect, selectMode, bulkSelectedIds, onToggleSelect, onReprint };
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 pb-28">
-      <LayoutGroup>
-        <QueueSection title="Ready to collect" caption="Payment can be taken now" count={ready.length} tone="ready" orders={ready} {...sectionProps} />
-        <QueueSection title="In progress" caption="Still being prepared" count={working.length} tone="working" orders={working} {...sectionProps} />
-      </LayoutGroup>
+    <div className="flex-1 min-h-0 relative">
+      <div ref={scrollRef} className="h-full overflow-y-auto p-4 sm:p-6 pb-28">
+        <LayoutGroup>
+          <QueueSection title="Ready to collect" caption="Payment can be taken now" count={ready.length} tone="ready" orders={ready} {...sectionProps} />
+          <QueueSection title="In progress" caption="Still being prepared" count={working.length} tone="working" orders={working} {...sectionProps} />
+        </LayoutGroup>
+      </div>
+
+      {/* Scroll hint — light bouncing chevron at the bottom */}
+      <AnimatePresence>
+        {showScrollHint && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.25 }}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-10"
+          >
+            <motion.div
+              animate={{ y: [0, 5, 0] }}
+              transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
+              className="flex items-center gap-1.5 rounded-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/60 dark:border-slate-700/60 shadow-sm px-3 py-1.5"
+            >
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                Scroll for more
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-const QueueSection: React.FC<{ title: string; caption: string; count: number; tone: 'ready' | 'working'; orders: Order[]; selectedId: string | null; cardRef: OrderListProps['cardRef']; onSelect: OrderListProps['onSelect']; selectMode?: boolean; bulkSelectedIds?: Set<string>; onToggleSelect?: (id: string) => void }> = ({ title, caption, count, tone, orders, selectedId, cardRef, onSelect, selectMode, bulkSelectedIds, onToggleSelect }) => (
+const QueueSection: React.FC<{ title: string; caption: string; count: number; tone: 'ready' | 'working'; orders: Order[]; selectedId: string | null; cardRef: OrderListProps['cardRef']; onSelect: OrderListProps['onSelect']; selectMode?: boolean; bulkSelectedIds?: Set<string>; onToggleSelect?: (id: string) => void; onReprint?: (orderId: string) => void }> = ({ title, caption, count, tone, orders, selectedId, cardRef, onSelect, selectMode, bulkSelectedIds, onToggleSelect, onReprint }) => (
   <section className={cn('mb-7 last:mb-0', !orders.length && 'hidden')}>
     <div className="mb-3 flex items-center justify-between">
       <div className="flex items-center gap-2.5"><span className={cn('h-2.5 w-2.5 rounded-full', tone === 'ready' ? 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]' : 'bg-sky-500 shadow-[0_0_0_4px_rgba(14,165,233,0.10)]')} /><div><h3 className="text-sm font-bold text-slate-900">{title}</h3><p className="text-[11px] text-slate-500">{caption}</p></div></div>
@@ -38,7 +94,7 @@ const QueueSection: React.FC<{ title: string; caption: string; count: number; to
     </div>
     <motion.ul layout className="grid gap-3 md:grid-cols-2" aria-label={title}>
       <AnimatePresence initial={false} mode="popLayout">
-        {orders.map((order, index) => <motion.li layout key={order.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ delay: Math.min(index * 0.035, 0.18) }} className="list-none"><OrderCard order={order} isSelected={order.id === selectedId} onClick={() => (selectMode && onToggleSelect ? onToggleSelect(order.id) : onSelect(order.id))} selectMode={selectMode} bulkSelected={bulkSelectedIds?.has(order.id)} cardRef={(node) => cardRef(order.id, node)} /></motion.li>)}
+        {orders.map((order, index) => <motion.li layout key={order.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ delay: Math.min(index * 0.035, 0.18) }} className="list-none"><OrderCard order={order} isSelected={order.id === selectedId} onClick={() => (selectMode && onToggleSelect ? onToggleSelect(order.id) : onSelect(order.id))} selectMode={selectMode} bulkSelected={bulkSelectedIds?.has(order.id)} cardRef={(node) => cardRef(order.id, node)} onReprint={onReprint} /></motion.li>)}
       </AnimatePresence>
     </motion.ul>
   </section>
