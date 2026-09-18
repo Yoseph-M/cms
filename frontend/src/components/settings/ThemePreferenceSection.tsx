@@ -110,7 +110,7 @@ export const ThemePreferenceSection: React.FC = () => {
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3.5">
+    <div className="grid grid-cols-3 max-[419px]:grid-cols-1 gap-3.5">
       {modes.map(({ mode, label, description, icon: Icon, renderPreview }) => {
         const isActive = theme === mode;
         return (
