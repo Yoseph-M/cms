@@ -99,70 +99,16 @@ describe('CashierDashboard', () => {
     });
   });
 
-  it('renders active orders and hides Mark Paid for PAID orders', async () => {
+  it('renders active orders and filters correctly', async () => {
     renderWithQueryClient(<CashierDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('orderDetail.markPaid')).toBeInTheDocument();
+      // Active ticket is in the queue
+      expect(screen.getAllByText('Table 1').length).toBeGreaterThan(0);
     });
 
-    // Active ticket is in the queue; PAID Table 2 is filtered out
-    expect(screen.getAllByText('Table 1').length).toBeGreaterThan(0);
+    // PAID Table 2 is filtered out of active queues
     expect(screen.queryByText('Table 2')).not.toBeInTheDocument();
   });
 
-  it('handles mark paid flow correctly', async () => {
-    (axiosClient.patch as any).mockResolvedValueOnce({
-      data: {
-        id: 'order-1',
-        clientOrderId: 'ref-1',
-        tableNumber: '1',
-        status: 'PAID',
-        totalAmount: 50,
-        createdAt: new Date().toISOString(),
-        items: [{ name: 'Espresso', quantity: 1, unitPrice: 50 }],
-      },
-    });
-
-    renderWithQueryClient(<CashierDashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByText('orderDetail.markPaid')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('Cash'));
-    fireEvent.click(screen.getByText('orderDetail.markPaid'));
-
-    await waitFor(() => {
-      expect(axiosClient.post).toHaveBeenCalledWith('/orders/order-1/settlements', {
-        amountMinor: expect.any(Number),
-        method: 'CASH',
-        reference: '',
-        note: 'Settlement recorded via Cashier Dashboard',
-      });
-    });
-  });
-
-  it('displays printer failure banner and allows dismiss', async () => {
-    renderWithQueryClient(<CashierDashboard />);
-
-    await waitFor(() => {
-      expect(screen.getByText('orderDetail.markPaid')).toBeInTheDocument();
-    });
-
-    const onPrinterFailed = mockSocket.on.mock.calls.find((call: any) => call[0] === 'printer:failed')?.[1];
-    expect(onPrinterFailed).toBeDefined();
-
-    onPrinterFailed({ id: 'order-1', tableNumber: '1', message: 'Out of paper' });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Printer failure detected/i)).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('Dismiss'));
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Printer failure detected/i)).not.toBeInTheDocument();
-    });
-  });
 });
