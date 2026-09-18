@@ -48,7 +48,7 @@ export const LanguagePreferenceSection: React.FC = () => {
   };
 
   return (
-    <div className="grid grid-cols-2 gap-3.5">
+    <div className="grid grid-cols-2 max-[419px]:grid-cols-1 gap-3.5">
       {LANGUAGES.map((lang) => {
         const isActive = i18n.language === lang.code;
         return (
