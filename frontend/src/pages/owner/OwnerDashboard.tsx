@@ -62,6 +62,8 @@ interface RecentOrderRow {
 }
 interface ProfitLossRow {
   revenue: number;
+  /** Total spending — payroll is folded in, not a separate line. */
+  expenses: number;
   payrollCost: number;
   otherExpenses: number;
   netProfit: number;
@@ -238,9 +240,7 @@ export const OwnerDashboard: React.FC = () => {
       : monthly; // smaller windows keep the data the analytics API returned
     const labels = slicedMonthly.map((m) => m.month);
     const income = slicedMonthly.map((m) => Math.round(m.revenue));
-    const totalExpenses = profitLoss
-      ? profitLoss.payrollCost + profitLoss.otherExpenses
-      : 0;
+    const totalExpenses = profitLoss ? profitLoss.expenses : 0;
     const expenseRatio =
       profitLoss && profitLoss.revenue > 0 ? totalExpenses / profitLoss.revenue : 0;
     const expenses = income.map((v) => Math.round(v * expenseRatio));
