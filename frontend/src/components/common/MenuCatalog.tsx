@@ -32,7 +32,6 @@ import {
   Upload,
   ArrowUpDown,
   CheckSquare,
-  XSquare,
   Check,
   Coffee,
   CakeSlice,
@@ -125,10 +124,9 @@ const StatCard: React.FC<{
 interface MenuCatalogProps {
   canEdit?: boolean;
   showAvailability?: boolean;
-  allowCsvImport?: boolean;
 }
 
-export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAvailability = true, allowCsvImport = true }) => {
+export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAvailability = true }) => {
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
@@ -285,7 +283,10 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
   };
 
   const selectAllVisible = () => {
-    setSelectedIds(new Set(visibleItems.map((i) => i.id)));
+    setSelectedIds((prev) => {
+      const allSelected = visibleItems.length > 0 && visibleItems.every((i) => prev.has(i.id));
+      return allSelected ? new Set() : new Set(visibleItems.map((i) => i.id));
+    });
   };
 
   const clearSelection = () => setSelectedIds(new Set());
@@ -513,48 +514,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     [selectedIds, bulkAvailabilityMutation]
   );
 
-  const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const lines = text.split('\n').filter((l) => l.trim());
-      if (lines.length < 2) throw new Error('CSV must have a header and at least one row.');
-      const header = lines[0].split(',').map((s) => s.trim().toLowerCase());
-      const nameIdx = header.indexOf('name');
-      const catIdx = header.indexOf('category');
-      const priceIdx = header.indexOf('price');
-      if (nameIdx === -1 || catIdx === -1 || priceIdx === -1) {
-        throw new Error('CSV must include name,category,price columns.');
-      }
-      const toCreate = [];
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map((s) => s.trim());
-        const name = cols[nameIdx];
-        const categoryRaw = (cols[catIdx] || '').toUpperCase();
-        const priceDollars = parseFloat(cols[priceIdx]);
-        if (!name || !priceDollars || Number.isNaN(priceDollars)) continue;
-        const category = (['FOOD', 'DRINK', 'DESSERT', 'OTHER'].includes(categoryRaw)
-          ? categoryRaw
-          : 'OTHER') as MenuItem['category'];
-        toCreate.push({
-          name,
-          category,
-          price: priceDollars,
-        });
-      }
-      if (toCreate.length === 0) throw new Error('No valid rows found.');
-      await Promise.all(toCreate.map((payload) => axiosClient.post('/menu', payload)));
-      addToast({ type: 'success', title: `Imported ${toCreate.length} menu items` });
-      invalidateMenu();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to import CSV.';
-      addToast({ type: 'error', title: msg });
-    } finally {
-      e.target.value = '';
-    }
-  };
-
   const handleImageFile = (file: File) => {
     fileToCompressedDataUrl(file)
       .then((dataUrl) => {
@@ -606,7 +565,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideOverOpen]);
 
-  const csvFileRef = useRef<HTMLInputElement>(null);
   const canSelect = canEdit && showAvailability;
 
   const availabilityCluster = (item: MenuItem, labelWidth?: string) => (
@@ -791,7 +749,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
   return (
     <div className="space-y-5">
-      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-4 max-[767px]:grid-cols-2' : 'grid-cols-2 max-[767px]:grid-cols-1')}>
+      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-4 max-[767px]:grid-cols-2 max-[419px]:grid-cols-1' : 'grid-cols-2 max-[767px]:grid-cols-1')}>
         <StatCard icon={Layers} iconClass="bg-primary/10 text-primary" value={stats.total} label="Total Items" />
         {showAvailability ? (
           <>
@@ -822,7 +780,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               onChange={handleSearchChange}
               placeholder="Search menu items…"
               leftIcon={<Search className="w-4 h-4" />}
-              className="flex-1 min-w-[200px]"
+              className="flex-1 min-w-[200px] max-[419px]:min-w-0"
               aria-label="Search menu items"
             />
 
@@ -880,18 +838,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             onChange={handleSearchChange}
             placeholder="Search menu items…"
             leftIcon={<Search className="w-4 h-4" />}
-            className="flex-1 min-w-[200px]"
+            className="flex-1 min-w-[200px] max-[419px]:min-w-0"
             aria-label="Search menu items"
           />
 
           {canEdit && !selectMode && (
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap ml-auto shrink-0 justify-end">
-              {allowCsvImport && (
-                <Button variant="outline" className="h-11" onClick={() => csvFileRef.current?.click()}>
-                  <Upload className="w-4 h-4" />
-                  Import CSV
-                </Button>
-              )}
               <Button id="add-menu-item-btn" className="h-11" onClick={openAdd}>
                 <Plus className="w-4 h-4" />
                 Add Item
@@ -905,10 +857,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                 <CheckSquare className="w-3.5 h-3.5" />
                 Select All ({visibleItems.length})
               </Button>
-              <Button variant="outline" size="sm" onClick={clearSelection} disabled={selectedIds.size === 0}>
-                <XSquare className="w-3.5 h-3.5" />
-                Clear
-              </Button>
               {showAvailability && (
                 <>
                   <Button size="sm" variant="outline" onClick={() => handleBulkAvailability(true)} disabled={selectedIds.size === 0 || bulkAvailabilityMutation.isPending}>
@@ -919,9 +867,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                   </Button>
                 </>
               )}
-              <Button size="sm" variant="ghost" onClick={() => { setSelectMode(false); clearSelection(); }}>
-                Exit Select
-              </Button>
               {selectedIds.size > 0 && (
                 <Badge variant="default" className="text-xs">
                   {selectedIds.size} selected
@@ -1038,16 +983,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
         )}
       </Card>
 
-      <input
-        ref={csvFileRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleCSVImport}
-      />
-
       {isLoading ? (
-        <div className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-4">
+        <div className="grid grid-cols-4 max-[767px]:grid-cols-2 max-[419px]:grid-cols-1 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <Card key={i} className="overflow-hidden animate-pulse">
               <div className="h-36 bg-secondary/50" />
@@ -1103,7 +1040,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             transition={{ duration: 0 }}
             className={cn(
               view === 'grid'
-                ? 'grid grid-cols-4 max-[767px]:grid-cols-2 gap-4'
+                ? 'grid grid-cols-4 max-[767px]:grid-cols-2 max-[419px]:grid-cols-1 gap-4'
                 : 'flex flex-col gap-2.5'
             )}
           >
@@ -1278,11 +1215,11 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             <Input
               id="form-price"
               type="number"
-              step="0.01"
+              step="1"
               min="0"
               value={form.price}
-              onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-              placeholder="0.00"
+              onChange={(e) => setForm((f) => ({ ...f, price: e.target.value.replace(/[^\d]/g, '') }))}
+              placeholder="0"
               leftIcon={<Banknote className="w-4 h-4" />}
               rightAdornment={<span className="text-xs font-semibold text-muted-foreground">ETB</span>}
               invalid={!!formErrors.price}
