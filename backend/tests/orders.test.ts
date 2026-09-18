@@ -62,7 +62,9 @@ describe('Order state machine (property-based sweep)', () => {
     [OrderStatus.SUBMITTED]: [OrderStatus.IN_KITCHEN, OrderStatus.CANCELLED, OrderStatus.PAID],
     [OrderStatus.IN_KITCHEN]: [OrderStatus.SERVED, OrderStatus.CANCELLED, OrderStatus.PAID],
     [OrderStatus.SERVED]: [OrderStatus.PAID, OrderStatus.CANCELLED],
-    [OrderStatus.PAID]: [OrderStatus.CANCELLED],
+    // PAID → CANCELLED only with settlementStatus === 'SETTLED' (refund path);
+    // the no-arg sweep asserts the default (unsettled) answer: false.
+    [OrderStatus.PAID]: [],
     [OrderStatus.CANCELLED]: [],
   };
 
