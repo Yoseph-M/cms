@@ -47,6 +47,17 @@ export async function registerAgent(req: AuthenticatedRequest, res: Response) {
     });
   }
 
+  // Enforce name uniqueness at the application layer instead of relying on a
+  // database unique index. Mongo/Prisma index creation is not guaranteed on
+  // every deployment, and a find-before-create keeps the error message clear.
+  const existingAgent = await prisma.printAgent.findUnique({
+    where: { name: sanitizedName },
+    select: { id: true },
+  });
+  if (existingAgent) {
+    return res.status(409).json({ error: 'Agent with this name already exists' });
+  }
+
   // Generate a random 64-character token
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
