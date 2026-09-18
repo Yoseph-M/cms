@@ -1,29 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, FileText, Printer, ShieldCheck, Users, XCircle } from 'lucide-react';
+import { DatabaseBackup, FileText, Printer, Users, XCircle } from 'lucide-react';
 import { OwnerStaff } from './OwnerStaff';
-import { OwnerAudit } from './OwnerAudit';
-import { OwnerLoginHistory } from './OwnerLoginHistory';
+import { OwnerAuditLogs } from './OwnerAuditLogs';
 import { OwnerPrinters } from './OwnerPrinters';
-import { OwnerPrintAgents } from './OwnerPrintAgents';
+import { OwnerBackup } from './OwnerBackup';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useHeaderStore } from '../../store/headerStore';
+import { resolveAdminTab, type TabId } from './adminTabs';
 import { cn } from '../../lib/utils';
-
-type TabId = 'staff' | 'audit' | 'logins' | 'printers';
-
-const TAB_IDS: readonly TabId[] = ['staff', 'audit', 'logins', 'printers'] as const;
+import { motion, AnimatePresence } from 'framer-motion';
 
 export const SystemAdminPage: React.FC = () => {
   const { t } = useTranslation('owner');
   const { settings } = useSettingsStore();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabFromUrl = searchParams.get('tab') as TabId | null;
-  const [activeTab, setActiveTab] = useState<TabId>(
-    tabFromUrl && TAB_IDS.includes(tabFromUrl) ? tabFromUrl : 'staff',
-  );
+  const [activeTab, setActiveTab] = useState<TabId>(() => resolveAdminTab(searchParams.get('tab')));
 
   const systemAdminEnabled = settings['systemAdministrationEnabled'] !== 'false';
 
@@ -50,15 +44,15 @@ export const SystemAdminPage: React.FC = () => {
 
   const tabs = [
     { id: 'staff' as const, label: 'Staff', description: 'Roles & access', icon: Users },
-    { id: 'audit' as const, label: 'Audit trail', description: 'System activity', icon: FileText },
-    { id: 'logins' as const, label: 'Login history', description: 'Account security', icon: ShieldCheck },
+    { id: 'audit' as const, label: 'Audit logs', description: 'Activity & logins', icon: FileText },
     { id: 'printers' as const, label: 'Printing', description: 'Devices & agents', icon: Printer },
+    { id: 'backup' as const, label: 'Backup', description: 'Export & restore', icon: DatabaseBackup },
   ] as const;
 
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab)!;
 
   // Update the header subtitle to match the active tab so it changes as the
-  // user moves between Staff, Audit, Logins, and Printing.
+  // user moves between Staff, Audit logs, Printing, and Backup.
   useEffect(() => {
     setPageTitle({
       title: t('nav.systemAdmin', { defaultValue: 'System Admin' }),
@@ -88,12 +82,12 @@ export const SystemAdminPage: React.FC = () => {
      * Single-tab strip + content panel.
      * The previous dark "System administration" hero header has been removed —
      * the page title is now rendered by the global header (see useHeaderStore).
-     * The tab strip is forced to a single row × four columns so all sections
-     * are always reachable at a glance.
+     * The tab strip keeps all four sections in a row on desktop and two per row
+     * below 768px, so every section is always reachable at a glance.
      */
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
       <section aria-label="Administration sections" className="rounded-2xl border border-border/50 bg-card p-2 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.22)]">
-        <div role="tablist" aria-label="Administration sections" className="grid grid-cols-4 gap-1">
+        <div role="tablist" aria-label="Administration sections" className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -118,7 +112,6 @@ export const SystemAdminPage: React.FC = () => {
                   <span className="block truncate text-sm font-semibold">{tab.label}</span>
                   <span className={cn('mt-0.5 block truncate text-xs', isActive ? 'text-primary-foreground/75' : 'text-muted-foreground')}>{tab.description}</span>
                 </span>
-                <ChevronRight className={cn('h-4 w-4 shrink-0 transition-transform', isActive ? 'translate-x-0.5 text-primary-foreground/80' : 'opacity-0 group-hover:opacity-70')} />
               </button>
             );
           })}
@@ -126,15 +119,20 @@ export const SystemAdminPage: React.FC = () => {
       </section>
 
       <section id={`admin-panel-${activeTab}`} role="tabpanel" aria-label={activeTabMeta.label} className="rounded-2xl border border-border/50 bg-card p-4 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.26)] sm:p-6">
-        {activeTab === 'staff' && <OwnerStaff />}
-        {activeTab === 'audit' && <OwnerAudit />}
-        {activeTab === 'logins' && <OwnerLoginHistory />}
-        {activeTab === 'printers' && (
-          <>
-            <OwnerPrinters />
-            <OwnerPrintAgents />
-          </>
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
+            {activeTab === 'staff' && <OwnerStaff />}
+            {activeTab === 'audit' && <OwnerAuditLogs />}
+            {activeTab === 'printers' && <OwnerPrinters />}
+            {activeTab === 'backup' && <OwnerBackup />}
+          </motion.div>
+        </AnimatePresence>
       </section>
     </div>
   );
