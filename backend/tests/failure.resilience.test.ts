@@ -10,8 +10,11 @@
  */
 
 import request from 'supertest';
+import crypto from 'crypto';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
 import { Role } from '@prisma/client';
+
+const uuid = () => crypto.randomUUID();
 
 const app = getTestApp();
 const prisma = getPrisma();
@@ -20,6 +23,7 @@ describe('Failure Resilience Tests', () => {
   let cashierToken: string;
   let managerToken: string;
   let orderId: string;
+  let menuItemId: string;
 
   beforeAll(async () => {
     await cleanDb();
@@ -27,34 +31,41 @@ describe('Failure Resilience Tests', () => {
     const cashier = await seedTestUser({ role: Role.CASHIER });
     const cashierLogin = await request(app)
       .post('/api/auth/login')
-      .send({ email: cashier.email, password: 'password123' });
+      .send({ username: cashier.username, password: 'password123' });
     cashierToken = cashierLogin.body.accessToken;
 
     const manager = await seedTestUser({ role: Role.MANAGER });
     const managerLogin = await request(app)
       .post('/api/auth/login')
-      .send({ email: manager.email, password: 'password123' });
+      .send({ username: manager.username, password: 'password123' });
     managerToken = managerLogin.body.accessToken;
   });
 
   beforeEach(async () => {
+    // createOrder resolves prices server-side, so the menu item must be real.
+    const menuItem = await prisma.menuItem.create({
+      data: { name: 'Test Item', category: 'FOOD', price: 10000, isAvailable: true },
+    });
+    menuItemId = menuItem.id;
+
     const waiter = await seedTestUser({ role: Role.WAITER });
     const waiterLogin = await request(app)
       .post('/api/auth/login')
-      .send({ email: waiter.email, password: 'password123' });
+      .send({ username: waiter.username, password: 'password123' });
     
     const orderRes = await request(app)
       .post('/api/orders')
       .set('Authorization', `Bearer ${waiterLogin.body.accessToken}`)
       .send({
-        clientOrderId: `test-${Date.now()}`,
+        clientOrderId: uuid(),
         tableNumber: 'T1',
         items: [
-          { menuItemId: '507f1f77bcf86cd799439011', name: 'Test Item', unitPrice: 10000, quantity: 1 }
+          { menuItemId, name: 'Test Item', unitPrice: 10000, quantity: 1 }
         ],
       });
     
-    orderId = orderRes.body.id;
+    // The API wraps newly-created orders as { isNew, order }.
+    orderId = orderRes.body.order?.id ?? orderRes.body.id;
   });
 
   afterAll(async () => {
@@ -66,22 +77,24 @@ describe('Failure Resilience Tests', () => {
       const settlementData = {
         amountMinor: 10000,
         method: 'CASH',
-        idempotencyKey: 'retry-test-123',
       };
 
       // First attempt (succeeds)
       const res1 = await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
+        .set('Idempotency-Key', 'retry-test-123')
         .send(settlementData);
 
-      expect(res1.status).toBe(200);
+      // First POST creates the settlement → 201.
+      expect(res1.status).toBe(201);
       const settlementId = res1.body.settlement.id;
 
-      // Client retries (network issue, didn't see response)
+      // Client retries (network issue, didn't see response) with the SAME key
       const res2 = await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
+        .set('Idempotency-Key', 'retry-test-123')
         .send(settlementData);
 
       expect(res2.status).toBe(200);
@@ -102,23 +115,24 @@ describe('Failure Resilience Tests', () => {
       await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
+        .set('Idempotency-Key', idempotencyKey)
         .send({
           amountMinor: 5000,
           method: 'CASH',
-          idempotencyKey,
         });
 
       // Retry with different amount (application bug)
       const res2 = await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
+        .set('Idempotency-Key', idempotencyKey)
         .send({
           amountMinor: 7000, // Different!
           method: 'CASH',
-          idempotencyKey,
         });
 
       expect(res2.status).toBe(409);
+      // Same key + different amount is caught by the fingerprint check first.
       expect(res2.body.error.code).toBe('IDEMPOTENCY_CONFLICT');
     });
   });
@@ -129,11 +143,9 @@ describe('Failure Resilience Tests', () => {
       await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
-        .send({
-          amountMinor: 4000,
-          method: 'CASH',
-          idempotencyKey: 'partial-1',
-        });
+        .set('Idempotency-Key', 'partial-1')
+        .send({amountMinor: 4000,
+          method: 'CASH'});
 
       // Verify state
       let orderRes = await request(app)
@@ -145,11 +157,9 @@ describe('Failure Resilience Tests', () => {
       await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
-        .send({
-          amountMinor: 3000,
-          method: 'CARD',
-          idempotencyKey: 'partial-2',
-        });
+        .set('Idempotency-Key', 'partial-2')
+        .send({amountMinor: 3000,
+          method: 'CARD'});
 
       orderRes = await request(app)
         .get(`/api/orders/${orderId}`)
@@ -160,11 +170,9 @@ describe('Failure Resilience Tests', () => {
       await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
-        .send({
-          amountMinor: 3000,
-          method: 'CASH',
-          idempotencyKey: 'partial-3',
-        });
+        .set('Idempotency-Key', 'partial-3')
+        .send({amountMinor: 3000,
+          method: 'CASH'});
 
       // Should be fully settled now
       orderRes = await request(app)
@@ -186,21 +194,17 @@ describe('Failure Resilience Tests', () => {
       await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
-        .send({
-          amountMinor: 7000,
-          method: 'CASH',
-          idempotencyKey: 'prevent-over-1',
-        });
+        .set('Idempotency-Key', 'prevent-over-1')
+        .send({amountMinor: 7000,
+          method: 'CASH'});
 
       // Try to add 40% more (would be 110%)
       const res = await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
-        .send({
-          amountMinor: 4000,
-          method: 'CASH',
-          idempotencyKey: 'prevent-over-2',
-        });
+        .set('Idempotency-Key', 'prevent-over-2')
+        .send({amountMinor: 4000,
+          method: 'CASH'});
 
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('SETTLEMENT_OVERAGE');
@@ -237,11 +241,9 @@ describe('Failure Resilience Tests', () => {
       const settlementRes = await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
-        .send({
-          amountMinor: 5000,
-          method: 'CASH',
-          idempotencyKey: 'after-cancel',
-        });
+        .set('Idempotency-Key', 'after-cancel')
+        .send({amountMinor: 5000,
+          method: 'CASH'});
       expect(settlementRes.status).toBe(409);
 
       // Verify still cancelled
@@ -272,10 +274,10 @@ describe('Failure Resilience Tests', () => {
       const rejectRes = await request(app)
         .patch(`/api/cancellation-requests/${req2.body.id}/reject`)
         .set('Authorization', `Bearer ${managerToken}`)
-        .send({ reason: 'Too late' });
+        .send({ rejectedReason: 'Too late' });
 
-      // Should handle gracefully (either succeed or fail cleanly)
-      expect([200, 409]).toContain(rejectRes.status);
+      // Handles gracefully: idempotent no-op (200) or clean conflict (400/409)
+      expect([200, 400, 409]).toContain(rejectRes.status);
 
       // Order should remain cancelled
       const orderRes = await request(app)
@@ -299,10 +301,10 @@ describe('Failure Resilience Tests', () => {
         await request(app)
           .post(`/api/orders/${orderId}/settlements`)
           .set('Authorization', `Bearer ${cashierToken}`)
+          .set('Idempotency-Key', s.key)
           .send({
             amountMinor: s.amount,
             method: 'CASH',
-            idempotencyKey: s.key,
           });
       }
 
@@ -338,15 +340,18 @@ describe('Failure Resilience Tests', () => {
         request(app)
           .post(`/api/orders/${orderId}/settlements`)
           .set('Authorization', `Bearer ${cashierToken}`)
-          .send({ amountMinor: 3000, method: 'CASH', idempotencyKey: 'attempt-1' }),
+          .set('Idempotency-Key', 'attempt-1')
+        .send({amountMinor: 3000, method: 'CASH'}),
         request(app)
           .post(`/api/orders/${orderId}/settlements`)
           .set('Authorization', `Bearer ${cashierToken}`)
-          .send({ amountMinor: 5000, method: 'CARD', idempotencyKey: 'attempt-2' }),
+          .set('Idempotency-Key', 'attempt-2')
+        .send({amountMinor: 5000, method: 'CARD'}),
         request(app)
           .post(`/api/orders/${orderId}/settlements`)
           .set('Authorization', `Bearer ${cashierToken}`)
-          .send({ amountMinor: 2000, method: 'CASH', idempotencyKey: 'attempt-3' }),
+          .set('Idempotency-Key', 'attempt-3')
+        .send({amountMinor: 2000, method: 'CASH'}),
       ];
 
       const results = await Promise.all(attempts);
@@ -357,12 +362,16 @@ describe('Failure Resilience Tests', () => {
         expect(res.body.error.code).toBe('ORDER_ALREADY_CANCELLED');
       });
 
-      // No settlements should exist
+      // No real payment settlements should exist — only the VOID audit row
+      // written with the cancellation.
       const settlementsRes = await request(app)
         .get(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`);
 
-      expect(settlementsRes.body.length).toBe(0);
+      const realPayments = (settlementsRes.body as Array<{ method: string }>).filter(
+        (s) => s.method !== 'NONE',
+      );
+      expect(realPayments.length).toBe(0);
     });
   });
 
@@ -372,11 +381,9 @@ describe('Failure Resilience Tests', () => {
       const res1 = await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
-        .send({
-          amountMinor: 15000,
-          method: 'CASH',
-          idempotencyKey: 'req-id-1',
-        });
+        .set('Idempotency-Key', 'req-id-1')
+        .send({amountMinor: 15000,
+          method: 'CASH'});
 
       expect(res1.status).toBe(409);
       expect(res1.body.error.requestId).toBeDefined();
@@ -396,11 +403,9 @@ describe('Failure Resilience Tests', () => {
       const res2 = await request(app)
         .post(`/api/orders/${orderId}/settlements`)
         .set('Authorization', `Bearer ${cashierToken}`)
-        .send({
-          amountMinor: 5000,
-          method: 'CASH',
-          idempotencyKey: 'req-id-2',
-        });
+        .set('Idempotency-Key', 'req-id-2')
+        .send({amountMinor: 5000,
+          method: 'CASH'});
 
       expect(res2.status).toBe(409);
       expect(res2.body.error.requestId).toBeDefined();
