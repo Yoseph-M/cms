@@ -12,6 +12,7 @@
 import request from 'supertest';
 import { Role } from '@prisma/client';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
+import { clearFeatureFlagCache } from '../src/middleware/feature.middleware';
 import crypto from 'crypto';
 
 const uuid = () => crypto.randomUUID();
@@ -102,7 +103,8 @@ const ROUTE_SPECS: RouteSpec[] = [
     method: 'POST',
     path: '/api/menu',
     // Cashiers manage menu items from the POS; a manager-side toggle can
-    // restrict it (see feature.middleware). Owners/managers are always allowed.
+    // restrict it (see feature.middleware). Owners/managers are allowed once
+    // their own role switch is on — which this suite turns on below.
     allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     body: { name: 'Test Item', category: 'FOOD', price: 1000 }, // 10.00 in minor units
     description: 'Create menu item',
@@ -272,7 +274,8 @@ const ROUTE_SPECS: RouteSpec[] = [
   {
     method: 'GET',
     path: '/api/notifications',
-    allowedRoles: [Role.OWNER, Role.MANAGER],
+    // Cashiers get End of Day decision alerts in their own bell.
+    allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     description: 'List notifications',
   },
 
@@ -312,15 +315,18 @@ const ROUTE_SPECS: RouteSpec[] = [
   {
     method: 'GET',
     path: '/api/settings/printers',
-    allowedRoles: [Role.OWNER, Role.MANAGER],
+    // Every till can read the station list (and send a test slip).
+    allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     description: 'Get printers',
   },
   {
     method: 'POST',
     path: '/api/settings/printers',
-    allowedRoles: [Role.OWNER],
+    // The till operator sets up the printer plugged into their own terminal, so
+    // cashiers configure stations too.
+    allowedRoles: [Role.OWNER, Role.MANAGER, Role.CASHIER],
     body: { stations: [{ station: 'kitchen', ip: '192.168.1.100', port: 9100 }] },
-    description: 'Update printers (Owner only)',
+    description: 'Update printers (Owner/Manager/Cashier)',
   },
 ];
 
@@ -333,6 +339,16 @@ describe('RBAC Matrix (§2.1)', () => {
 
   beforeAll(async () => {
     await cleanDb();
+    // Menu editing is opt-in per role. This matrix exists to test the role gate,
+    // so turn both role switches on and let the role check be the thing under
+    // test.
+    await getPrisma().systemSetting.createMany({
+      data: [
+        { key: 'ownerMenuEditEnabled', value: 'true' },
+        { key: 'managerMenuEditEnabled', value: 'true' },
+      ],
+    });
+    clearFeatureFlagCache();
     for (const role of ALL_ROLES) {
       const user = await seedTestUser({
         role,
