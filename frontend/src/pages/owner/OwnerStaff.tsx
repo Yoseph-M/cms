@@ -9,17 +9,21 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
+import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { Avatar, AvatarFallback } from '../../components/ui/Avatar';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Sheet } from '../../components/ui/Sheet';
+import { AlertDialog } from '../../components/ui/AlertDialog';
 import {
   Users, Plus, Search, Pencil, ShieldOff, ShieldCheck,
-  X, Eye, EyeOff, KeyRound
+  X, Eye, EyeOff, Trash2, KeyRound
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { formatEthiopianPhone, isValidEthiopianPhone, ETHIOPIAN_COUNTRY_CODE } from '../../utils/phone';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { formatPersonName, nameInitials } from '../../utils/name';
+import { cn } from '../../lib/utils';
 
 interface User {
   id: string;
@@ -29,7 +33,17 @@ interface User {
   phone: string;
   salaryAmount: number;
   isActive: boolean;
+  /** Whether a mobile-app PIN is on file (the hash itself never leaves the server). */
+  hasPin?: boolean;
 }
+
+/**
+ * Credentials are role-aware. The mobile app asks for a PIN; the website asks
+ * for a password. Waiters and kitchen staff only use the app, cashiers only the
+ * site, and managers use both.
+ */
+const PIN_ROLES = ['WAITER', 'COOKER', 'BARISTA', 'MANAGER'];
+const PASSWORD_ROLES = ['CASHIER', 'MANAGER'];
 
 const ROLE_COLORS: Record<string, any> = {
   OWNER: 'secondary',
@@ -42,14 +56,7 @@ const ROLE_COLORS: Record<string, any> = {
 
 const STAFF_ROLES = ['MANAGER', 'CASHIER', 'WAITER', 'COOKER', 'BARISTA'];
 
-const EMPTY_FORM = { name: '', role: 'CASHIER', username: '', phone: '', salaryAmount: '', credential: '' };
-
-/** Fields shown in the Add/Edit staff slide-over. Salary is managed on the Payroll page. */
-const STAFF_FIELDS = [
-  { id: 'sf-name', label: 'Full Name', key: 'name' as const, placeholder: 'e.g. Alice Johnson', required: true },
-  { id: 'sf-phone', label: 'Phone', key: 'phone' as const, placeholder: '+251 9XX XXX XXX', required: true, phone: true },
-  { id: 'sf-username', label: 'Username', key: 'username' as const, placeholder: 'staff_username' },
-];
+const EMPTY_FORM = { name: '', role: 'CASHIER', username: '', phone: '', salaryAmount: '', credential: '', pin: '' };
 
 export const OwnerStaff: React.FC = () => {
   const { addToast } = useToastStore();
@@ -74,7 +81,11 @@ export const OwnerStaff: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [showCredential, setShowCredential] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  const [pinFocus, setPinFocus] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [removingUser, setRemovingUser] = useState<User | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   const pendingStatusTimeouts = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -116,16 +127,43 @@ export const OwnerStaff: React.FC = () => {
     setEditingUser(null);
     setForm(EMPTY_FORM);
     setShowCredential(false);
+    setShowPin(false);
     setSlideOverOpen(true);
   };
 
   const openEdit = (user: User) => {
     setEditingUser(user);
-    // `credential` is repurposed as the optional new password when editing.
-    setForm({ name: user.name, role: user.role, username: user.username || '', phone: user.phone, salaryAmount: String(user.salaryAmount), credential: '' });
+    // `credential`/`pin` are the optional replacement credentials when editing —
+    // blank means "leave what is already stored alone".
+    setForm({ name: formatPersonName(user.name), role: user.role, username: user.username || '', phone: user.phone, salaryAmount: String(user.salaryAmount), credential: '', pin: '' });
     setShowCredential(false);
+    setShowPin(false);
     setSlideOverOpen(true);
   };
+
+  const needsPin = PIN_ROLES.includes(form.role);
+  const needsPassword = PASSWORD_ROLES.includes(form.role);
+
+  /** App-facing roles — the ones that need a PIN to sign in on the phone. */
+  const needsPinFor = (role: string) => PIN_ROLES.includes(role);
+  const missingPin = users.filter((u) => needsPinFor(u.role) && !u.hasPin);
+
+  /** One-tap "set this person's PIN": open the card with the PIN field focused. */
+  const openPinSet = (user: User) => {
+    openEdit(user);
+    setPinFocus(true);
+  };
+
+  React.useEffect(() => {
+    if (!slideOverOpen) {
+      setPinFocus(false);
+      return;
+    }
+    if (!pinFocus) return;
+    // Let the slide-over finish animating before focus is moved into it.
+    const timer = setTimeout(() => document.getElementById('sf-pin')?.focus(), 260);
+    return () => clearTimeout(timer);
+  }, [slideOverOpen, pinFocus]);
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.phone.trim()) {
@@ -136,17 +174,33 @@ export const OwnerStaff: React.FC = () => {
       addToast({ type: 'error', title: 'Invalid phone', message: `Ethiopian numbers need ${ETHIOPIAN_COUNTRY_CODE} plus ${9} digits.` });
       return;
     }
+    if (form.pin && !/^\d{4}$/.test(form.pin)) {
+      addToast({ type: 'error', title: 'Invalid PIN', message: 'A PIN is exactly 4 digits.' });
+      return;
+    }
+    // A PIN is only demanded when the account is created; when editing, leaving
+    // it blank keeps the PIN that is already stored.
+    if (needsPin && !form.pin && !editingUser) {
+      addToast({ type: 'error', title: 'PIN required', message: 'This role signs in with a PIN in the mobile app.' });
+      return;
+    }
+    // The website password is required whenever the field is shown.
+    if (needsPassword && !form.credential) {
+      addToast({ type: 'error', title: 'Password required', message: 'This role signs in on the website.' });
+      return;
+    }
     setIsSaving(true);
     try {
       const payload: any = {
-        name: form.name.trim(),
+        name: formatPersonName(form.name),
         role: form.role,
         username: form.username || undefined,
         phone: form.phone.trim(),
       };
       // Salary is intentionally not set here — it is recorded on the Payroll
-      // page when the staff member is actually paid. A new password is optional.
-      if (form.credential) payload.password = form.credential;
+      // page when the staff member is actually paid. Credentials are optional.
+      if (needsPin && form.pin) payload.pinCode = form.pin;
+      if (needsPassword && form.credential) payload.password = form.credential;
       if (editingUser) {
         const res = await axiosClient.patch(`/users/${editingUser.id}`, payload);
         queryClient.setQueryData<User[]>(['users'], (old) =>
@@ -163,6 +217,24 @@ export const OwnerStaff: React.FC = () => {
       addToast({ type: 'error', title: 'Save failed', message: extractErrorMessage(err) });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  /** Permanently delete a staff account (server refuses when history exists). */
+  const handleRemove = async () => {
+    if (!removingUser) return;
+    setIsRemoving(true);
+    try {
+      await axiosClient.delete(`/users/${removingUser.id}`);
+      queryClient.setQueryData<User[]>(['users'], (old) =>
+        (old ?? []).filter((u) => u.id !== removingUser.id)
+      );
+      addToast({ type: 'success', title: `${removingUser.name} removed` });
+    } catch (err: any) {
+      addToast({ type: 'error', title: 'Remove failed', message: extractErrorMessage(err) });
+    } finally {
+      setIsRemoving(false);
+      setRemovingUser(null);
     }
   };
 
@@ -220,10 +292,28 @@ export const OwnerStaff: React.FC = () => {
     });
   }, [addToast]);
 
-  const initials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const clearFilters = () => {
+    setSearch('');
+    setRoleFilter('All');
+    setStatusFilter('active');
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 max-[767px]:space-y-5">
+      {/* Who still cannot sign in on the mobile app — one line, dismissible by
+          fixing it (the key on each affected row opens the card on the PIN). */}
+      {missingPin.length > 0 && (
+        <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+          <KeyRound className="h-4 w-4 shrink-0" />
+          <span>
+            {missingPin.length === 1
+              ? `${missingPin[0].name} has no mobile PIN yet.`
+              : `${missingPin.length} staff members have no mobile PIN yet.`}{' '}
+            Use the key on their row to set one.
+          </span>
+        </div>
+      )}
+
       {/* Table */}
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-secondary/40 animate-pulse" />)}</div>
@@ -232,17 +322,6 @@ export const OwnerStaff: React.FC = () => {
           <p className="text-destructive">{error}</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetchUsers()}>Retry</Button>
         </div>
-      ) : filteredUsers.length === 0 ? (
-        <EmptyState
-          title={users.length === 0 ? 'No staff yet' : 'No staff match your filters'}
-          message={users.length === 0 ? 'Add your first team member — managers, cashiers, waiters, and kitchen staff.' : 'Try clearing filters or searching for a different name.'}
-          icon={<Users className="w-7 h-7" />}
-          action={users.length === 0 ? {
-            label: 'Add Staff',
-            onClick: openAdd,
-            icon: <Plus className="w-4 h-4 mr-1.5" />,
-          } : undefined}
-        />
       ) : (
         <div className="rounded-xl border border-border overflow-hidden">
           {/* Card top bar — Add Staff on the left, filters on the right */}
@@ -261,27 +340,53 @@ export const OwnerStaff: React.FC = () => {
                   className="pl-9 w-52 max-[767px]:w-44 h-9"
                 />
               </div>
-              <Select
-                id="role-filter"
+              <DropdownSelect
+                ariaLabel="Filter staff by role"
+                size="sm"
+                icon={Users}
                 value={roleFilter}
-                onChange={e => setRoleFilter(e.target.value)}
-                className="w-32 h-9"
-              >
-                <option value="All">All Roles</option>
-                {STAFF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-              </Select>
-              <Select
-                id="status-filter"
+                onChange={setRoleFilter}
+                options={[
+                  { value: 'All', label: 'All Roles' },
+                  ...STAFF_ROLES.map(r => ({ value: r, label: r })),
+                ]}
+                contentClassName="w-40"
+              />
+              <DropdownSelect
+                ariaLabel="Filter staff by status"
+                size="sm"
+                icon={ShieldCheck}
                 value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="w-32 h-9"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="all">All</option>
-              </Select>
+                onChange={setStatusFilter}
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' },
+                  { value: 'all', label: 'All' },
+                ]}
+                contentClassName="w-36"
+              />
             </div>
           </div>
+          {/* The result list is what the search narrows — the toolbar above is
+              never part of the "nothing found" branch, so a search that misses
+              can still be edited or cleared. */}
+          {filteredUsers.length === 0 ? (
+            <EmptyState
+              className="py-14"
+              title={users.length === 0 ? 'No staff yet' : 'No staff match your search'}
+              message={
+                users.length === 0
+                  ? 'Add your first team member — managers, cashiers, waiters, and kitchen staff.'
+                  : 'Nothing here matches the search or filters above.'
+              }
+              icon={<Users className="w-7 h-7" />}
+              action={
+                users.length === 0
+                  ? { label: 'Add Staff', onClick: openAdd, icon: <Plus className="w-4 h-4 mr-1.5" /> }
+                  : { label: 'Clear filters', onClick: clearFilters, variant: 'outline' }
+              }
+            />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -301,10 +406,18 @@ export const OwnerStaff: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <Avatar>
                           <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                            {initials(user.name)}
+                            {nameInitials(user.name)}
                           </AvatarFallback>
                         </Avatar>
                         <span className="font-medium truncate max-w-[120px]">{user.name}</span>
+                        {needsPinFor(user.role) && !user.hasPin && (
+                          <Tooltip label="No mobile PIN yet — they cannot sign in on the app">
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                              <KeyRound className="h-3 w-3" />
+                              No PIN
+                            </span>
+                          </Tooltip>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell">
@@ -329,10 +442,17 @@ export const OwnerStaff: React.FC = () => {
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         </Tooltip>
-                        {user.id !== currentUser?.id && (
-                          <Tooltip label="Change password">
-                            <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                        {needsPinFor(user.role) && !user.hasPin && (
+                          <Tooltip label="Set mobile PIN">
+                            <button onClick={() => openPinSet(user)} className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 dark:text-amber-400 transition-colors">
                               <KeyRound className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        )}
+                        {user.id !== currentUser?.id && (
+                          <Tooltip label="Remove">
+                            <button onClick={() => setRemovingUser(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
                         )}
@@ -356,87 +476,160 @@ export const OwnerStaff: React.FC = () => {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 
-      {/* Add/Edit Slide-over */}
-      <AnimatePresence>
-        {slideOverOpen && (
+      {/* Add/Edit slide-over — the shared Sheet portals to <body>, so it covers
+          the full viewport height instead of stopping short at the top. */}
+      <Sheet
+        open={slideOverOpen}
+        onClose={() => setSlideOverOpen(false)}
+        title={editingUser ? 'Edit Staff Member' : 'Add Staff Member'}
+        footer={
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
+            <Button onClick={handleSave} disabled={isSaving} className="flex-1">
+              {isSaving ? 'Saving...' : editingUser ? 'Save Changes' : 'Add Staff'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-6">
+          {/* Identity — short fields share a row so the form stays scannable. */}
+          <section className="space-y-4">
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Identity</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="sf-name" className="text-sm font-medium text-foreground block mb-1.5">
+                  Full Name <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="sf-name"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Alice Johnson"
+                />
+              </div>
+              <div>
+                <label htmlFor="sf-username" className="text-sm font-medium text-foreground block mb-1.5">
+                  Username
+                </label>
+                <Input
+                  id="sf-username"
+                  value={form.username}
+                  onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                  placeholder="staff_username"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="sf-phone" className="text-sm font-medium text-foreground block mb-1.5">
+                  Phone <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="sf-phone"
+                  type="tel"
+                  value={form.phone}
+                  maxLength={ETHIOPIAN_COUNTRY_CODE.length + 9}
+                  onChange={e => setForm(f => ({ ...f, phone: formatEthiopianPhone(e.target.value) }))}
+                  placeholder="+251 9XX XXX XXX"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="sf-role" className="text-sm font-medium text-foreground block mb-1.5">
+                  Role <span className="text-destructive">*</span>
+                </label>
+                <Select id="sf-role" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                  {STAFF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </Select>
+              </div>
+            </div>
+          </section>
+
+          {/* Credentials — what the role signs in with: a PIN for the app, a
+              password for the website, and both for a manager. */}
+          <section className="space-y-4 border-t border-border pt-5">
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Credentials</h3>
+            <div className={cn('grid gap-4', needsPin && needsPassword && 'sm:grid-cols-2')}>
+                  {needsPin && (
+                    <div>
+                      <label htmlFor="sf-pin" className="text-sm font-medium text-foreground block mb-1.5">
+                        PIN <span className="text-muted-foreground font-normal">(mobile app)</span>
+                        {!editingUser && <span className="text-destructive"> *</span>}
+                      </label>
+                      <div className="relative">
+                        <Input
+                          id="sf-pin"
+                          type={showPin ? 'text' : 'password'}
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={4}
+                          value={form.pin}
+                          onChange={e => setForm(f => ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                          placeholder="1234"
+                          className={cn('pr-10 tracking-[0.4em]', pinFocus && 'ring-2 ring-primary/40')}
+                        />
+                        <button type="button" onClick={() => setShowPin(v => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                          {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {editingUser
+                          ? (editingUser.hasPin ? 'Leave blank to keep the current PIN.' : 'No PIN yet — set one for app sign-in.')
+                          : 'They sign in with this PIN in the app.'}
+                      </p>
+                    </div>
+                  )}
+                  {needsPassword && (
+                    <div>
+                      <label htmlFor="sf-cred" className="text-sm font-medium text-foreground block mb-1.5">
+                        Password <span className="text-muted-foreground font-normal">(website)</span>
+                        <span className="text-destructive"> *</span>
+                      </label>
+                      <div className="relative">
+                        <Input
+                          id="sf-cred"
+                          type={showCredential ? 'text' : 'password'}
+                          value={form.credential}
+                          onChange={e => setForm(f => ({ ...f, credential: e.target.value }))}
+                          placeholder={editingUser ? 'Set a new password' : 'Temporary password'}
+                          className="pr-10"
+                          autoComplete="new-password"
+                        />
+                        <button type="button" onClick={() => setShowCredential(v => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                          {showCredential ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {editingUser ? 'Replaces the current password.' : 'Used for their first website login.'}
+                      </p>
+                    </div>
+                  )}
+            </div>
+          </section>
+        </div>
+      </Sheet>
+
+      <AlertDialog
+        open={Boolean(removingUser)}
+        onClose={() => {
+          if (!isRemoving) setRemovingUser(null);
+        }}
+        onConfirm={handleRemove}
+        title={`Remove ${removingUser?.name ?? 'this staff member'}?`}
+        description={
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm" onClick={() => setSlideOverOpen(false)} />
-            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-              className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-card border-l border-border z-50 flex flex-col shadow-2xl"
-            >
-              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border">
-                <h2 className="text-lg font-bold">{editingUser ? 'Edit Staff Member' : 'Add Staff Member'}</h2>
-                <Tooltip label="Close">
-                  <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </Tooltip>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-                {STAFF_FIELDS.map(field => (
-                  <div key={field.key}>
-                    <label htmlFor={field.id} className="text-sm font-medium text-foreground block mb-1.5">
-                      {field.label} {field.required && <span className="text-destructive">*</span>}
-                    </label>
-                    <Input
-                      id={field.id}
-                      value={(form as any)[field.key]}
-                      type={'phone' in field && field.phone ? 'tel' : undefined}
-                      maxLength={'phone' in field && field.phone ? ETHIOPIAN_COUNTRY_CODE.length + 9 : undefined}
-                      onChange={e => setForm(f => ({ ...f, [field.key]: 'phone' in field && field.phone ? formatEthiopianPhone(e.target.value) : e.target.value }))}
-                      placeholder={field.placeholder}
-                    />
-                  </div>
-                ))}
-                <div>
-                  <label htmlFor="sf-role" className="text-sm font-medium text-foreground block mb-1.5">Role <span className="text-destructive">*</span></label>
-                  <Select id="sf-role" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                    {STAFF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">OWNER cannot be created via this form.</p>
-                </div>
-                <div>
-                  <label htmlFor="sf-cred" className="text-sm font-medium text-foreground block mb-1.5">
-                    {editingUser ? 'Change Password' : 'Initial Password'}
-                    {editingUser && <span className="text-muted-foreground font-normal"> (optional)</span>}
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id="sf-cred"
-                      type={showCredential ? 'text' : 'password'}
-                      value={form.credential}
-                      onChange={e => setForm(f => ({ ...f, credential: e.target.value }))}
-                      placeholder={editingUser ? 'Leave blank to keep current password' : 'Temporary password'}
-                      className="pr-10"
-                      autoComplete="new-password"
-                    />
-                    <button type="button" onClick={() => setShowCredential(v => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                      {showCredential ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {editingUser
-                      ? 'Set a new password for this staff member. They will sign in with it on their next login.'
-                      : 'Password used for this staff member\u2019s first login.'}
-                  </p>
-                </div>
-              </div>
-              <div className="p-4 sm:p-6 border-t border-border flex gap-3">
-                <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
-                <Button onClick={handleSave} disabled={isSaving} className="flex-1">
-                  {isSaving ? 'Saving...' : editingUser ? 'Save Changes' : 'Add Staff'}
-                </Button>
-              </div>
-            </motion.div>
+            This permanently deletes the account. It only works for staff with no
+            orders, settlements, payroll or attendance on record — if they have
+            history, deactivate them instead so the records stay attributed.
           </>
-        )}
-      </AnimatePresence>
+        }
+        confirmText="Remove"
+        tone="destructive"
+        loading={isRemoving}
+      />
 
     </div>
   );
