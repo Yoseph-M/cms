@@ -1,6 +1,5 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Monitor } from 'lucide-react';
 import { SettingsShell, type SettingsShellCategory } from '../../components/settings/SettingsShell';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
@@ -28,9 +27,6 @@ export const CashierSettings: React.FC = () => {
       id: 'preferences',
       label: 'Terminal Preferences',
       description: 'Display theme, language, and notification channels for this device',
-      icon: Sparkles,
-      iconClassName: 'text-sky-600 dark:text-sky-400',
-      iconBgClassName: 'bg-sky-500/10',
       items: [
         {
           id: 'appearance',
@@ -61,12 +57,6 @@ export const CashierSettings: React.FC = () => {
     <SettingsShell
       title={t('settings.title', { defaultValue: 'Terminal Settings' })}
       description="Personalize appearance, notifications, and language for this terminal."
-      badge={
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-0.5 text-xs font-semibold text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/20">
-          <Monitor className="h-3.5 w-3.5" />
-          Front-of-house
-        </span>
-      }
       categories={categories}
     />
   );
