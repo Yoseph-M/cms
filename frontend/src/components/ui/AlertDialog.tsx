@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, Info, Trash2 } from 'lucide-react';
 import { Button } from './Button';
@@ -56,7 +57,10 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
 
   const palette = TONE_CLASSES[tone];
 
-  return (
+  // Portalled into <body>: a transformed ancestor (framer-motion animates every
+  // page root) would otherwise make `fixed` resolve against that ancestor's box
+  // and the dialog would sit offset inside the page instead of centred.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
@@ -114,6 +118,7 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 };
