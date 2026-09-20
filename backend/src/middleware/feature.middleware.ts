@@ -61,16 +61,33 @@ export function requireFeatureFlag(key: string) {
 }
 
 /**
- * Menu editing is open to Owners and Managers by default. Cashiers may add,
- * edit, hide, or delete menu items unless a Manager has turned on the
- * "restrict menu editing" setting (`cashierMenuEditRestricted`). That flag
- * defaults to false — cashiers can manage the menu out of the box.
+ * Menu editing is deliberately opt-in for Owners and Managers, and the two
+ * roles are switched independently: the Owner flips `ownerMenuEditEnabled` for
+ * themselves, and the Manager flips `managerMenuEditEnabled` for the manager
+ * role. Both default to false, so a fresh installation cannot accidentally
+ * rewrite the menu from the admin screens. Each role's switch is enforced for
+ * that role only — turning one on never unlocks the other.
+ *
+ * Cashiers are the mirror image: they can add, edit, hide, or delete menu items
+ * unless a Manager turns on the "restrict menu editing" setting
+ * (`cashierMenuEditRestricted`), which defaults to false as well.
  */
 export async function requireMenuEditAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const role = req.user?.role;
 
   if (role === 'OWNER' || role === 'MANAGER') {
-    return next();
+    try {
+      const flagKey = role === 'OWNER' ? 'ownerMenuEditEnabled' : 'managerMenuEditEnabled';
+      const enabled = await readFlag(flagKey, false);
+      if (!enabled) {
+        return res.status(403).json({
+          error: 'Menu editing is turned off. Enable it in Settings before changing menu items.',
+        });
+      }
+      return next();
+    } catch (error) {
+      return next(error);
+    }
   }
 
   if (role === 'CASHIER') {
