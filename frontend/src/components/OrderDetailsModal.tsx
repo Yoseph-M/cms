@@ -53,7 +53,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { bg: string; text: string; label: string }> = {
       SUBMITTED: { bg: 'bg-blue-100', text: 'text-blue-800', label: '📝 Submitted' },
-      IN_KITCHEN: { bg: 'bg-orange-100', text: 'text-orange-800', label: '🍳 In Kitchen' },
+      IN_KITCHEN: { bg: 'bg-amber-100', text: 'text-amber-800', label: '🍳 In Kitchen' },
       SERVED: { bg: 'bg-purple-100', text: 'text-purple-800', label: '🍽️ Served' },
       PAID: { bg: 'bg-green-100', text: 'text-green-800', label: '✓ Paid' },
       CANCELLED: { bg: 'bg-red-100', text: 'text-red-800', label: '✗ Cancelled' },
@@ -71,8 +71,8 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
     const badges: Record<string, { bg: string; text: string; label: string }> = {
       UNSETTLED: { bg: 'bg-red-100', text: 'text-red-800', label: '✗ Unsettled' },
       PARTIALLY_SETTLED: {
-        bg: 'bg-orange-100',
-        text: 'text-orange-800',
+        bg: 'bg-amber-100',
+        text: 'text-amber-800',
         label: '⚠ Partial',
       },
       SETTLED: { bg: 'bg-green-100', text: 'text-green-800', label: '✓ Settled' },
