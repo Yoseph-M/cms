@@ -30,7 +30,7 @@ export interface KpiCardProps {
   kind: 'currency' | 'number';
   icon?: LucideIcon;
   tone: KpiTone;
-  trendDots?: { active: number; total?: number; tone?: 'orange' | 'green' | 'gray' };
+  trendDots?: { active: number; total?: number; tone?: 'blue' | 'green' | 'gray' };
 }
 
 /* Soft tinted card backgrounds — white in light mode, subtle tint in dark mode. */
@@ -38,7 +38,7 @@ const TONE_BG: Record<KpiTone, string> = {
   cream: 'bg-white dark:bg-amber-500/10',
   mint:  'bg-white dark:bg-emerald-500/10',
   blush: 'bg-white dark:bg-pink-500/10',
-  rose:  'bg-white dark:bg-orange-500/10',
+  rose:  'bg-white dark:bg-sky-500/10',
 };
 
 /* Solid color for the icon circle. In light mode we use a vibrant solid;
@@ -47,7 +47,7 @@ const TONE_CIRCLE: Record<KpiTone, string> = {
   cream: 'bg-amber-400 dark:bg-amber-400/80',
   mint:  'bg-emerald-400 dark:bg-emerald-400/80',
   blush: 'bg-pink-400 dark:bg-pink-400/80',
-  rose:  'bg-orange-400 dark:bg-orange-400/80',
+  rose:  'bg-sky-400 dark:bg-sky-400/80',
 };
 
 /* Icon stroke colour inside the circle. Dark mode uses a dark ink so the
@@ -56,11 +56,11 @@ const TONE_ICON: Record<KpiTone, string> = {
   cream: 'text-white dark:text-amber-950',
   mint:  'text-white dark:text-emerald-950',
   blush: 'text-white dark:text-pink-950',
-  rose:  'text-white dark:text-orange-950',
+  rose:  'text-white dark:text-sky-950',
 };
 
 const TREND_DOT_ACTIVE: Record<string, string> = {
-  orange: 'bg-orange-500',
+  orange: 'bg-blue-500',
   green: 'bg-emerald-500',
   gray: 'bg-slate-400',
 };
