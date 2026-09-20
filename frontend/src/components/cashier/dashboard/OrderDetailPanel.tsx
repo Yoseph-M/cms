@@ -133,8 +133,7 @@ const DetailBody: React.FC<{
             </p>
           </div>
           <div className="flex flex-col items-end gap-1.5 shrink-0">
-            {onClose && (
-              <button type="button" onClick={onClose} className="-mr-1 -mt-1 mb-1 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-950" aria-label="Close ticket">
+            {onClose && (                <button type="button" onClick={onClose} className="-mr-1 -mt-1 mb-1 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-950" aria-label={t('a11y.closeTicket')}>
                 <X className="w-4 h-4" />
               </button>
             )}
@@ -153,7 +152,7 @@ const DetailBody: React.FC<{
       {/* This is the only scroll region. It expands into spare space so the
           total/payment card stays anchored to the bottom of the inspector. */}
       <div className="relative flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-5 space-y-1 bg-white">
-        <div className="mb-3 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Order summary</p><p className="text-[11px] text-slate-500">{(order.items || []).length} lines</p></div>
+        <div className="mb-3 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{t('detail.orderSummary')}</p><p className="text-[11px] text-slate-500">{t('detail.lines', { count: (order.items || []).length })}</p></div>
         <OrderItemsList items={order.items || []} />
       </div>
 
@@ -198,13 +197,24 @@ const PRINT_STATE_MESSAGE: Record<PrintJobStatus | 'NONE', string> = {
   PRINTED: 'The kitchen ticket printed.',
 };
 
+/** Translation keys for the same messages, so the notice speaks Amharic too. */
+const PRINT_STATE_KEY: Record<PrintJobStatus | 'NONE', string> = {
+  NONE: 'none',
+  QUEUED: 'queued',
+  PRINTING: 'printing',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+  PRINTED: 'printed',
+};
+
 const PrintGateNotice: React.FC<{
   status?: PrintJobStatus;
   onReprint?: () => void;
   /** Voiding must not require a printed ticket, so the cancel action lives here too. */
-  onCancel?: () => void;
-}> = ({ status, onReprint, onCancel }) => (
-  <div
+  onCancel?: () => void;}> = ({ status, onReprint, onCancel }) => {
+  const { t } = useTranslation('cashier');
+  return (
+    <div
     role="status"
     className="rounded-xl border border-amber-300/70 bg-amber-50 p-4"
   >
@@ -213,14 +223,13 @@ const PrintGateNotice: React.FC<{
         <Printer className="h-4 w-4" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold text-amber-900">Not printed yet</p>
+        <p className="text-sm font-bold text-amber-900">{t('detail.notPrintedYet')}</p>
         <p className="mt-0.5 text-xs text-amber-800">
-          {PRINT_STATE_MESSAGE[status ?? 'NONE']}
+          {t(`detail.printState.${PRINT_STATE_KEY[status ?? 'NONE']}`, {
+            defaultValue: PRINT_STATE_MESSAGE[status ?? 'NONE'],
+          })}
         </p>
-        <p className="mt-1 text-xs font-semibold text-amber-900">
-          Total and payment stay hidden until the kitchen copy is on paper — but you can still
-          cancel the ticket.
-        </p>
+        <p className="mt-1 text-xs font-semibold text-amber-900">{t('detail.printHiddenNote')}</p>
         {(onReprint || onCancel) && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {onReprint && (
@@ -230,7 +239,7 @@ const PrintGateNotice: React.FC<{
                 className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-bold text-amber-900 transition-colors hover:bg-amber-100"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                Print again
+                {t('detail.printAgain')}
               </button>
             )}
             {onCancel && (
@@ -240,7 +249,7 @@ const PrintGateNotice: React.FC<{
                 className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-white px-3 py-1.5 text-xs font-bold text-destructive transition-colors hover:bg-destructive/10"
               >
                 <Ban className="w-3.5 h-3.5" />
-                Cancel order
+                {t('detail.cancelOrder')}
               </button>
             )}
           </div>
@@ -248,7 +257,8 @@ const PrintGateNotice: React.FC<{
       </div>
     </div>
   </div>
-);
+  );
+};
 
 const EmptyDetail: React.FC = () => {
   const { t } = useTranslation('cashier');
@@ -263,8 +273,7 @@ const EmptyDetail: React.FC = () => {
       <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/15 to-cyan-500/10 border border-primary/20 flex items-center justify-center mb-5">
         <Receipt className="w-9 h-9 text-primary" />
         <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-cyan-500 animate-pulse" />
-      </div>
-      <h3 className="font-display text-lg font-semibold text-foreground">Pick a ticket to get started</h3>
+      </div>              <h3 className="font-display text-lg font-semibold text-foreground">{t('detail.pickTicket')}</h3>
       <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">
         {t('queue.selectOrder', {
           defaultValue: 'Select an order from the queue to take payment.',
