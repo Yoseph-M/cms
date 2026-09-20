@@ -41,7 +41,7 @@ const ROLE_META: Record<
     label: 'Owner',
     description: 'Full administrative, financial & operational privileges across all venues.',
     className: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30',
-    gradient: 'from-amber-500 via-orange-500 to-rose-500',
+    gradient: 'from-amber-500 via-blue-500 to-rose-500',
   },
   MANAGER: {
     label: 'Manager',
@@ -65,13 +65,13 @@ const ROLE_META: Record<
     label: 'Cook',
     description: 'Kitchen order fulfillment & food preparation status tracking.',
     className: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 ring-rose-500/30',
-    gradient: 'from-rose-500 via-red-500 to-orange-500',
+    gradient: 'from-rose-500 via-red-500 to-indigo-500',
   },
   BARISTA: {
     label: 'Barista',
     description: 'Beverage bar orders & drink preparation fulfillment.',
-    className: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 ring-orange-500/30',
-    gradient: 'from-orange-500 via-amber-500 to-yellow-500',
+    className: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 ring-blue-500/30',
+    gradient: 'from-blue-500 via-sky-500 to-cyan-500',
   },
 };
 
