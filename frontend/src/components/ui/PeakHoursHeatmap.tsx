@@ -61,7 +61,7 @@ export const PeakHoursHeatmap: React.FC<PeakHoursHeatmapProps> = ({
           }}
           colors={{
             type: 'sequential',
-            scheme: 'oranges',
+            scheme: 'blues',
             minValue: 0,
             maxValue: maxValue || 1,
           }}
