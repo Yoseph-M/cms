@@ -8,6 +8,8 @@ import {
   buildSnapshot,
   datasetSummaries,
   findDataset,
+  resetBusinessData,
+  resetPreview,
   restoreSnapshot,
   toCsv,
 } from './backup.service';
@@ -90,6 +92,52 @@ export async function downloadSnapshot(req: AuthenticatedRequest, res: Response,
  * Additive restore: inserts records the database does not have yet, never
  * deletes or overwrites.
  */
+/**
+ * GET /api/backup/reset/preview
+ * Exactly what a reset would delete, and what it would keep.
+ */
+export async function getResetPreview(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    return res.json(await resetPreview());
+  } catch (error) {
+    return next(error);
+  }
+}
+
+/**
+ * POST /api/backup/reset
+ * Destructive format of the operational books. The body must carry
+ * `{ confirm: 'RESET' }` so a stray request can never trigger it.
+ */
+export async function resetSystem(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    if (req.body?.confirm !== 'RESET') {
+      return res.status(400).json({ error: 'Confirmation failed. Send { "confirm": "RESET" } to proceed.' });
+    }
+
+    const result = await resetBusinessData();
+
+    // Awaited: unlike the read-only exports, a destructive reset must have its
+    // audit entry written before the request can be reported as successful.
+    await recordAudit({
+      actorId: req.user!.userId,
+      actionType: 'SYSTEM_DATA_RESET',
+      targetType: 'System',
+      details: {
+        deleted: result.deleted,
+        collections: result.collections
+          .filter((item) => item.deleted > 0)
+          .map((item) => `${item.key}:${item.deleted}`),
+      },
+    });
+
+    logger.warn({ actor: req.user!.userId, deleted: result.deleted }, 'System data reset requested.');
+    return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export async function restore(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const result = await restoreSnapshot(req.body);
