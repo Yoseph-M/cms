@@ -644,7 +644,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             </div>
           )}
           <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
-          <Badge variant={meta.badge} className="absolute top-2 left-2 text-[10px] px-2 py-0.5 shadow-sm backdrop-blur-sm">
+          <Badge variant={meta.badge} className="absolute top-2 right-2 text-[10px] px-2 py-0.5 shadow-sm backdrop-blur-sm">
             {meta.label}
           </Badge>
           {!item.isAvailable && (
