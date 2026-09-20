@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -17,6 +18,12 @@ interface SheetProps {
 /**
  * Right-side slide-over panel used for Add/Edit forms.
  * Includes backdrop, focus trap by tab order, and ESC-to-close.
+ *
+ * Rendered through a portal into <body>: `position: fixed` is only relative to
+ * the viewport while no ancestor establishes a containing block (transform,
+ * filter, will-change…). Pages animate their own root with framer-motion, which
+ * does exactly that, and the panel would then be inset by the page padding —
+ * the "gap at the top" this fixes. The portal keeps it flush at every page.
  */
 export const Sheet: React.FC<SheetProps> = ({
   open,
@@ -38,7 +45,7 @@ export const Sheet: React.FC<SheetProps> = ({
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -92,6 +99,7 @@ export const Sheet: React.FC<SheetProps> = ({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 };
