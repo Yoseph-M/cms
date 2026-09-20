@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -59,6 +59,15 @@ beforeEach(() => {
     if (url === '/backup/datasets') return Promise.resolve({ data: DATASETS });
     if (url === '/backup/snapshot') {
       return Promise.resolve({ data: new Blob([JSON.stringify(SNAPSHOT)], { type: 'application/json' }) });
+    }
+    if (url === '/backup/reset/preview') {
+      return Promise.resolve({
+        data: {
+          collections: [{ key: 'orders', label: 'Sales orders', rows: 3 }],
+          rows: 3,
+          keeps: ['Staff accounts and roles'],
+        },
+      });
     }
     return Promise.resolve({ data: new Blob(['id,name\r\n'], { type: 'text/csv' }) });
   });
@@ -139,6 +148,27 @@ describe('backup & restore tab', () => {
     );
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(axiosClient.post).not.toHaveBeenCalled();
+  });
+
+  it('requires typing RESET before the destructive reset is sent', async () => {
+    renderPage();
+    await screen.findByText('Sales Orders');
+
+    // Only the card's trigger exists before the dialog opens.
+    fireEvent.click(screen.getByRole('button', { name: /Reset system data/i }));
+
+    const dialog = await screen.findByRole('alertdialog', { name: 'Reset system data' });
+    const confirm = within(dialog).getByRole('button', { name: 'Reset system data' });
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(within(dialog).getByLabelText(/Type RESET/i), { target: { value: 'RESET' } });
+    expect(confirm).toBeEnabled();
+
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(axiosClient.post).toHaveBeenCalledWith('/backup/reset', { confirm: 'RESET' }),
+    );
   });
 
   it('refuses a backup larger than the upload limit instead of failing midway', async () => {
