@@ -46,7 +46,7 @@ export const SystemAdminPage: React.FC = () => {
     { id: 'staff' as const, label: 'Staff', description: 'Roles & access', icon: Users },
     { id: 'audit' as const, label: 'Audit logs', description: 'Activity & logins', icon: FileText },
     { id: 'printers' as const, label: 'Printing', description: 'Devices & agents', icon: Printer },
-    { id: 'backup' as const, label: 'Backup', description: 'Export & restore', icon: DatabaseBackup },
+    { id: 'backup' as const, label: 'Backup', description: 'Reset & restore', icon: DatabaseBackup },
   ] as const;
 
   const activeTabMeta = tabs.find((tab) => tab.id === activeTab)!;
@@ -67,10 +67,10 @@ export const SystemAdminPage: React.FC = () => {
         <div className="min-h-[60vh] flex items-center justify-center">
           <div className="rounded-2xl bg-white border border-slate-200/70 px-8 py-10 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_-14px_rgba(15,23,42,0.10)] text-center max-w-md">
             <XCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-foreground mb-2">System Administration Disabled</h2>
-            <p className="text-muted-foreground">
-              The System Administration area is currently disabled. Enable it from System Settings to access staff management, audit logs, and printer configuration.
-            </p>
+            <h2 className="text-2xl font-bold text-foreground mb-2">
+              {t('common:access.systemAdminDisabled')}
+            </h2>
+            <p className="text-muted-foreground">{t('common:access.systemAdminDisabledHint')}</p>
           </div>
         </div>
       </div>
