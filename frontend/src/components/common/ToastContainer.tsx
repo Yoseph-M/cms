@@ -36,7 +36,10 @@ export const ToastContainer: React.FC = () => {
     <div
       aria-live="polite"
       aria-atomic="true"
-      className="fixed bottom-5 right-5 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none"
+      // Toasts must sit above every overlay in the app — slide-over editors
+      // (printers, staff), dialogs, and the sidebar backdrop all use z-40/z-50,
+      // so a failed save would otherwise report behind the panel that caused it.
+      className="fixed bottom-5 right-5 z-[100] flex flex-col gap-3 max-w-sm w-full pointer-events-none"
     >
       <AnimatePresence initial={false}>
         {toasts.map((toast) => {
