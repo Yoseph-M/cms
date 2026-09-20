@@ -192,6 +192,7 @@ export type SocketEventName =
   | 'printJob:recovered'
   | 'printJob:failed'
   | 'integrity:alert'
+  | 'daily-close:requested'
   | 'daily-close:completed'
   | 'finance:updated';
 
