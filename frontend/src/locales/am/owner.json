@@ -30,7 +30,30 @@
       "sold": "ተሽጧል",
       "emptyTitle": "ምንም ትዕዛዞች የሉም",
       "emptyMsg": "ትዕዛዞች ሲገቡ፣ በብዛት የተሸጡ ዕቃዎችዎን እዚህ ያያሉ።"
-    }
+    },
+    "sections": {
+      "revenueTrend": "የገቢ አዝማሚያ",
+      "revenueTrendDesc": "ገቢ እና የሥራ ወጪዎች",
+      "categoryMix": "የምድብ ስብጥር",
+      "categoryMixDesc": "ገቢው ከየት እንደሚመጣ",
+      "recentOrders": "የቅርብ ጊዜ ትዕዛዞች",
+      "recentOrdersDesc": "በሁሉም ክፍሎች የቅርብ ጊዜ እንቅስቃሴ",
+      "topItems": "ከፍተኛ ዕቃዎች",
+      "topItemsDesc": "በተመረጠው ጊዜ ውስጥ በብዛት የተሸጡ",
+      "waiterPerformance": "የአስተናጋጅ አፈጻጸም",
+      "waiterPerformanceDesc": "በተመረጠው ጊዜ ውስጥ በየአስተናጋጁ የተመዘገቡ ትዕዛዞች እና ገቢ",
+      "waiterPerformanceAria": "የአስተናጋጅ አፈጻጸም በሽያጭ"
+    },
+    "series": {
+      "income": "ገቢ",
+      "expenses": "ወጪዎች",
+      "net": "ተጣራ ገቢ",
+      "margin": "ትርፍ ልክ"
+    },
+    "emptySales": "በዚህ ጊዜ የሽያጭ ውሂብ የለም።",
+    "emptyTopItems": "በዚህ ጊዜ ውስጥ ከፍተኛ ሽያጭ ያላቸው ዕቃዎች የሉም።",
+    "emptyWaiter": "በዚህ ጊዜ የአስተናጋጅ ውሂብ የለም።",
+    "refreshing": "በማደስ ላይ…"
   },
   "nav": {
     "overview": "አጠቃላይ እይታ",
@@ -46,6 +69,8 @@
     "settings": "ቅንብሮች",
     "systemAdmin": "የስርዓት አስተዳደር",
     "systemSettings": "የስርዓት ቅንብሮች",
+    "itemSales": "የዕቃ ሽያጭ",
+    "endOfDay": "የቀን መጨረሻ",
     "consoleSubtitle": "የባለቤት መቆጣጠሪያ",
     "openSidebar": "የጎን አሞሌ ክፈት",
     "closeSidebar": "የጎን አሞሌ ዝጋ",
@@ -53,7 +78,8 @@
       "core": "አጠቃላይ እይታ",
       "people": "ሰው ሃብት",
       "ops": "ኦፕሬሽኖች",
-      "system": "ስርዓት"
+      "system": "ስርዓት",
+      "manager": "የሥራ አስኪያጅ መሣሪያዎች"
     }
   },
   "finance": {
