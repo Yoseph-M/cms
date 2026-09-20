@@ -16,10 +16,13 @@ interface NotificationItem {
   isRead: boolean;
   relatedId?: string | null;
   createdAt: string;
+  /** null means "everyone who can approve"; otherwise it targets one role. */
+  recipientRole?: string | null;
 }
 
 function linkFor(n: NotificationItem, role: string): string {
-  const base = role === 'MANAGER' ? '/manager' : '/owner';
+  const base =
+    role === 'MANAGER' ? '/manager' : role === 'CASHIER' ? '/cashier' : '/owner';
   switch (n.type) {
     case 'MISSING_ATTENDANCE':
       return `${base}/attendance`;
@@ -28,7 +31,11 @@ function linkFor(n: NotificationItem, role: string): string {
     case 'MENU_ITEM_UNAVAILABLE':
       return `${base}/menu`;
     case 'PRINTER_FAILURE':
-      return role === 'OWNER' ? '/owner/printers' : '/manager/reconciliation';
+      return role === 'CASHIER' ? '/cashier/printers' : role === 'OWNER' ? '/owner/printers' : '/manager/printers';
+    case 'DAILY_CLOSE_REQUESTED':
+      return role === 'MANAGER' ? '/manager/reconciliation' : '/owner';
+    case 'DAILY_CLOSE_DECISION':
+      return role === 'CASHIER' ? '/cashier/end-of-day' : base;
     case 'SYSTEM_OVERRIDE':
       return role === 'OWNER' ? '/owner/audit' : `${base}/attendance`;
     default:
@@ -51,7 +58,9 @@ export const NotificationBell: React.FC = () => {
   const ref = useRef<HTMLDivElement>(null);
 
   const role = user?.role || 'OWNER';
-  const show = role === 'OWNER' || role === 'MANAGER';
+  // Cashiers carry a bell too: they are told when a manager approves or
+  // disapproves the End of Day request they sent.
+  const show = role === 'OWNER' || role === 'MANAGER' || role === 'CASHIER';
 
   // The owner can switch off their own ability to record attendance. With it
   // off, "please mark their attendance" alerts aren't theirs to act on, so the
@@ -59,10 +68,20 @@ export const NotificationBell: React.FC = () => {
   // attendance is still their job).
   const ownerCanEditQuery = useSystemSettingQuery('ownerCanEditAttendance', show);
   const hideAttendanceAlerts = role === 'OWNER' && ownerCanEditQuery.data?.value === 'false';
-  const visibleItems = useMemo(
-    () => (hideAttendanceAlerts ? items.filter((i) => i.type !== 'MISSING_ATTENDANCE') : items),
-    [items, hideAttendanceAlerts],
+
+  // A cashier's bell is about the counter: tickets that failed to print and the
+  // answer to their End of Day request. Attendance, payroll and menu reminders
+  // are the manager's and owner's to act on.
+  const cashierRelevant = useCallback(
+    (n: NotificationItem) => n.type === 'PRINTER_FAILURE' || n.type === 'DAILY_CLOSE_DECISION',
+    [],
   );
+
+  const visibleItems = useMemo(() => {
+    let list = role === 'CASHIER' ? items.filter(cashierRelevant) : items;
+    if (hideAttendanceAlerts) list = list.filter((i) => i.type !== 'MISSING_ATTENDANCE');
+    return list;
+  }, [items, role, cashierRelevant, hideAttendanceAlerts]);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -81,13 +100,17 @@ export const NotificationBell: React.FC = () => {
   useEffect(() => {
     if (!socket || !show) return;
     const onNew = (n: NotificationItem) => {
+      // Broadcasts (no recipientRole) are for every approver; a role-targeted
+      // notification must not leak into another role's bell.
+      if (n.recipientRole && n.recipientRole !== role) return;
+      if (role === 'CASHIER' && !cashierRelevant(n)) return;
       setItems((prev) => [n, ...prev].slice(0, 100));
     };
     socket.on('notification:new', onNew);
     return () => {
       socket.off('notification:new', onNew);
     };
-  }, [socket, show]);
+  }, [socket, show, role, cashierRelevant]);
 
   useEffect(() => {
     if (!open) return;
@@ -123,6 +146,7 @@ export const NotificationBell: React.FC = () => {
   const typeLabel: Record<string, string> = {
     MISSING_ATTENDANCE: 'Attendance', PRINTER_FAILURE: 'Printers',
     PAYROLL_PERIOD_DUE: 'Payroll', MENU_ITEM_UNAVAILABLE: 'Menu', SYSTEM_OVERRIDE: 'System',
+    DAILY_CLOSE_REQUESTED: 'End of Day', DAILY_CLOSE_DECISION: 'End of Day',
   };
 
   // Short, plain-language headline per type so a glance is enough to know what
@@ -133,6 +157,8 @@ export const NotificationBell: React.FC = () => {
     PAYROLL_PERIOD_DUE: 'Payroll not recorded',
     MENU_ITEM_UNAVAILABLE: 'Menu item off for a while',
     SYSTEM_OVERRIDE: 'System notice',
+    DAILY_CLOSE_REQUESTED: 'End of Day needs approval',
+    DAILY_CLOSE_DECISION: 'End of Day decision',
   };
   const grouped = visibleItems.reduce<Record<string, NotificationItem[]>>((groups, item) => {
     const group = typeLabel[item.type] || 'System';
@@ -145,10 +171,10 @@ export const NotificationBell: React.FC = () => {
       <Tooltip label="Notifications" side="bottom" align="end">
         <button
           onClick={() => setOpen((o) => !o)}
-          className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+          className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           aria-label="Notifications"
         >
-          <Bell className="w-4.5 h-4.5 w-4 h-4" />
+          <Bell className="h-[18px] w-[18px]" />
           {unread > 0 && (
             <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground flex items-center justify-center">
               {unread > 99 ? '99+' : unread}
@@ -192,13 +218,22 @@ export const NotificationBell: React.FC = () => {
                           severityTone[n.severity] || severityTone.info
                         } ${n.isRead ? 'opacity-60' : ''}`}
                       >
-                        {typeTitle[n.type] && (
-                          <p className="text-[11px] font-bold text-foreground">{typeTitle[n.type]}</p>
-                        )}
-                        <p className="text-sm leading-snug text-muted-foreground">{n.message}</p>
-                        <p className="text-[10px] text-muted-foreground mt-1 font-mono">
-                          {formatDate(n.createdAt)} · {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
+                        {/* Headline on the left, the time it landed on the right —
+                            the eye reads "what" and "when" in one pass. */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            {typeTitle[n.type] && (
+                              <p className="text-[11px] font-bold text-foreground">{typeTitle[n.type]}</p>
+                            )}
+                            <p className="text-sm leading-snug text-muted-foreground">{n.message}</p>
+                          </div>
+                          <span className="shrink-0 pt-0.5 text-right text-[10px] font-mono leading-tight text-muted-foreground">
+                            <span className="block font-semibold text-foreground/80">
+                              {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <span className="block">{formatDate(n.createdAt)}</span>
+                          </span>
+                        </div>
                       </button>
                     ))}
                   </div>
