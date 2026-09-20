@@ -276,7 +276,7 @@ export const ManagerPayroll: React.FC = () => {
       {/* Payroll totals for the whole roster this manager is responsible for. */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 max-[419px]:grid-cols-1">
         <PayrollStat
-          label="Total payroll · my roster"
+          label={t('payroll.kpiTotalRoster')}
           value={formatCurrency(rosterTotalPaid)}
           hint={`${rosterPaymentCount} payment${rosterPaymentCount === 1 ? '' : 's'} recorded`}
           accent="text-primary"
@@ -288,13 +288,13 @@ export const ManagerPayroll: React.FC = () => {
           accent="text-emerald-600"
         />
         <PayrollStat
-          label="Staff paid"
+          label={t('payroll.kpiStaffPaid')}
           value={String(employeeLedger.length)}
           hint={`${staff.length} staff in the roster`}
           accent="text-sky-600"
         />
         <PayrollStat
-          label="Average per payment"
+          label={t('payroll.kpiAverage')}
           value={formatCurrency(rosterPaymentCount ? Math.round(rosterTotalPaid / rosterPaymentCount) : 0)}
           hint="Across the roster"
           accent="text-[hsl(var(--warning))]"
@@ -330,7 +330,7 @@ export const ManagerPayroll: React.FC = () => {
                   <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
                     <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.staff', { defaultValue: 'Staff' })}</th>
                     <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.period', { defaultValue: 'Last period' })}</th>
-                    <th className="px-4 py-3 text-center font-semibold">Records</th>
+                    <th className="px-4 py-3 text-center font-semibold">{t('payroll.records')}</th>
                     <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.paid', { defaultValue: 'Total paid' })}</th>
                     <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.date', { defaultValue: 'Last paid' })}</th>
                     <th className="w-8" />
@@ -378,7 +378,7 @@ export const ManagerPayroll: React.FC = () => {
                 </tbody>
               </table>
               <p className="border-t border-border px-4 py-2 text-center text-xs text-muted-foreground">
-                Tap an employee to open their full payroll history.
+                {t('payroll.tapEmployee')}
               </p>
             </div>
           )}
@@ -493,7 +493,7 @@ export const ManagerPayroll: React.FC = () => {
             <Receipt className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             <span className="min-w-0">
               <span className="block text-sm font-medium text-foreground">
-                Logged in Expenses automatically
+                {t('payroll.loggedInExpenses')}
               </span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
                 Every payroll payment is recorded on the Expenses page under the Payroll category — nothing to enter twice.
@@ -536,7 +536,7 @@ export const ManagerPayroll: React.FC = () => {
                   </div>
                   <button
                     onClick={() => setDetailEmployee(null)}
-                    aria-label="Close"
+                    aria-label={t('payroll.a11yClose')}
                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   >
                     <X className="h-4 w-4" />
@@ -544,7 +544,7 @@ export const ManagerPayroll: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between border-b border-primary/20 bg-primary/5 px-5 py-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">Total paid</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">{t('payroll.totalPaid')}</span>
                   <span className="font-mono text-lg font-bold text-primary">{formatCurrency(detailEmployee.totalPaid)}</span>
                 </div>
 
@@ -556,7 +556,7 @@ export const ManagerPayroll: React.FC = () => {
                           <span className="truncate text-sm font-medium">{row.period}</span>
                           {row.isAdjustment && (
                             <span className="rounded bg-[hsl(var(--warning))]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--warning))]">
-                              Correction
+                              {t('payroll.correction')}
                             </span>
                           )}
                         </div>
