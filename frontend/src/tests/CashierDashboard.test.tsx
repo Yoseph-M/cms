@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CashierDashboard } from '../pages/cashier/CashierDashboard';
@@ -31,6 +31,9 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: any) => options?.defaultValue || key,
   }),
+  // The dashboard reaches the i18n bootstrap through the auth store, so the
+  // mock has to satisfy the plugin contract i18n.ts registers at import time.
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
 import { MemoryRouter } from 'react-router-dom';
@@ -99,16 +102,23 @@ describe('CashierDashboard', () => {
     });
   });
 
-  it('renders active orders and filters correctly', async () => {
+  it('shows served tickets in the ready queue and keeps paid ones out of it', async () => {
     renderWithQueryClient(<CashierDashboard />);
 
-    await waitFor(() => {
-      // Active ticket is in the queue
-      expect(screen.getAllByText('Table 1').length).toBeGreaterThan(0);
+    // The active queue lists the SERVED ticket as ready to collect.
+    const readySection = await waitFor(() => {
+      const heading = screen.getByRole('heading', { name: 'Ready to collect' });
+      const section = heading.closest('section');
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
     });
 
-    // PAID Table 2 is filtered out of active queues
-    expect(screen.queryByText('Table 2')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(readySection).getByText('Table 1')).toBeInTheDocument();
+    });
+
+    // The PAID ticket is never part of the collection queue.
+    expect(within(readySection).queryByText('Table 2')).not.toBeInTheDocument();
   });
 
 });
