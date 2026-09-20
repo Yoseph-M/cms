@@ -18,7 +18,7 @@ const STATUS_STYLES: Record<OrderStatusKey, { label: string; className: string }
   paid:       { label: 'Paid',       className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' },
   pending:    { label: 'Pending',    className: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30' },
   cancelled:  { label: 'Cancelled',  className: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30' },
-  feedback:   { label: 'Feedback',   className: 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/30' },
+  feedback:   { label: 'Feedback',   className: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30' },
 };
 
 export interface RecentOrdersTableProps {
