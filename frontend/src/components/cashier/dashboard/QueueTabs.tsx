@@ -84,7 +84,7 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({
               <button
                 type="button"
                 onClick={() => onSearchChange('')}
-                aria-label="Clear search"
+                aria-label={t('a11y.clearSearch')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
               >
                 <X className="w-3.5 h-3.5" />
@@ -95,7 +95,7 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({
           {onStatusFilterChange && (
             <DropdownMenu>
               <DropdownMenuTrigger
-                aria-label="Filter by status"
+                aria-label={t('a11y.filterStatus')}
                 className="shrink-0 h-11"
               >
                 <CurrentFilterIcon className="w-4 h-4 text-muted-foreground" />
