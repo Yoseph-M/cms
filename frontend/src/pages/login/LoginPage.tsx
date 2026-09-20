@@ -8,6 +8,13 @@ import { cn } from '../../lib/utils';
 import { useTranslation } from 'react-i18next';
 import { applyUserLanguage } from '../../i18nUserPrefs';
 
+/**
+ * Failed tries after which the "Forgot Password?" hint appears. One or two
+ * typos are everyday noise; three in a row on the same account means the
+ * person is locked out and needs the manager, so we surface the hint then.
+ */
+const FORGOT_PASSWORD_AFTER_FAILURES = 3;
+
 /** Last user to sign in on this device — pre-filled so shifts change fast. */
 const LAST_USERNAME_KEY = 'pos.lastUsername';
 
@@ -39,6 +46,14 @@ export const LoginPage: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<'username' | 'password' | null>(null);
+  /** Failed attempts for the username LAST tried — clears on success or when
+   * the username changes (a new person typing must start the count fresh). */
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [triedUsername, setTriedUsername] = useState('');
+
+  /** Per-username count: switching accounts resets the hint. */
+  const failuresFor = (name: string) => (triedUsername === name ? failedAttempts : 0);
+  const showForgotPassword = failuresFor(username.trim()) >= FORGOT_PASSWORD_AFTER_FAILURES;
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -70,6 +85,7 @@ export const LoginPage: React.FC = () => {
       const res = await axiosClient.post('/auth/login', { username: cleanUsername, password });
       const { user: authUser, accessToken } = res.data;
       rememberLastUsername(cleanUsername);
+      setFailedAttempts(0);
 
       // Restore THIS user's preferred language on login (falls back to the
       // device language when the account has no preference — never keep the
@@ -86,6 +102,11 @@ export const LoginPage: React.FC = () => {
           ? errorData.message
           : errorData || t('errors.invalidCredentials')
       );
+      // Count misses per username so the forgot-password hint only shows for
+      // the account that is actually failing — a different username starts
+      // its own count from one.
+      setFailedAttempts((count) => (triedUsername === cleanUsername ? count + 1 : 1));
+      setTriedUsername(cleanUsername);
     } finally {
       setIsLoading(false);
     }
@@ -247,6 +268,15 @@ export const LoginPage: React.FC = () => {
                 )}
               </button>
             </div>
+
+            {/* Forgot-password hint — appears once the same username has
+                failed three times: the person is clearly locked out and the
+                app has no email/SMS recovery to offer. */}
+            {showForgotPassword && (
+              <p className="pt-1 text-center text-sm text-muted-foreground">
+                {t('forgotPassword.hint')}
+              </p>
+            )}
 
             {/* Submit Button */}
             <button
