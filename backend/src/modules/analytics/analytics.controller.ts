@@ -192,6 +192,13 @@ export async function getMonthlySales(req: AuthenticatedRequest, res: Response) 
 export async function getTopItems(req: AuthenticatedRequest, res: Response) {
   const { from, to } = req.query;
 
+  // Optional ?limit — the menu sales statistics page wants the full list, not
+  // just a top 10, so the cap is configurable (default 10, hard ceiling 200).
+  const parsedLimit = Number.parseInt((req.query.limit as string | undefined) ?? '', 10);
+  const limit = Number.isNaN(parsedLimit)
+    ? 10
+    : Math.min(200, Math.max(1, parsedLimit));
+
   const match: Record<string, unknown> = { status: { $ne: 'CANCELLED' } };
   Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
@@ -242,7 +249,7 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
       },
     },
     { $sort: { totalQty: -1 } },
-    { $limit: 10 },
+    { $limit: limit },
     {
       $project: {
         _id: 0,
