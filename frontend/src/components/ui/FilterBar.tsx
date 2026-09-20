@@ -1,12 +1,5 @@
 import React from 'react';
-import { ChevronDown } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from './Dropdown';
+import { DropdownSelect } from './DropdownSelect';
 
 export interface FilterOption {
   value: string;
@@ -18,42 +11,30 @@ interface FilterBarProps {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  /** Accessible name for the trigger; falls back to a generic label. */
+  ariaLabel?: string;
+  /** Optional trigger icon, matching the menu library's filter pills. */
+  icon?: React.ComponentType<{ className?: string }>;
 }
 
+/**
+ * Chart/section filter — a thin wrapper over {@link DropdownSelect} so every
+ * filter bar in the app shares one look (the menu library's dropdown style).
+ */
 export const FilterBar: React.FC<FilterBarProps> = ({
   options,
   value,
   onChange,
   className,
-}) => {
-  const selectedOption = options.find((o) => o.value === value) ?? options[0];
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            'inline-flex items-center gap-2 rounded-lg border border-input bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors',
-            'hover:bg-secondary/60 focus:z-10 focus:outline-none focus:ring-2 focus:ring-ring',
-            className,
-          )}
-        >
-          {selectedOption?.label}
-          <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="min-w-[10rem]">
-        {options.map((option) => (
-          <DropdownMenuItem
-            key={option.value}
-            selected={option.value === value}
-            onClick={() => onChange(option.value)}
-          >
-            {option.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-};
+  ariaLabel = 'Filter',
+  icon,
+}) => (
+  <DropdownSelect
+    ariaLabel={ariaLabel}
+    icon={icon}
+    options={options.map((o) => ({ value: o.value, label: o.label }))}
+    value={value}
+    onChange={onChange}
+    className={className}
+  />
+);
