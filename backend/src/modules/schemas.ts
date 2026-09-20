@@ -15,6 +15,17 @@ export const refreshTokenSchema = z.object({
   refreshToken: z.string().optional(),
 });
 
+// ---------- PIN (mobile app) ----------
+/** Exactly 4 digits — the credential the mobile app asks for after picking a name. */
+export const pinCodeSchema = z
+  .string()
+  .regex(/^\d{4}$/, 'PIN must be 4 digits');
+
+export const pinLoginSchema = z.object({
+  userId: z.string().min(1, 'User is required'),
+  pinCode: pinCodeSchema,
+});
+
 // ---------- User / Staff Schemas ----------
 export const createUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -22,6 +33,8 @@ export const createUserSchema = z.object({
   username: z.string().trim().min(3).optional().nullable(),
   phone: z.string().min(5, 'Valid phone number is required'),
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
+  // Mobile-app PIN — only app-facing roles get one.
+  pinCode: pinCodeSchema.optional(),
   salaryAmount: z.number().nonnegative().transform((v) => Math.round(v)).default(0),
 });
 
@@ -34,6 +47,8 @@ export const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
   // Set directly from the staff edit card; hashed server-side before storage.
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
+  // Blank/absent keeps the current PIN. Hashed server-side too.
+  pinCode: pinCodeSchema.optional(),
 });
 
 export const resetPasswordSchema = z.object({
