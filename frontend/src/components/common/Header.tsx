@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
+import { formatPersonName, nameInitials } from '../../utils/name';
 import { CommandPalette } from './CommandPalette';
 import { GlobalSearch } from './GlobalSearch';
 import { cn } from '../../lib/utils';
@@ -36,7 +37,10 @@ export const Header: React.FC = () => {
   const menuRef = React.useRef<HTMLDivElement>(null);
   const dateRef = React.useRef<HTMLDivElement>(null);
 
+  // Owner, manager and cashier all carry a notification bell — a cashier needs
+  // to hear back on the End of Day request they sent.
   const showSidebarNav = user?.role === 'OWNER' || user?.role === 'MANAGER';
+  const showNotifications = showSidebarNav || user?.role === 'CASHIER';
 
   // Click-outside handlers
   useEffect(() => {
@@ -208,13 +212,23 @@ export const Header: React.FC = () => {
         )}
       </div>
 
-      {/* Right-side actions */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
+      {/*
+       * Right-side actions. The spacing here is deliberate: search, alerts and
+       * the account cluster are three separate groups, each with its own gap
+       * and a hairline divider between them, so the row breathes instead of
+       * reading as one cramped strip of controls.
+       */}
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3 lg:gap-4">
         {/* Inline search — always rendered (even on phones), results in a
             dropdown anchored to the header. */}
         <GlobalSearch />
 
-        {showSidebarNav && <NotificationBell />}
+        {showNotifications && (
+          <>
+            <span aria-hidden className="hidden h-6 w-px bg-border sm:block" />
+            <NotificationBell />
+          </>
+        )}
 
         {/* Help shortcut */}
         <Tooltip label="Help & shortcuts" side="bottom">
@@ -229,10 +243,12 @@ export const Header: React.FC = () => {
 
         {/* Profile avatar dropdown — available for owner / manager / cashier */}
         {user && (
+          <>
+          <span aria-hidden className="hidden h-6 w-px bg-border sm:block" />
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
-              className="ml-1 flex items-center gap-2 rounded-full bg-transparent py-1 pl-1 pr-2.5 transition-colors hover:bg-secondary/60 focus:outline-none focus-visible:ring-0"
+              className="flex items-center gap-2.5 rounded-full bg-transparent py-1 pl-1 pr-2.5 transition-colors hover:bg-secondary/60 focus:outline-none focus-visible:ring-0"
               aria-label="Open profile menu"
             >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-xs font-bold text-primary">
@@ -243,13 +259,13 @@ export const Header: React.FC = () => {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <span className="px-1 truncate">
-                    {(user.name || '?').trim().charAt(0).toUpperCase() || '?'}
-                  </span>
+                  <span className="px-1 truncate">{nameInitials(user.name)}</span>
                 )}
               </div>
               <div className="hidden text-left leading-tight md:block">
-                <p className="text-[13px] font-semibold text-foreground">{user.name}</p>
+                <p className="text-[13px] font-semibold text-foreground">
+                  {formatPersonName(user.name)}
+                </p>
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   {user.role}
                 </p>
@@ -269,11 +285,13 @@ export const Header: React.FC = () => {
                     {user.avatarUrl ? (
                       <img src={user.avatarUrl} alt={user.name} className="h-full w-full object-cover" />
                     ) : (
-                      (user.name || '?').trim().charAt(0).toUpperCase()
+                      nameInitials(user.name)
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{user.name}</p>
+                    <p className="truncate text-sm font-semibold">
+                      {formatPersonName(user.name)}
+                    </p>
                     <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
                       <Shield className="h-3 w-3 text-primary" />
                       {user.role}
@@ -308,6 +326,7 @@ export const Header: React.FC = () => {
               </div>
             )}
           </div>
+          </>
         )}
       </div>
       <CommandPalette />
