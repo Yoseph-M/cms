@@ -15,6 +15,15 @@ export async function comparePassword(password: string, hash: string): Promise<b
   return bcrypt.compare(password, hash);
 }
 
+// App PINs (short numeric credentials used by the mobile app)
+export async function hashPin(pin: string): Promise<string> {
+  return bcrypt.hash(pin, 10);
+}
+
+export async function comparePin(pin: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(pin, hash);
+}
+
 // JWT Tokens
 export interface TokenPayload {
   userId: string;
