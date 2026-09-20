@@ -21,7 +21,8 @@ const FEATURE_TOGGLES: FeatureToggle[] = [
   {
     key: 'managerDashboardEnabled',
     name: 'Manager Dashboard',
-    description: 'Enable or disable access to the Manager Dashboard for MANAGER roles.',
+    description:
+      'Enable or disable access to the Manager Dashboard for MANAGER roles. Disabling it moves every manager tool (End of Day, staff, payroll, printers) into your own sidebar — you and the manager become one role until you re-enable it.',
     action: 'Managers can now',
     icon: LayoutDashboard,
     iconClassName: 'text-sky-600 dark:text-sky-400',
@@ -58,7 +59,9 @@ export const FeatureToggles: React.FC = () => {
       addToast({
         title: isEnabling
           ? `${feature.name} has been enabled. ${feature.action} access this feature.`
-          : `${feature.name} has been disabled. Access has been restricted.`,
+          : feature.key === 'managerDashboardEnabled'
+            ? `${feature.name} has been disabled. Its tools have been moved into your own workspace.`
+            : `${feature.name} has been disabled. Access has been restricted.`,
         type: 'success',
       });
     } catch {
