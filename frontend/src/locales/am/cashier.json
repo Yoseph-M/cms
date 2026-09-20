@@ -1,8 +1,54 @@
 {
   "nav": {
     "dashboard": "ዳሽቦርድ", "tickets": "ቲኬቶች", "menu": "የምናሌ ዝርዝር",
-    "settlements": "ክፍያዎች", "systemSettings": "የስርዓት ቅንብሮች",
+    "settlements": "ክፍያዎች", "printers": "አታሚዎች", "endOfDay": "የቀን መጨረሻ",
+    "systemSettings": "የስርዓት ቅንብሮች",
     "groups": { "core": "አጠቃላይ እይታ", "ops": "ሥራዎች" }
+  },
+  "tickets": {
+    "backToQueue": "ወደ ወረፋ ተመለስ",
+    "newOrder": "አዲስ ትዕዛዝ",
+    "newOrderCta": "አዲስ ትዕዛዝ",
+    "serviceDesk": "የአገልግሎት ዴስክ",
+    "title": "ቲኬቶች",
+    "showingRange": "ከጠቅላላ {{total}} ውስጥ {{from}}–{{to}} በማሳየት ላይ"
+  },
+  "orderList": {
+    "readyToCollect": "ለመውሰድ ዝግጁ",
+    "readyCaption": "አሁን ክፍያ መወሰድ ይቻላል",
+    "inProgress": "በሂደት ላይ",
+    "inProgressCaption": "አሁንም በመዘጋጀት ላይ",
+    "noTicketsFound": "ቲኬት አልተገኘም",
+    "tryAnotherSearch": "ሌላ ፍለጋ ይሞክሩ።",
+    "queueClear": "ወረፋው ንጹህ ነው",
+    "newTicketsArrive": "አዲስ ቲኬቶች በራስ-ሰር እዚህ ይደርሳሉ።"
+  },
+  "detail": {
+    "orderSummary": "የትዕዛዝ ማጠቃለያ",
+    "lines": "{{count}} ዝርዝሮች",
+    "notPrintedYet": "አልታተመም",
+    "printAgain": "እንደገና አትም",
+    "cancelOrder": "ትዕዛዙን ሰርዝ",
+    "pickTicket": "ለመጀመር ቲኬት ይምረጡ",
+    "printHiddenNote": "የኩሽና ኮፒ እስኪታተም ድረስ ጠቅላላ እና ክፍያ ይደበቃሉ — ግን ቲኬቱን ማሰረዝ ይችላሉ።",
+    "printState": {
+      "none": "ይህ ቲኬት ወደ ኩሽና አታሚ ተልኮ አያውቅም።",
+      "queued": "የኩሽና ቲኬቱ ተሰልፎ ነው ግን አልታተመም።",
+      "printing": "የኩሽና ቲኬቱ አሁንም በማተም ላይ ነው።",
+      "failed": "የኩሽና አታሚው ይህን ቲኬት ውድቅ አደረገው።",
+      "cancelled": "የኩሽና ቲኬት ማተም ተሰርዟል።",
+      "printed": "የኩሽና ቲኬቱ ታትሟል።"
+    }
+  },
+  "a11y": {
+    "previousPage": "ቀዳሚ ገጽ",
+    "nextPage": "ቀጣይ ገጽ",
+    "clearSearch": "ፍለጋውን አጽዳ",
+    "filterStatus": "በሁኔታ አጣራ",
+    "searchMenu": "የምናሌ ዕቃዎችን ፈልግ",
+    "sortMenu": "የምናሌ ዕቃዎችን ደርድር",
+    "filterCategory": "በምድብ አጣራ",
+    "closeTicket": "ቲኬቱን ዝጋ"
   },
   "console": "የጥሬ ገንዘብ ሠራተኛ ኮንሶል",
   "header": {
@@ -66,6 +112,10 @@
   },
   "ordering": {
     "title": "አዲስ ትዕዛዝ",
+    "showing": "በማሳየት ላይ",
+    "showingCount": "ከ{{total}} ዕቃዎች ውስጥ {{shown}} በማሳየት ላይ",
+    "clearFilters": "ማጣሪያዎችን አጽዳ",
+    "waiterLabel": "ይህን ጠረጴዛ የሚያገለግል አስተናጋጅ",
     "searchPlaceholder": "ምናሌ ፈልግ...",
     "loadingMenu": "ምናሌ በመጫን ላይ...",
     "noItems": "የሚታዩ ዕቃዎች የሉም",
