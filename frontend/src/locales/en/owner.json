@@ -13,6 +13,8 @@
     "settings": "Settings",
     "systemAdmin": "System Admin",
     "systemSettings": "System Settings",
+    "itemSales": "Item Sales",
+    "endOfDay": "End of Day",
     "consoleSubtitle": "Owner Console",
     "openSidebar": "Open sidebar",
     "closeSidebar": "Close sidebar",
@@ -20,7 +22,8 @@
       "core": "Insights",
       "people": "People & HR",
       "ops": "Operations",
-      "system": "System"
+      "system": "System",
+      "manager": "Manager Tools"
     }
   },
   "dashboard": {
@@ -51,7 +54,30 @@
       "sold": "{{count}} sold",
       "emptyTitle": "Not enough orders yet to crown a favorite.",
       "emptyMsg": "Once orders are placed, your best-sellers will appear here ranked by volume."
-    }
+    },
+    "sections": {
+      "revenueTrend": "Revenue trend",
+      "revenueTrendDesc": "Income vs. operating expenses",
+      "categoryMix": "Category mix",
+      "categoryMixDesc": "Where the revenue is coming from",
+      "recentOrders": "Recent orders",
+      "recentOrdersDesc": "The latest activity across all stations",
+      "topItems": "Top items",
+      "topItemsDesc": "Best sellers in the selected window",
+      "waiterPerformance": "Waiter performance",
+      "waiterPerformanceDesc": "Orders and revenue attributed per waiter in the selected period",
+      "waiterPerformanceAria": "Waiter performance by sales"
+    },
+    "series": {
+      "income": "Income",
+      "expenses": "Expenses",
+      "net": "Net",
+      "margin": "Margin"
+    },
+    "emptySales": "No sales data for this period.",
+    "emptyTopItems": "No top items in this window.",
+    "emptyWaiter": "No waiter data for this period.",
+    "refreshing": "Refreshing…"
   },
   "finance": {
     "title": "Finance",
