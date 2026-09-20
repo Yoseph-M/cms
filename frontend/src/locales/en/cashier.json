@@ -4,11 +4,58 @@
     "tickets": "Tickets",
     "menu": "Menu Catalog",
     "settlements": "Settlements",
+    "printers": "Printers",
+    "endOfDay": "End of Day",
     "systemSettings": "System Settings",
     "groups": {
       "core": "Insights",
       "ops": "Operations"
     }
+  },
+  "tickets": {
+    "backToQueue": "Back to queue",
+    "newOrder": "New Order",
+    "newOrderCta": "New order",
+    "serviceDesk": "Service desk",
+    "title": "Tickets",
+    "showingRange": "Showing {{from}}–{{to}} of {{total}}"
+  },
+  "orderList": {
+    "readyToCollect": "Ready to collect",
+    "readyCaption": "Payment can be taken now",
+    "inProgress": "In progress",
+    "inProgressCaption": "Still being prepared",
+    "noTicketsFound": "No tickets found",
+    "tryAnotherSearch": "Try another search.",
+    "queueClear": "The queue is clear",
+    "newTicketsArrive": "New tickets will arrive here automatically."
+  },
+  "detail": {
+    "orderSummary": "Order summary",
+    "lines": "{{count}} lines",
+    "notPrintedYet": "Not printed yet",
+    "printAgain": "Print again",
+    "cancelOrder": "Cancel order",
+    "pickTicket": "Pick a ticket to get started",
+    "printHiddenNote": "Total and payment stay hidden until the kitchen copy is on paper — but you can still cancel the ticket.",
+    "printState": {
+      "none": "This ticket was never sent to the kitchen printer.",
+      "queued": "The kitchen ticket is queued but has not reached paper.",
+      "printing": "The kitchen ticket is still printing.",
+      "failed": "The kitchen printer rejected this ticket.",
+      "cancelled": "The kitchen ticket print was cancelled.",
+      "printed": "The kitchen ticket printed."
+    }
+  },
+  "a11y": {
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "clearSearch": "Clear search",
+    "filterStatus": "Filter by status",
+    "searchMenu": "Search menu items",
+    "sortMenu": "Sort menu items",
+    "filterCategory": "Filter by category",
+    "closeTicket": "Close ticket"
   },
   "console": "Cashier Console",
   "header": {
@@ -75,6 +122,10 @@
   },
   "ordering": {
     "title": "New Order",
+    "showing": "Showing",
+    "showingCount": "Showing {{shown}} of {{total}} items",
+    "clearFilters": "Clear filters",
+    "waiterLabel": "Waiter serving this table",
     "searchPlaceholder": "Search menu...",
     "loadingMenu": "Loading menu...",
     "noItems": "No items to show",
