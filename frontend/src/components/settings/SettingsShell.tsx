@@ -16,7 +16,7 @@ export interface SettingsShellCategory {
   id: string;
   label: string;
   description?: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   iconClassName?: string;
   iconBgClassName?: string;
   badge?: React.ReactNode;
@@ -215,7 +215,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
                       : 'bg-card border border-border/60 text-muted-foreground hover:bg-secondary/70 hover:text-foreground',
                   )}
                 >
-                  <Icon className="h-4 w-4" />
+                  {Icon && <Icon className="h-4 w-4" />}
                   <span>{cat.label}</span>
                   <span
                     className={cn(
@@ -251,16 +251,18 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
                         : 'text-foreground/80 hover:bg-secondary/60 hover:text-foreground',
                     )}
                   >
-                    <span
-                      className={cn(
-                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ring-1 ring-inset',
-                        isActive
-                          ? 'bg-primary text-primary-foreground ring-primary/30 shadow-sm'
-                          : 'bg-secondary text-muted-foreground ring-border/50 group-hover:bg-background group-hover:text-foreground',
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </span>
+                    {Icon && (
+                      <span
+                        className={cn(
+                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ring-1 ring-inset',
+                          isActive
+                            ? 'bg-primary text-primary-foreground ring-primary/30 shadow-sm'
+                            : 'bg-secondary text-muted-foreground ring-border/50 group-hover:bg-background group-hover:text-foreground',
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                    )}
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between">
@@ -307,16 +309,18 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
               {/* Category Sub-Header */}
               <div className="flex items-center justify-between border-b border-border/60 pb-4">
                 <div className="flex items-center gap-3">
-                  <span
-                    className={cn(
-                      'flex h-10 w-10 items-center justify-center rounded-xl shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10',
-                      activeCategory.iconBgClassName || 'bg-primary/10',
-                    )}
-                  >
-                    <activeCategory.icon
-                      className={cn('h-5 w-5', activeCategory.iconClassName || 'text-primary')}
-                    />
-                  </span>
+                  {activeCategory.icon ? (
+                    <span
+                      className={cn(
+                        'flex h-10 w-10 items-center justify-center rounded-xl shadow-sm ring-1 ring-inset ring-black/5 dark:ring-white/10',
+                        activeCategory.iconBgClassName || 'bg-primary/10',
+                      )}
+                    >
+                      <activeCategory.icon
+                        className={cn('h-5 w-5', activeCategory.iconClassName || 'text-primary')}
+                      />
+                    </span>
+                  ) : null}
                   <div>
                     <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
                       {activeCategory.label}
