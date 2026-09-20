@@ -156,19 +156,19 @@ export const CancellationReview: React.FC = () => {
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between max-[767px]:flex-col max-[767px]:items-start max-[767px]:gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Cancellation Requests</h1>
-          <p className="text-muted-foreground">Review and process order cancellation requests</p>
+          <h1 className="text-2xl font-bold text-foreground">{t('cancellations.title')}</h1>
+          <p className="text-muted-foreground">{t('cancellations.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">
-            {requests.length} pending request{requests.length !== 1 ? 's' : ''}
+            {t('cancellations.pendingCount', { count: requests.length })}
           </span>
         </div>
       </div>
 
       {requests.length === 0 ? (
         <div className="text-center py-12 bg-card rounded-lg border">
-          <p className="text-muted-foreground">No pending cancellation requests</p>
+          <p className="text-muted-foreground">{t('cancellations.empty')}</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -181,19 +181,27 @@ export const CancellationReview: React.FC = () => {
               <div className="flex items-start justify-between max-[767px]:flex-col max-[767px]:gap-3">
                 <div className="min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold">Order #{request.order.clientOrderId}</span>
+                    <span className="font-semibold">
+                      {t('cancellations.orderNumber', { id: request.order.clientOrderId })}
+                    </span>
                     <span className="text-muted-foreground">•</span>
-                    <span className="text-muted-foreground">Table {request.order.tableNumber}</span>
+                    <span className="text-muted-foreground">
+                      {t('cancellations.table')} {request.order.tableNumber}
+                    </span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Requested by {request.requestedBy.name} ({request.requestedBy.role}) • {formatDate(request.createdAt)}
+                    {t('cancellations.requestedBy', {
+                      name: request.requestedBy.name,
+                      role: request.requestedBy.role,
+                    })}{' '}
+                    • {formatDate(request.createdAt)}
                   </p>
                   <p className="text-sm font-medium text-warning">{request.reason}</p>
                 </div>
                 <div className="text-right max-[767px]:flex max-[767px]:items-center max-[767px]:justify-between max-[767px]:gap-3">
                   <p className="text-lg font-bold">{formatAmount(request.order.totalAmount)}</p>
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning">
-                    Pending
+                    {t('cancellations.pending')}
                   </span>
                 </div>
               </div>
@@ -207,21 +215,23 @@ export const CancellationReview: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-card rounded-lg border max-w-lg w-full max-h-[90dvh] overflow-y-auto">
             <div className="p-6 max-[767px]:p-4 border-b">
-              <h2 className="text-xl font-bold">Cancellation Request</h2>
-              <p className="text-muted-foreground">Order #{selectedRequest.order.clientOrderId}</p>
+              <h2 className="text-xl font-bold">{t('cancellations.detailTitle')}</h2>
+              <p className="text-muted-foreground">
+                {t('cancellations.orderNumber', { id: selectedRequest.order.clientOrderId })}
+              </p>
             </div>
             
             <div className="p-6 max-[767px]:p-4 space-y-4">
               {/* Order Details */}
               <div>
-                <h3 className="font-semibold mb-2">Order Details</h3>
+                <h3 className="font-semibold mb-2">{t('cancellations.orderDetails')}</h3>
                 <div className="bg-secondary/50 rounded-lg p-3 space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Table</span>
+                    <span className="text-muted-foreground">{t('cancellations.table')}</span>
                     <span>{selectedRequest.order.tableNumber}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Total</span>
+                    <span className="text-muted-foreground">{t('cancellations.total')}</span>
                     <span className="font-semibold">{formatAmount(selectedRequest.order.totalAmount)}</span>
                   </div>
                 </div>
@@ -229,7 +239,7 @@ export const CancellationReview: React.FC = () => {
 
               {/* Items */}
               <div>
-                <h3 className="font-semibold mb-2">Items</h3>
+                <h3 className="font-semibold mb-2">{t('cancellations.items')}</h3>
                 <div className="bg-secondary/50 rounded-lg p-3">
                   {selectedRequest.order.items.map((item, idx) => (
                     <div key={idx} className="flex justify-between text-sm py-1">
@@ -242,18 +252,18 @@ export const CancellationReview: React.FC = () => {
 
               {/* Request Info */}
               <div>
-                <h3 className="font-semibold mb-2">Request Information</h3>
+                <h3 className="font-semibold mb-2">{t('cancellations.requestInfo')}</h3>
                 <div className="bg-secondary/50 rounded-lg p-3 space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Requested By</span>
+                    <span className="text-muted-foreground">{t('cancellations.requestedByLabel')}</span>
                     <span>{selectedRequest.requestedBy.name}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Role</span>
+                    <span className="text-muted-foreground">{t('cancellations.role')}</span>
                     <span>{selectedRequest.requestedBy.role}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Time</span>
+                    <span className="text-muted-foreground">{t('cancellations.time')}</span>
                     <span>{formatDate(selectedRequest.createdAt)}</span>
                   </div>
                 </div>
@@ -261,7 +271,7 @@ export const CancellationReview: React.FC = () => {
 
               {/* Reason */}
               <div>
-                <h3 className="font-semibold mb-2">Cancellation Reason</h3>
+                <h3 className="font-semibold mb-2">{t('cancellations.reason')}</h3>
                 <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
                   <p className="text-warning">{selectedRequest.reason}</p>
                 </div>
@@ -273,21 +283,21 @@ export const CancellationReview: React.FC = () => {
                 onClick={() => setSelectedRequest(null)}
                 className="flex-1 px-4 py-2 border rounded-lg hover:bg-secondary transition-colors"
               >
-                Close
+                {t('cancellations.close')}
               </button>
               <button
                 onClick={() => handleRejectClick(selectedRequest)}
                 className="flex-1 px-4 py-2 bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
                 disabled={isProcessing}
               >
-                Reject
+                {t('cancellations.reject')}
               </button>
               <button
                 onClick={() => handleApprove(selectedRequest.id)}
                 className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
                 disabled={isProcessing}
               >
-                {isProcessing ? 'Processing...' : 'Approve'}
+                {isProcessing ? t('cancellations.processing') : t('cancellations.approve')}
               </button>
             </div>
           </div>
@@ -299,19 +309,21 @@ export const CancellationReview: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-card rounded-lg border max-w-md w-full">
             <div className="p-6 max-[767px]:p-4 border-b">
-              <h2 className="text-xl font-bold text-destructive">Reject Cancellation</h2>
-              <p className="text-muted-foreground">Order #{selectedRequest.order.clientOrderId}</p>
+              <h2 className="text-xl font-bold text-destructive">{t('cancellations.rejectTitle')}</h2>
+              <p className="text-muted-foreground">
+                {t('cancellations.orderNumber', { id: selectedRequest.order.clientOrderId })}
+              </p>
             </div>
             
             <div className="p-6 max-[767px]:p-4 space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  Rejection Reason <span className="text-destructive">*</span>
+                  {t('cancellations.rejectionReason')} <span className="text-destructive">*</span>
                 </label>
                 <textarea
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="Enter reason for rejecting this cancellation request..."
+                  placeholder={t('cancellations.rejectPlaceholder')}
                   className="w-full h-24 px-3 py-2 rounded-lg border bg-secondary/50 focus:bg-background focus:border-primary outline-none resize-none"
                   autoFocus
                 />
@@ -328,14 +340,14 @@ export const CancellationReview: React.FC = () => {
                 className="flex-1 px-4 py-2 border rounded-lg hover:bg-secondary transition-colors"
                 disabled={isProcessing}
               >
-                Cancel
+                {t('cancellations.cancel')}
               </button>
               <button
                 onClick={handleReject}
                 className="flex-1 px-4 py-2 bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
                 disabled={!rejectReason.trim() || isProcessing}
               >
-                {isProcessing ? 'Processing...' : 'Confirm Rejection'}
+                {isProcessing ? t('cancellations.processing') : t('cancellations.confirmRejection')}
               </button>
             </div>
           </div>
