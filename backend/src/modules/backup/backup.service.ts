@@ -604,3 +604,105 @@ function coerceDates(row: Record<string, unknown>): Record<string, unknown> {
   }
   return copy;
 }
+
+// ---------------------------------------------------------------------------
+// Reset (format)
+// ---------------------------------------------------------------------------
+
+/**
+ * A destructive "format" of the operational books.
+ *
+ * Only the *business* rows go: orders, payments, expenses, payroll, attendance,
+ * closes and their satellites. Staff accounts, the menu catalogue, system
+ * settings, printers and the audit/login trails are deliberately kept — wiping
+ * the people and the configuration would lock the operator out of the very
+ * screen they used to reset the data. Take a backup first; this cannot be
+ * undone from the UI.
+ *
+ * Order is child-before-parent even though MongoDB does not enforce foreign
+ * keys, so the same list stays correct if the datasource ever becomes relational.
+ */
+interface ResetStep {
+  key: string;
+  label: string;
+  count: () => Promise<number>;
+  remove: () => Promise<{ count: number }>;
+}
+
+const RESET_STEPS: ReadonlyArray<ResetStep> = [
+  { key: 'printJobs', label: 'Print jobs', count: () => safeCount(() => prisma.printJob.count()), remove: () => prisma.printJob.deleteMany() },
+  { key: 'notifications', label: 'Notifications', count: () => safeCount(() => prisma.notification.count()), remove: () => prisma.notification.deleteMany() },
+  {
+    key: 'cancellationRequests',
+    label: 'Cancellation requests',
+    count: () => safeCount(() => prisma.orderCancellationRequest.count()),
+    remove: () => prisma.orderCancellationRequest.deleteMany(),
+  },
+  { key: 'settlements', label: 'Payments', count: () => safeCount(() => prisma.settlement.count()), remove: () => prisma.settlement.deleteMany() },
+  { key: 'orders', label: 'Sales orders', count: () => safeCount(() => prisma.order.count()), remove: () => prisma.order.deleteMany() },
+  { key: 'expenses', label: 'Expenses', count: () => safeCount(() => prisma.expense.count()), remove: () => prisma.expense.deleteMany() },
+  { key: 'payrollAdjustments', label: 'Payroll adjustments', count: () => safeCount(() => prisma.payrollAdjustment.count()), remove: () => prisma.payrollAdjustment.deleteMany() },
+  { key: 'userPayments', label: 'Payroll payments', count: () => safeCount(() => prisma.userPayment.count()), remove: () => prisma.userPayment.deleteMany() },
+  { key: 'attendance', label: 'Attendance', count: () => safeCount(() => prisma.attendance.count()), remove: () => prisma.attendance.deleteMany() },
+  { key: 'dailyCloses', label: 'End-of-day closes', count: () => safeCount(() => prisma.dailyClose.count()), remove: () => prisma.dailyClose.deleteMany() },
+  { key: 'integrityIssues', label: 'Integrity issues', count: () => safeCount(() => prisma.integrityIssue.count()), remove: () => prisma.integrityIssue.deleteMany() },
+];
+
+/** What a reset would remove, with row counts, for the confirmation screen. */
+export async function resetPreview() {
+  const collections = await Promise.all(
+    RESET_STEPS.map(async (step) => ({ key: step.key, label: step.label, rows: await step.count() })),
+  );
+  return {
+    collections,
+    rows: collections.reduce((sum, item) => sum + item.rows, 0),
+    keeps: RESET_KEEPS,
+  };
+}
+
+/** What a reset keeps, so the confirmation dialog can be explicit about it. */
+export const RESET_KEEPS = [
+  'Staff accounts and roles',
+  'Menu items and categories',
+  'System settings and feature flags',
+  'Printers and print agents',
+  'Audit log and login history',
+] as const;
+
+export interface ResetCollectionResult {
+  key: string;
+  label: string;
+  deleted: number;
+}
+
+export interface ResetResult {
+  collections: ResetCollectionResult[];
+  deleted: number;
+  resetAt: string;
+}
+
+/**
+ * Delete every operational record. Returns per-collection counts so the UI can
+ * report exactly what was removed. Individual failures are collected rather
+ * than thrown, so one stuck collection cannot leave the operator blind to the
+ * rest of the result.
+ */
+export async function resetBusinessData(): Promise<ResetResult> {
+  const collections: ResetCollectionResult[] = [];
+
+  for (const step of RESET_STEPS) {
+    try {
+      const { count } = await step.remove();
+      collections.push({ key: step.key, label: step.label, deleted: count });
+    } catch (err) {
+      logger.error({ err, collection: step.key }, 'Reset step failed.');
+      collections.push({ key: step.key, label: step.label, deleted: 0 });
+    }
+  }
+
+  return {
+    collections,
+    deleted: collections.reduce((sum, item) => sum + item.deleted, 0),
+    resetAt: new Date().toISOString(),
+  };
+}
