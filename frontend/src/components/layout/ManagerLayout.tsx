@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
-import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle, ClipboardCheck, Receipt, LayoutDashboard, UsersRound, X } from 'lucide-react';
+import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle, ClipboardCheck, Receipt, LayoutDashboard, UsersRound, Printer, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
@@ -27,8 +27,8 @@ const ManagerLayoutInner: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background text-foreground flex-col gap-4">
         <XCircle className="w-12 h-12 text-destructive" />
-        <h1 className="text-xl font-semibold">Manager Dashboard Disabled</h1>
-        <p className="text-muted-foreground text-sm">Please contact the owner for access.</p>
+        <h1 className="text-xl font-semibold">{t('common:access.managerDashboardDisabled')}</h1>
+        <p className="text-muted-foreground text-sm">{t('common:access.contactOwner')}</p>
       </div>
     );
   }
@@ -42,6 +42,7 @@ const ManagerLayoutInner: React.FC = () => {
     { to: '/manager/reconciliation', label: t('nav.reconciliation', { defaultValue: 'End of Day' }), icon: ClipboardCheck, end: false, group: 'ops' },
     { to: '/manager/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, end: false, group: 'ops' },
     { to: '/manager/expenses', label: t('nav.expenses', { defaultValue: 'Expenses' }), icon: Wallet, end: false, group: 'ops' },
+    { to: '/manager/printers', label: t('nav.printers', { defaultValue: 'Printers' }), icon: Printer, end: false, group: 'ops' },
   ] as const;
 
   const SYSTEM_SETTINGS = {
@@ -67,7 +68,7 @@ const ManagerLayoutInner: React.FC = () => {
      *  - Outer h-screen, no page scroll.
      *  - Sticky full-height sidebar.
      *  - Right column with header + independently scrolling main.
-     *  - Sidebar visuals (rounded-2xl items, orange active state, group
+     *  - Sidebar visuals (rounded-2xl items, light-blue active state, group
      *    labels, pinned System Settings) mirror the Owner sidebar so the
      *    role-to-role transition feels consistent.
      */
@@ -83,7 +84,7 @@ const ManagerLayoutInner: React.FC = () => {
         className={cn(
           'pointer-events-none absolute inset-0',
           isDashboard
-            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--orange-400)/0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--orange-200)/0.35),transparent_60%)]'
+            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--dash-accent-400)/0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--dash-accent-200)/0.35),transparent_60%)]'
             : 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--primary)/0.08),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--accent)/0.10),transparent_60%)]',
         )}
       />
@@ -114,12 +115,12 @@ const ManagerLayoutInner: React.FC = () => {
           )}
         >
           <span className="hidden max-[767px]:block mr-auto text-sm font-semibold tracking-tight text-foreground">
-            Navigation
+            {t('common:chrome.navigation')}
           </span>
           <button
             onClick={() => setMobileOpen(false)}
             className="hidden max-[767px]:inline-flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/70 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            aria-label="Close sidebar"
+            aria-label={t('common:a11y.closeSidebar')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -153,7 +154,7 @@ const ManagerLayoutInner: React.FC = () => {
                       end={'end' in link ? link.end : false}
                       className={({ isActive }) =>
                         `group relative flex items-center ${sidebarCollapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
-                          ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
+                          ? 'text-[hsl(201_96%_40%)] bg-[hsl(201_96%_50%/0.12)]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
                         }`
                       }
@@ -162,7 +163,7 @@ const ManagerLayoutInner: React.FC = () => {
                         <>
                           <Icon
                             className={`relative w-5 h-5 shrink-0 transition-colors ${isActive
-                              ? 'text-[hsl(var(--orange-500))]'
+                              ? 'text-[hsl(201_96%_45%)]'
                               : 'text-muted-foreground/70 group-hover:text-muted-foreground'
                               }`}
                             strokeWidth={2.5}
@@ -206,7 +207,7 @@ const ManagerLayoutInner: React.FC = () => {
                   ? 'justify-center w-12 h-12 mx-auto'
                   : 'gap-3 px-4 h-11 w-full',
                 isActive
-                  ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
+                  ? 'text-[hsl(201_96%_40%)] bg-[hsl(201_96%_50%/0.12)]'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70',
               )
             }
@@ -216,7 +217,7 @@ const ManagerLayoutInner: React.FC = () => {
                 <SYSTEM_SETTINGS.icon
                   className={cn(
                     'shrink-0 w-[18px] h-[18px]',
-                    isActive ? 'text-[hsl(var(--orange-500))]' : 'text-muted-foreground/70 group-hover:text-muted-foreground',
+                    isActive ? 'text-[hsl(201_96%_45%)]' : 'text-muted-foreground/70 group-hover:text-muted-foreground',
                   )}
                   strokeWidth={2.25}
                 />
