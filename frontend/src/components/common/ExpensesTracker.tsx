@@ -8,6 +8,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
+import { DropdownSelect } from '../ui/DropdownSelect';
 import { Sheet } from '../ui/Sheet';
 import { AlertDialog } from '../ui/AlertDialog';
 import { CalendarDays, FilterX, Pencil, Plus, ReceiptText, Tag, Trash2, Wallet } from 'lucide-react';
@@ -32,11 +33,13 @@ interface Expense {
   date: string;
   recordedBy: { id: string; name: string } | null;
   createdAt?: string;
-  /** Derived, read-only row (the payroll summary) rather than a stored record. */
+  /** Derived, read-only row (a payroll summary) rather than a stored record. */
   isAggregated?: boolean;
   /** Full payroll total behind the payroll row's average, shown on hover. */
   payrollTotal?: number;
   payrollMonths?: number;
+  /** Label for the row badge — "Monthly average" when omitted. */
+  payrollLabel?: string;
 }
 
 const CATEGORIES: ExpenseCategory[] = [
@@ -151,52 +154,57 @@ export const ExpensesTracker: React.FC = () => {
   );
 
   /**
-   * Payroll takes part in Expense activity like every other category, but as a
-   * single row: what a month of payroll costs on average. The server's per-month
-   * payroll rows are dropped here so payroll is never counted twice.
+   * Payroll is derived from the payroll ledger, never hand-entered.
+   *
+   *  - With no filter (All categories), payroll shows as one average row so the
+   *    headline totals include it without burying the list in per-staff lines.
+   *  - Filtering by a specific category (including PAYROLL) also shows the
+   *    average row for consistency — the same view as All categories.
    */
-  const payrollExpenseRow = useMemo<Expense | null>(() => {
-    if (categoryFilter && categoryFilter !== 'PAYROLL') return null;
-
-    // A payroll period is a month, not a day.
+  const payrollExpenseRows = useMemo<Expense[]>(() => {
     const months = groupPayrollByMonth(payrollLedger);
-    if (months.length === 0) return null;
+    if (months.length === 0) return [];
 
+    // Another category is selected — payroll has no row to contribute.
+    if (categoryFilter && categoryFilter !== 'PAYROLL') return [];
+
+    // Show the same average row for both "All categories" and "PAYROLL" filter
+    // so the view is consistent regardless of which filter is active.
     const total = months.reduce((sum, month) => sum + month.total, 0);
     const paymentDates = months.flatMap((month) => month.payments.map((p) => p.createdAt));
     const latestPaidAt = paymentDates.length
-      ? paymentDates.reduce((newest, iso) =>
-          new Date(iso) > new Date(newest) ? iso : newest,
-        )
+      ? paymentDates.reduce((newest, iso) => (new Date(iso) > new Date(newest) ? iso : newest))
       : `${months[0].year}-${String(months[0].month).padStart(2, '0')}-01T00:00:00.000Z`;
 
-    return {
-      id: 'payroll-average',
-      category: 'PAYROLL',
-      amount: Math.round(total / months.length),
-      description: `Average monthly payroll — ${months.length} ${
-        months.length === 1 ? 'month' : 'months'
-      }`,
-      date: latestPaidAt,
-      recordedBy: null,
-      isAggregated: true,
-      payrollTotal: total,
-      payrollMonths: months.length,
-    };
+    return [
+      {
+        id: 'payroll-average',
+        category: 'PAYROLL',
+        amount: Math.round(total / months.length),
+        description: `Average monthly payroll — ${months.length} ${
+          months.length === 1 ? 'month' : 'months'
+        }`,
+        date: latestPaidAt,
+        recordedBy: null,
+        isAggregated: true,
+        payrollTotal: total,
+        payrollMonths: months.length,
+      },
+    ];
   }, [payrollLedger, categoryFilter]);
 
   /**
-   * What the table lists: the stored expense records plus the single payroll
-   * row, newest first. The headline numbers come from these rows, so what is on
+   * What the table lists: the stored expense records plus the payroll rows,
+   * newest first. The headline numbers come from these rows, so what is on
    * screen always adds up.
    */
   const tableExpenses = useMemo(() => {
     const rows = [
       ...expenses.filter((expense) => !expense.isAggregated),
-      ...(payrollExpenseRow ? [payrollExpenseRow] : []),
+      ...payrollExpenseRows,
     ];
     return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [expenses, payrollExpenseRow]);
+  }, [expenses, payrollExpenseRows]);
 
   const totalSpent = useMemo(
     () => tableExpenses.reduce((total, expense) => total + expense.amount, 0),
@@ -303,56 +311,47 @@ export const ExpensesTracker: React.FC = () => {
       </div>
 
       <div className="grid gap-3 grid-cols-3">
-        <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Total in view" value={formatCurrency(totalSpent)} accent="text-primary" />
-        <SummaryCard icon={<ReceiptText className="h-4 w-4" />} label="Expense records" value={String(recordCount)} accent="text-sky-600" />
-        <SummaryCard icon={<Tag className="h-4 w-4" />} label="Categories used" value={String(categoryCount)} accent="text-violet-600" />
+        <SummaryCard icon={<Wallet className="h-4 w-4" />} label={t('expenses.totalInView', { defaultValue: 'Total in view' })} value={formatCurrency(totalSpent)} accent="text-primary" />
+        <SummaryCard icon={<ReceiptText className="h-4 w-4" />} label={t('expenses.recordCount', { defaultValue: 'Expense records' })} value={String(recordCount)} accent="text-sky-600" />
+        <SummaryCard icon={<Tag className="h-4 w-4" />} label={t('expenses.categoriesUsed', { defaultValue: 'Categories used' })} value={String(categoryCount)} accent="text-violet-600" />
       </div>
 
       <Card className="overflow-hidden hover:translate-y-0">
-        <CardHeader className="border-b border-border/50 pb-4">
-          <div className="flex flex-col gap-1">
-            <CardTitle className="text-base font-bold">Find expense records</CardTitle>
-            <p className="text-sm text-muted-foreground">Filter by category. Results update automatically.</p>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-5">
-          <div className="grid grid-cols-2 gap-3 items-end max-[419px]:grid-cols-1">
-            <div>
-              <label htmlFor="expense-category-filter" className="text-xs font-medium text-muted-foreground block mb-1.5">
-                {t('expenses.filters.category', { defaultValue: 'Category' })}
-              </label>
-              <Select
-                id="expense-category-filter"
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-              >
-                <option value="">{t('expenses.filters.allCategories', { defaultValue: 'All categories' })}</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
-                ))}
-              </Select>
-            </div>
-            <div className="flex gap-2">
-              {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  <FilterX className="h-3.5 w-3.5" /> Clear
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden hover:translate-y-0">
-        <CardHeader className="flex-row items-center justify-between border-b border-border/50 py-4">
-          <div>
-            <CardTitle className="text-base">Expense activity</CardTitle>
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 border-b border-border/50 py-4">
+          <div className="min-w-0">
+            <CardTitle className="text-base">{t('expenses.activityTitle')}</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              {isLoading ? 'Loading records…' : `${tableExpenses.length} record${tableExpenses.length === 1 ? '' : 's'} shown`}
-              {' · '}payroll appears as one average row
+              {isLoading
+                ? 'Loading records…'
+                : `${tableExpenses.length} record${tableExpenses.length === 1 ? '' : 's'} shown`}
+              {categoryFilter
+                ? ' · filtered by category'
+                : ' · payroll appears as one average row'}
             </p>
           </div>
-          {hasFilters && <Badge variant="secondary">Filtered view</Badge>}
+          <div className="flex items-center gap-2">
+            {hasFilters && <Badge variant="secondary">{t('expenses.filteredView')}</Badge>}
+            <DropdownSelect
+              ariaLabel={t('expenses.filters.category', { defaultValue: 'Category' })}
+              icon={Tag}
+              size="sm"
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={[
+                {
+                  value: '',
+                  label: t('expenses.filters.allCategories', { defaultValue: 'All categories' }),
+                },
+                ...CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABELS[c] })),
+              ]}
+              contentClassName="w-48"
+            />
+            {hasFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} aria-label={t('expenses.clearFilters')}>
+                <FilterX className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -375,10 +374,8 @@ export const ExpensesTracker: React.FC = () => {
               </div>
               {categoryFilter === 'PAYROLL' ? (
                 <>
-                  <p className="font-medium text-foreground">No payroll recorded yet.</p>
-                  <p className="mt-1 text-sm">
-                    Once payroll is saved it appears here as a monthly average.
-                  </p>
+                  <p className="font-medium text-foreground">{t('expenses.noPayrollYet')}</p>
+                  <p className="mt-1 text-sm">{t('expenses.payrollAutoHint')}</p>
                 </>
               ) : (
                 <>
@@ -425,13 +422,15 @@ export const ExpensesTracker: React.FC = () => {
                             className="ml-2 inline-flex items-center rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground align-middle"
                             title={
                               expense.payrollTotal !== undefined
-                                ? `Average of ${expense.payrollMonths} payroll ${
-                                    expense.payrollMonths === 1 ? 'month' : 'months'
-                                  } · ${formatCurrency(expense.payrollTotal)} recorded in total`
+                                ? expense.payrollLabel
+                                  ? `${formatCurrency(expense.payrollTotal)} recorded for this payroll month`
+                                  : `Average of ${expense.payrollMonths} payroll ${
+                                      expense.payrollMonths === 1 ? 'month' : 'months'
+                                    } · ${formatCurrency(expense.payrollTotal)} recorded in total`
                                 : undefined
                             }
                           >
-                            Monthly average
+                            {expense.payrollLabel ?? 'Monthly average'}
                           </span>
                         )}
                       </td>
@@ -512,7 +511,7 @@ export const ExpensesTracker: React.FC = () => {
               ))}
             </Select>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Payroll entries are added automatically when you record payroll.
+              {t('expenses.payrollAutoNote')}
             </p>
           </div>
 
