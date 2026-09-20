@@ -35,7 +35,7 @@ export const OrderTypeBars: React.FC<OrderTypeBarsProps> = ({ entries, className
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-secondary">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-500 transition-[width] duration-700"
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-400 transition-[width] duration-700"
                 style={{ width: `${Math.max(2, e.percent)}%` }}
               />
             </div>
