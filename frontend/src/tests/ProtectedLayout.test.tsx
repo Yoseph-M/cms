@@ -75,9 +75,10 @@ describe('ProtectedLayout / App Routing', () => {
 
   // Regression: during initial session bootstrap (hard refresh) the app must
   // NOT redirect to /login before bootstrapSession has finished restoring the
-  // session from the HttpOnly refresh cookie. With a cached user the page stays
-  // mounted in place — no bare skeleton, no login flash — while data reloads.
-  it('keeps the page mounted (no /login, no bare skeleton) while session bootstrap is in progress with a cached user', async () => {
+  // session from the HttpOnly refresh cookie. RoleGuard deliberately holds the
+  // protected route on the skeleton until the restore completes, so the login
+  // form never flashes even for a cached user.
+  it('holds the skeleton (never /login) while session bootstrap is in progress with a cached user', async () => {
     (useAuthStore as any).mockReturnValue({
       isAuthenticated: false,
       user: { role: 'OWNER', id: '1', name: 'Owner' },
@@ -91,10 +92,9 @@ describe('ProtectedLayout / App Routing', () => {
       </MemoryRouter>
     );
 
-    // The protected page (layout + content) stays mounted while the session
-    // restores — the login page must never appear.
-    expect(await screen.findByText('Owner Dashboard Mock')).toBeInTheDocument();
+    expect(screen.getByLabelText('Loading page')).toBeInTheDocument();
     expect(screen.queryByText('Login Page Mock')).not.toBeInTheDocument();
+    expect(screen.queryByText('Owner Dashboard Mock')).not.toBeInTheDocument();
   });
 
   it('does not render the login form on /login until bootstrap finishes', async () => {
