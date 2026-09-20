@@ -30,27 +30,49 @@ beforeEach(() => {
 });
 
 /**
- * Tremor renders one block per day; all three responsive trackers are in the
- * DOM. Scoped to the staff list so the legend/key swatches — which are also
- * Tremor blocks — don't inflate the count.
+ * Tremor renders one block per day. Every row draws the WHOLE month at every
+ * width (the strip scales by CSS rather than being trimmed), so a staff row is
+ * exactly one tracker. Scoped to the staff list so the legend/key swatches —
+ * which are also Tremor blocks — don't inflate the count.
  */
 const blocks = (container: HTMLElement) =>
   container.querySelectorAll('ul [class*="tremor-Tracker-trackingBlock"]');
 
+const daysInMonth = (year: number, monthIndex: number) =>
+  new Date(year, monthIndex + 1, 0).getDate();
+
+const toIsoDate = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+/** One full-month strip per staff member. */
+const blocksPerStaff = (days: number) => days;
+
+/** Matches the month labels the card's dropdown shows ("Sep 2026"). */
+const SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/** The month dropdown is the house filter menu — open it, then click an option. */
+const chooseMonth = async (label: string) => {
+  fireEvent.keyDown(screen.getByLabelText('Filter attendance by month'), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: label }));
+};
+
 describe('AttendanceHistory', () => {
-  it('renders a tracker per staff member over the selected window', async () => {
+  it('renders a tracker per staff member for the selected month', async () => {
     const { container } = render(<AttendanceHistory />);
 
     await waitFor(() => expect(screen.getByText('Abebe')).toBeInTheDocument());
 
-    // 90-day window: full strip, a 60-day tail for sm, a 30-day tail for mobile.
-    expect(blocks(container)).toHaveLength((90 + 60 + 30) * 2);
-    // The window axis and legend are stated once for the whole list, not once
-    // per staff member — the rows stay bare trackers.
-    expect(screen.getAllByText('90 days ago')).toHaveLength(1);
-    expect(screen.getAllByText('60 days ago')).toHaveLength(1);
-    expect(screen.getAllByText('30 days ago')).toHaveLength(1);
-    expect(screen.getAllByText('Today')).toHaveLength(1);
+    const now = new Date();
+    const days = daysInMonth(now.getFullYear(), now.getMonth());
+    expect(blocks(container)).toHaveLength(blocksPerStaff(days) * 2);
+
+    // The month filter defaults to the current month.
+    const currentLabel = `${SHORT_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+    expect(screen.getByLabelText('Filter attendance by month')).toHaveTextContent(currentLabel);
+
     // Overall chip plus one row per staff member, each counted in days.
     expect(screen.getAllByText(/^\d+ days present$/)).toHaveLength(3);
   });
@@ -81,20 +103,21 @@ describe('AttendanceHistory', () => {
     expect(within(screen.getByRole('dialog')).getAllByText('Absent')).toHaveLength(2);
   }, 20_000);
 
-  it('re-fetches and re-scales the tracker when the range filter changes', async () => {
+  it('re-fetches and re-scales the tracker when the month filter changes', async () => {
     const { container } = render(<AttendanceHistory />);
     await waitFor(() => expect(screen.getByText('Abebe')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: '7d' }));
+    const now = new Date();
+    const previous = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousDays = daysInMonth(previous.getFullYear(), previous.getMonth());
 
-    await waitFor(() => expect(blocks(container)).toHaveLength(7 * 3 * 2));
-    // Below 30 days every breakpoint shows the same window, once per breakpoint.
-    expect(screen.getAllByText('7 days ago')).toHaveLength(3);
-    const start = new Date();
-    start.setDate(start.getDate() - 6);
-    expect(getMock.mock.calls.at(-1)?.[0]).toBe(
-      `/attendance?startDate=${start.toISOString().split('T')[0]}&endDate=${today}`,
-    );
+    await chooseMonth(`${SHORT_MONTHS[previous.getMonth()]} ${previous.getFullYear()}`);
+
+    await waitFor(() => expect(blocks(container)).toHaveLength(blocksPerStaff(previousDays) * 2));
+
+    const start = toIsoDate(new Date(previous.getFullYear(), previous.getMonth(), 1));
+    const end = toIsoDate(new Date(previous.getFullYear(), previous.getMonth() + 1, 0));
+    expect(getMock.mock.calls.at(-1)?.[0]).toBe(`/attendance?startDate=${start}&endDate=${end}`);
   }, 20_000);
 
   it('drops the owner from the list but keeps managers for owners', async () => {
