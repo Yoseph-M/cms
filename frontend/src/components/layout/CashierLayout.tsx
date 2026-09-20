@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
-import { Calculator, UtensilsCrossed, Receipt, Settings, Ticket, X } from 'lucide-react';
+import { Calculator, UtensilsCrossed, Receipt, Settings, Ticket, Printer, ClipboardCheck, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
@@ -16,7 +16,7 @@ const GROUP_ORDER: string[] = ['core', 'ops'];
  * visuals:
  *  - Outer h-screen so the page itself never scrolls.
  *  - Sticky full-height sidebar on the left, matching rounded-2xl items,
- *    orange active state, group labels, and a pinned System Settings row.
+ *    light-blue active state, group labels, and a pinned System Settings row.
  *  - Right column hosts the global Header + a scrollable <main>.
  *  - The dashboard (live POS) keeps a soft warm frame so the cashier's
  *    "island" cards still pop, matching the Owner's dashboard rhythm.
@@ -33,6 +33,8 @@ const CashierLayoutInner: React.FC = () => {
     { to: '/cashier/tickets', label: t('nav.tickets', { defaultValue: 'Tickets' }), icon: Ticket, end: true, group: 'core' },
     { to: '/cashier/menu', label: t('nav.menu', { defaultValue: 'Menu Catalog' }), icon: UtensilsCrossed, end: false, group: 'ops' as const },
     { to: '/cashier/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, end: false, group: 'ops' as const },
+    { to: '/cashier/end-of-day', label: t('nav.endOfDay', { defaultValue: 'End of Day' }), icon: ClipboardCheck, end: false, group: 'ops' as const },
+    { to: '/cashier/printers', label: t('nav.printers', { defaultValue: 'Printers' }), icon: Printer, end: false, group: 'ops' as const },
   ] as const;
 
   const SYSTEM_SETTINGS = {
@@ -66,7 +68,7 @@ const CashierLayoutInner: React.FC = () => {
         className={cn(
           'pointer-events-none absolute inset-0',
           isDashboard
-            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--orange-400)/0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--orange-200)/0.35),transparent_60%)]'
+            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--dash-accent-400)/0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--dash-accent-200)/0.35),transparent_60%)]'
             : 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--primary)/0.08),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--accent)/0.10),transparent_60%)]',
         )}
       />
@@ -97,12 +99,12 @@ const CashierLayoutInner: React.FC = () => {
           )}
         >
           <span className="hidden max-[767px]:block mr-auto text-sm font-semibold tracking-tight text-foreground">
-            Navigation
+            {t('common:chrome.navigation')}
           </span>
           <button
             onClick={() => setMobileOpen(false)}
             className="hidden max-[767px]:inline-flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/70 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            aria-label="Close sidebar"
+            aria-label={t('common:a11y.closeSidebar')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -136,7 +138,7 @@ const CashierLayoutInner: React.FC = () => {
                       end={'end' in link ? link.end : false}
                       className={({ isActive }) =>
                         `group relative flex items-center ${sidebarCollapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
-                          ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
+                          ? 'text-[hsl(201_96%_40%)] bg-[hsl(201_96%_50%/0.12)]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
                         }`
                       }
@@ -145,7 +147,7 @@ const CashierLayoutInner: React.FC = () => {
                         <>
                           <Icon
                             className={`relative w-5 h-5 shrink-0 transition-colors ${isActive
-                              ? 'text-[hsl(var(--orange-500))]'
+                              ? 'text-[hsl(201_96%_45%)]'
                               : 'text-muted-foreground/70 group-hover:text-muted-foreground'
                               }`}
                             strokeWidth={2.5}
@@ -189,7 +191,7 @@ const CashierLayoutInner: React.FC = () => {
                   ? 'justify-center w-12 h-12 mx-auto'
                   : 'gap-3 px-4 h-11 w-full',
                 isActive
-                  ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
+                  ? 'text-[hsl(201_96%_40%)] bg-[hsl(201_96%_50%/0.12)]'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70',
               )
             }
@@ -199,7 +201,7 @@ const CashierLayoutInner: React.FC = () => {
                 <SYSTEM_SETTINGS.icon
                   className={cn(
                     'shrink-0 w-[18px] h-[18px]',
-                    isActive ? 'text-[hsl(var(--orange-500))]' : 'text-muted-foreground/70 group-hover:text-muted-foreground',
+                    isActive ? 'text-[hsl(201_96%_45%)]' : 'text-muted-foreground/70 group-hover:text-muted-foreground',
                   )}
                   strokeWidth={2.25}
                 />
