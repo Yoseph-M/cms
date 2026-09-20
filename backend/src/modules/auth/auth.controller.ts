@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../../services/prisma.service';
-import { comparePassword, hashPassword, generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/security';
+import { comparePassword, comparePin, hashPassword, generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/security';
 import { logger } from '../../utils/logger';
 import { Role } from '@prisma/client';
 
@@ -364,6 +364,124 @@ export async function login(req: Request, res: Response) {
   // Refresh token is ONLY delivered via HttpOnly cookie — never in JSON
   // preferredLanguage lets the SPA restore the signed-in user's own UI
   // language (per-user preference, not a device-wide setting).
+  return res.json({
+    accessToken,
+    user: {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      username: user.username,
+      phone: user.phone,
+      preferredLanguage: user.preferredLanguage,
+    },
+  });
+}
+
+/**
+ * POST /auth/pin-login
+ *
+ * PIN sign-in for the mobile app: the app lists the staff for a role, the user
+ * taps their name and types their PIN. Shares the account lockout and login
+ * history with the password flow so brute-forcing either one locks the account.
+ */
+export async function pinLogin(req: Request, res: Response) {
+  const { userId, pinCode } = req.body;
+
+  const user = await prisma.user.findUnique({ where: { id: String(userId) } });
+
+  // A user with no PIN set cannot sign in this way — same response as a wrong
+  // PIN so the endpoint never reveals which accounts have one.
+  if (!user || !user.isActive || !user.pinCodeHash) {
+    logger.info({ userId, outcome: 'failure' }, 'auth.pin.failure');
+    return res.status(401).json({ error: 'Invalid PIN.' });
+  }
+
+  const lockoutState = await prisma.loginAttempt.findUnique({ where: { userId: user.id } });
+  const now = Date.now();
+
+  if (lockoutState) {
+    if (lockoutState.lockedUntil > now) {
+      const remainingMinutes = Math.ceil((lockoutState.lockedUntil - now) / 60000);
+      await prisma.loginHistory.create({
+        data: { userId: user.id, ip: req.ip, userAgent: req.headers['user-agent'], outcome: 'LOCKED' },
+      });
+      return res.status(429).json({
+        error: `Account locked due to too many failed attempts. Try again in ${remainingMinutes} minutes.`,
+        lockedUntil: lockoutState.lockedUntil,
+        remainingMinutes,
+      });
+    }
+    if (lockoutState.lockedUntil !== 0) {
+      await prisma.loginAttempt.delete({ where: { userId: user.id } });
+    }
+  }
+
+  const isPinValid = await comparePin(String(pinCode), user.pinCodeHash);
+
+  if (!isPinValid) {
+    const currentLockout = await prisma.loginAttempt.findUnique({ where: { userId: user.id } });
+    const attempts = currentLockout ? currentLockout.failedCount + 1 : 1;
+    let lockedUntil = 0;
+    if (attempts >= 5) lockedUntil = now + 15 * 60 * 1000;
+
+    await prisma.loginAttempt.upsert({
+      where: { userId: user.id },
+      update: { failedCount: attempts, lockedUntil },
+      create: { userId: user.id, failedCount: attempts, lockedUntil },
+    });
+
+    await prisma.loginHistory.create({
+      data: {
+        userId: user.id,
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+        outcome: attempts >= 5 ? 'LOCKED' : 'FAILURE',
+      },
+    });
+
+    if (attempts >= 5) {
+      logger.info({ userId, attempts, outcome: 'locked' }, 'auth.pin.locked');
+      return res.status(429).json({
+        error: 'Account locked due to too many failed attempts. Try again in 15 minutes.',
+        lockedUntil,
+        remainingMinutes: 15,
+      });
+    }
+
+    logger.info({ userId, attempts, outcome: 'failure' }, 'auth.pin.failure');
+    return res.status(401).json({ error: 'Invalid PIN.' });
+  }
+
+  if (lockoutState) {
+    await prisma.loginAttempt.delete({ where: { userId: user.id } });
+  }
+
+  await prisma.loginHistory.create({
+    data: { userId: user.id, ip: req.ip, userAgent: req.headers['user-agent'], outcome: 'SUCCESS' },
+  });
+
+  const tokenPayload = {
+    userId: user.id,
+    role: user.role,
+    name: user.name,
+    username: user.username,
+  };
+
+  const accessToken = generateAccessToken(tokenPayload);
+  const refreshToken = generateRefreshToken(tokenPayload);
+
+  await prisma.refreshToken.create({
+    data: {
+      tokenHash: hashToken(refreshToken),
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, getRefreshCookieOptions(req));
+
+  logger.info({ userId: user.id, role: user.role, outcome: 'success' }, 'auth.pin.success');
+
   return res.json({
     accessToken,
     user: {
