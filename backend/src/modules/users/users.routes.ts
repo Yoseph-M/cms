@@ -34,6 +34,8 @@ router.use(requireRole([Role.OWNER, Role.MANAGER]));
 router.post('/', validate(createUserSchema), UsersController.createUser);
 router.patch('/:id', validate(updateUserSchema), UsersController.updateUser);
 router.patch('/:id/deactivate', UsersController.deactivateUser);
+// Permanent removal — refused (409) for accounts with business history.
+router.delete('/:id', UsersController.deleteUser);
 router.patch('/:id/reset-password', validate(resetPasswordSchema), UsersController.resetPassword);
 router.post('/:id/unlock', UsersController.unlockUser);
 
