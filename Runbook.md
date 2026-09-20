@@ -108,14 +108,26 @@ docker exec mern_pos_api npx prisma db push
 
 ### Reset a staff member's PIN
 
+The PIN is the mobile-app credential — exactly 4 digits. Waiters, cooks and
+baristas use it on its own; managers keep their website password as well. Set or
+replace it from the staff card:
+
+**Owner / Manager UI:** Staff → pencil on the person → *PIN (mobile app)* → save.
+
 ```bash
-# Via the Owner UI: Staff → select user → Reset PIN
-# Via API (Owner/Manager auth required):
-curl -X POST http://localhost:5001/api/users/<userId>/reset-pin \
+# Or straight through the API (Owner/Manager auth required):
+curl -X PATCH http://localhost:5001/api/users/<userId> \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
+  -d '{"pinCode":"1234"}'
 
+# App sign-in: POST /api/auth/pin-login { userId, pinCode }
+# Five wrong PINs lock the account for 15 minutes, exactly like a password.
 ```
+
+Leaving the PIN field blank keeps the current one. PINs set before this
+credential was reintroduced (the old scrypt `pinCodeHash`/`pinSalt` documents)
+are not verified any more — give those staff a new PIN once from the staff card.
 
 ---
 
