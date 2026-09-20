@@ -12,13 +12,15 @@ import {
   Receipt,
   ShieldCheck,
   Settings,
+  ClipboardCheck,
+  TrendingUp,
   X,
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
 import { PageSkeleton } from '../common/PageSkeleton';
 
-const GROUP_ORDER: string[] = ['core', 'ops', 'people', 'system'];
+const GROUP_ORDER: string[] = ['core', 'ops', 'people', 'system', 'manager'];
 
 import { OnboardingWizard } from '../onboarding/OnboardingWizard';
 import { useOnboardingStore } from '../../store/onboardingStore';
@@ -31,16 +33,42 @@ const OwnerLayoutInner: React.FC = () => {
   const { openWizard } = useOnboardingStore();
   const { t } = useTranslation('owner');
   const location = useLocation();
-  const isDashboardPage = location.pathname === '/owner' || location.pathname === '/owner/';
+  const isDashboardPage =
+    location.pathname === '/owner' ||
+    location.pathname === '/owner/';
   const sidebarCollapsed = collapsed && !mobileOpen;
 
   const { settings } = useSettingsStore();
 
   const systemAdminEnabled = settings['systemAdministrationEnabled'] !== 'false';
 
+  /**
+   * Owner–manager consolidation. When the owner disables the Manager
+   * Dashboard feature, the owner absorbs only the manager tools they don't
+   * already have. Staff, Payroll, Expenses, and Printers exist on both sides
+   * (the owner's own pages hit the same backend endpoints), so the sole
+   * manager-exclusive tool is **End of Day** — the only thing that moves
+   * into the owner's sidebar, under "Manager Tools".
+   */
+  const managerConsolidated = settings['managerDashboardEnabled'] === 'false';
+
+  const MANAGER_TOOLS_NAV = managerConsolidated
+    ? [
+        {
+          to: '/owner/manager-end-of-day',
+          label: t('nav.endOfDay', { defaultValue: 'End of Day' }),
+          icon: ClipboardCheck,
+          group: 'manager',
+        },
+      ]
+    : [];
+
   const OWNER_NAV = [
     { to: '/owner', label: t('nav.overview', { defaultValue: 'Overview' }), icon: LayoutDashboard, end: true, group: 'core' },
-    { to: '/owner/menu', label: t('nav.menu', { defaultValue: 'Menu Lists' }), icon: UtensilsCrossed, group: 'ops' },
+    // `end` keeps the Menu Lists row from lighting up while you are on its
+    // Item Sales sibling (/owner/menu/sales), which has its own nav row.
+    { to: '/owner/menu', label: t('nav.menu', { defaultValue: 'Menu Lists' }), icon: UtensilsCrossed, group: 'ops', end: true },
+    { to: '/owner/menu/sales', label: t('nav.itemSales', { defaultValue: 'Item Sales' }), icon: TrendingUp, group: 'ops' },
     { to: '/owner/finance', label: t('nav.finance', { defaultValue: 'Finance' }), icon: DollarSign, group: 'ops' },
     { to: '/owner/expenses', label: t('nav.expenses', { defaultValue: 'Expenses' }), icon: Wallet, group: 'ops' },
     { to: '/owner/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, group: 'ops' },
@@ -62,6 +90,7 @@ const OwnerLayoutInner: React.FC = () => {
     people: t('nav.groups.people', { defaultValue: 'People & HR' }),
     ops: t('nav.groups.ops', { defaultValue: 'Operations' }),
     system: t('nav.groups.system', { defaultValue: 'System' }),
+    manager: t('nav.groups.manager', { defaultValue: 'Manager Tools' }),
   };
 
   const completedQuery = useSystemSettingQuery('onboardingCompleted');
@@ -78,7 +107,10 @@ const OwnerLayoutInner: React.FC = () => {
 
   const grouped = GROUP_ORDER.map((g) => ({
     group: g,
-    items: OWNER_NAV.filter((n) => n.group === g),
+    // Manager Tools is a separate conditional list — merged here so the
+    // rendered nav contains both the owner links and (when consolidated)
+    // the absorbed manager links.
+    items: [...OWNER_NAV, ...MANAGER_TOOLS_NAV].filter((n) => n.group === g),
   }));
 
   return (
@@ -107,7 +139,7 @@ const OwnerLayoutInner: React.FC = () => {
         className={cn(
           'pointer-events-none absolute inset-0',
           isDashboardPage
-            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--orange-400)/0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--orange-200)/0.35),transparent_60%)]'
+            ? 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--dash-accent-400)/0.10),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--dash-accent-200)/0.35),transparent_60%)]'
             : 'bg-[radial-gradient(120%_80%_at_0%_0%,hsl(var(--primary)/0.08),transparent_55%),radial-gradient(100%_70%_at_100%_100%,hsl(var(--accent)/0.10),transparent_60%)]',
         )}
       />
@@ -138,12 +170,12 @@ const OwnerLayoutInner: React.FC = () => {
           )}
         >
           <span className="hidden max-[767px]:block mr-auto text-sm font-semibold tracking-tight text-foreground">
-            Navigation
+            {t('common:chrome.navigation')}
           </span>
           <button
             onClick={() => setMobileOpen(false)}
             className="hidden max-[767px]:inline-flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/70 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            aria-label="Close sidebar"
+            aria-label={t('common:a11y.closeSidebar')}
           >
             <X className="h-5 w-5" />
           </button>
@@ -159,7 +191,10 @@ const OwnerLayoutInner: React.FC = () => {
         </div>
 
         <nav className="flex-1 px-4 py-6 max-[767px]:py-5 overflow-y-auto space-y-6 max-[767px]:space-y-5 overflow-x-hidden">
-          {grouped.map(({ group, items }) => (
+          {grouped.map(({ group, items }) =>
+            // An empty group (e.g. Manager Tools when the manager dashboard is
+            // enabled) renders nothing at all — no header, no gap.
+            items.length === 0 ? null : (
             <div key={group}>
               {!sidebarCollapsed && GROUP_LABELS[group] !== 'Insights' && (
                 <p className="px-4 mb-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
@@ -174,10 +209,9 @@ const OwnerLayoutInner: React.FC = () => {
                     <NavLink
                       to={link.to}
                       onClick={() => setMobileOpen(false)}
-                      end={'end' in link ? link.end : false}
-                      className={({ isActive }) =>
+                      end={'end' in link ? link.end : false}                        className={({ isActive }) =>
                         `group relative flex items-center ${sidebarCollapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
-                          ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
+                          ? 'text-[hsl(201_96%_40%)] bg-[hsl(201_96%_50%/0.12)]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
                         }`
                       }
@@ -186,7 +220,7 @@ const OwnerLayoutInner: React.FC = () => {
                         <>
                           <Icon
                             className={`relative w-5 h-5 shrink-0 transition-colors ${isActive
-                              ? 'text-[hsl(var(--orange-500))]'
+                              ? 'text-[hsl(201_96%_45%)]'
                               : 'text-muted-foreground/70 group-hover:text-muted-foreground'
                               }`}
                             strokeWidth={2.5}
@@ -210,7 +244,8 @@ const OwnerLayoutInner: React.FC = () => {
                 })}
               </div>
             </div>
-          ))}
+            )
+          )}
         </nav>
 
         {/* System Settings — pinned to the bottom of the sidebar */}
@@ -230,7 +265,7 @@ const OwnerLayoutInner: React.FC = () => {
                   ? 'justify-center w-12 h-12 mx-auto'
                   : 'gap-3 px-4 h-11 w-full',
                 isActive
-                  ? 'text-[hsl(var(--orange-600))] bg-[hsl(var(--orange-500)/0.12)]'
+                  ? 'text-[hsl(201_96%_40%)] bg-[hsl(201_96%_50%/0.12)]'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70',
               )
             }
@@ -240,7 +275,7 @@ const OwnerLayoutInner: React.FC = () => {
                 <SYSTEM_SETTINGS.icon
                   className={cn(
                     'shrink-0 w-[18px] h-[18px]',
-                    isActive ? 'text-[hsl(var(--orange-500))]' : 'text-muted-foreground/70 group-hover:text-muted-foreground',
+                    isActive ? 'text-[hsl(201_96%_45%)]' : 'text-muted-foreground/70 group-hover:text-muted-foreground',
                   )}
                   strokeWidth={2.25}
                 />
