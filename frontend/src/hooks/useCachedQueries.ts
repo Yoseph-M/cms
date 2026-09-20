@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery, type QueryKey } from '@tanstack/react-query';
 import { axiosClient } from '../api/axiosClient';
 import type { User } from '../types';
+import { formatPersonName } from '../utils/name';
 
 type ParamMap = Record<string, string | number | undefined>;
 
@@ -112,7 +113,10 @@ export function useUsersQuery() {
     queryKey: ['users'],
     queryFn: async () => {
       const res = await axiosClient.get('/users');
-      return res.data as User[];
+      // Normalise display casing here so every roster (staff, payroll,
+      // attendance) shows "Abebe Kebede" even for rows stored lower-case.
+      const list = (Array.isArray(res.data) ? res.data : []) as User[];
+      return list.map((u) => ({ ...u, name: formatPersonName(u.name) }));
     },
     staleTime: 2 * 60_000, // 2 minutes
   });
