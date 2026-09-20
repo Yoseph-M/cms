@@ -132,7 +132,7 @@ export const PayrollHistoryCard: React.FC<{
           </span>
           <span
             className="rounded-full bg-secondary px-2.5 py-1 font-semibold text-muted-foreground"
-            title="Average per month across every recorded payroll period"
+            title={t('payroll.averagePerMonth')}
           >
             {t('expenses.payrollHistory.average', { defaultValue: 'Avg' })}{' '}
             {formatCurrency(averageMonthly)}/mo
@@ -239,9 +239,9 @@ export const PayrollHistoryCard: React.FC<{
                           >
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium">
-                                {adjustment.user?.name ?? 'Correction'}
+                                {adjustment.user?.name ?? t('payroll.correction')}
                                 <span className="ml-2 rounded bg-[hsl(var(--warning))]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--warning))]">
-                                  Correction
+                                  {t('payroll.correction')}
                                 </span>
                               </p>
                               <p className="text-[11px] text-muted-foreground">
