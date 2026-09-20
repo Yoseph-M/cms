@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, Eye, Search, ScrollText, X } from 'lucide-react';
+import { AlertCircle, ArrowUpDown, Eye, Filter, Search, ScrollText, Tag, X } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { getBrowserFromUserAgent } from '../../utils/browserName';
@@ -10,6 +10,7 @@ import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge, type BadgeProps } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
+import { DropdownSelect } from '../../components/ui/DropdownSelect';
 
 /**
  * One accountability screen.
@@ -301,41 +302,42 @@ export const OwnerAuditLogs: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <select
+              <DropdownSelect
+                ariaLabel="Sort order"
+                size="sm"
+                icon={ArrowUpDown}
                 value={order}
-                onChange={(e) => setOrder(e.target.value === 'oldest' ? 'oldest' : 'newest')}
-                aria-label="Sort order"
-                className="h-10 rounded-lg border border-input bg-background px-3 text-sm shadow-sm"
-              >
-                <option value="newest">Newest First</option>
-                <option value="oldest">Oldest First</option>
-              </select>
-              <select
+                onChange={(v) => setOrder(v === 'oldest' ? 'oldest' : 'newest')}
+                options={[
+                  { value: 'newest', label: 'Newest First' },
+                  { value: 'oldest', label: 'Oldest First' },
+                ]}
+                contentClassName="w-44"
+              />
+              <DropdownSelect
+                ariaLabel="Filter by action"
+                size="sm"
+                icon={Filter}
                 value={action}
-                onChange={(e) => setAction(e.target.value)}
-                aria-label="Filter by action"
-                className="h-10 max-w-[190px] rounded-lg border border-input bg-background px-3 text-sm shadow-sm"
-              >
-                <option value="">All Actions</option>
-                {facets.actions.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <select
+                onChange={setAction}
+                options={[
+                  { value: '', label: 'All Actions' },
+                  ...facets.actions.map((name) => ({ value: name, label: name })),
+                ]}
+                contentClassName="w-56 max-h-72 overflow-y-auto"
+              />
+              <DropdownSelect
+                ariaLabel="Filter by entity"
+                size="sm"
+                icon={Tag}
                 value={entity}
-                onChange={(e) => setEntity(e.target.value)}
-                aria-label="Filter by entity"
-                className="h-10 max-w-[170px] rounded-lg border border-input bg-background px-3 text-sm shadow-sm"
-              >
-                <option value="">All Entities</option>
-                {facets.entities.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+                onChange={setEntity}
+                options={[
+                  { value: '', label: 'All Entities' },
+                  ...facets.entities.map((name) => ({ value: name, label: name })),
+                ]}
+                contentClassName="w-52 max-h-72 overflow-y-auto"
+              />
             </div>
           </div>
 
