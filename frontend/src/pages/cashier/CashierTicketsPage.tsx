@@ -343,6 +343,15 @@ export const CashierTicketsPage: React.FC = () => {
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
     }
+    // Status filter — the QueueTabs dropdown is now wired to actual filtering
+    // (previously the control existed but changed nothing).
+    if (statusFilter !== 'all') {
+      list = list.filter((o) => {
+        if (statusFilter === 'served') return o.status === 'SERVED';
+        if (statusFilter === 'in_kitchen') return o.status === 'IN_KITCHEN';
+        return o.status === 'SUBMITTED';
+      });
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -353,7 +362,7 @@ export const CashierTicketsPage: React.FC = () => {
       );
     }
     return list;
-  }, [sortedActiveOrders, sort, search]);
+  }, [sortedActiveOrders, sort, statusFilter, search]);
 
   // Client-side slice of the sorted active queue — keeps the custom
   // served-first/oldest-first ordering while capping rendered cards.
@@ -757,14 +766,14 @@ export const CashierTicketsPage: React.FC = () => {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
             >
               <ListOrdered className="w-3.5 h-3.5" />
-              Back to queue
+              {t('tickets.backToQueue')}
             </button>
             <span className="w-px h-6 bg-border" />
             <span className="font-display font-semibold text-base text-foreground flex items-center gap-2">
               <span className="w-7 h-7 rounded-lg bg-brand-gradient text-white flex items-center justify-center shadow-brand">
                 <ShoppingCart className="w-3.5 h-3.5" />
               </span>
-              New Order
+              {t('tickets.newOrder')}
             </span>
           </div>
         </header>
@@ -818,8 +827,8 @@ export const CashierTicketsPage: React.FC = () => {
               <ListOrdered className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Service desk</p>
-              <h1 className="font-display text-lg font-bold leading-tight tracking-tight text-slate-950">Tickets</h1>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{t('tickets.serviceDesk')}</p>
+              <h1 className="font-display text-lg font-bold leading-tight tracking-tight text-slate-950">{t('tickets.title')}</h1>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -830,7 +839,7 @@ export const CashierTicketsPage: React.FC = () => {
               className="h-10 px-4"
             >
               <ShoppingCart className="w-4 h-4 mr-1.5" />
-              New order
+              {t('tickets.newOrderCta')}
             </Button>
           </div>
         </div>
@@ -844,6 +853,8 @@ export const CashierTicketsPage: React.FC = () => {
             onChange={setSort}
             search={search}
             onSearchChange={setSearch}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
           />
           <OrderList
             orders={pagedQueue}
@@ -863,13 +874,17 @@ export const CashierTicketsPage: React.FC = () => {
           {sortedQueue.length > QUEUE_PAGE_SIZE && (
             <div className="flex items-center justify-between gap-3 px-4 py-2 border-t border-slate-200 bg-white/60 shrink-0">
               <p className="text-[11px] text-slate-500 font-medium">
-                Showing {queueStart + 1}–{Math.min(queueStart + QUEUE_PAGE_SIZE, sortedQueue.length)} of {sortedQueue.length}
+                {t('tickets.showingRange', {
+                  from: queueStart + 1,
+                  to: Math.min(queueStart + QUEUE_PAGE_SIZE, sortedQueue.length),
+                  total: sortedQueue.length,
+                })}
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  aria-label="Previous page"
+                  aria-label={t('a11y.previousPage')}
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -880,7 +895,7 @@ export const CashierTicketsPage: React.FC = () => {
                 <button
                   onClick={() => setPage((p) => Math.min(queueTotalPages, p + 1))}
                   disabled={page >= queueTotalPages}
-                  aria-label="Next page"
+                  aria-label={t('a11y.nextPage')}
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
                 >
                   <ArrowRight className="w-3.5 h-3.5" />
