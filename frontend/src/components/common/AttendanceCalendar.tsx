@@ -328,7 +328,10 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           >Retry</Button>
         </div>
       ) : view === 'history' ? (
-        <AttendanceHistory isOwner={isOwner} />
+        /* The history card reads the SAME month as the calendar: the chevrons
+           above are the single month filter, so the card ships without its
+           own "Sep 2026" select. */
+        <AttendanceHistory isOwner={isOwner} year={year} month={month} />
       ) : filteredStaff.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">No staff to display.</div>
       ) : (
@@ -466,7 +469,8 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           </table>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Clocking in is limited to today — past and future days stay locked.
+          Clocking in is limited to today — past and future days stay locked. Switch to History and use
+          these arrows to browse previous months.
         </p>
         </>
       )}
