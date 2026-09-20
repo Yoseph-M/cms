@@ -87,7 +87,15 @@ const METHOD_LABELS: Record<string, string> = {
   CASH: 'Cash',
   CARD: 'Card',
   MOBILE: 'Mobile',
-  NONE: 'Void',
+  // A cancelled ticket carries no payment method. The cell stays blank rather
+  // than being labelled "void" — the order's own status already says Cancelled.
+  NONE: '',
+};
+
+/** The method filter needs a readable name for the blank "no method" option. */
+const METHOD_FILTER_LABELS: Record<string, string> = {
+  ...METHOD_LABELS,
+  NONE: 'Cancelled',
 };
 
 const DATE_PRESETS: Array<{ key: string; label: string; get: () => { from: string; to: string } }> = [
@@ -221,7 +229,9 @@ function SettlementDetailsModal({
           <div className="flex items-center gap-2.5 min-w-0">
             {METHOD_ICONS[s.method]}
             <h3 className="font-display text-base font-bold truncate">
-              {METHOD_LABELS[s.method] || s.method} payment
+              {METHOD_LABELS[s.method]
+                ? `${METHOD_LABELS[s.method]} payment`
+                : 'Cancelled ticket'}
             </h3>
             {s.order && <StatusChip status={s.order.status} />}
           </div>
@@ -318,12 +328,12 @@ function SettlementDetailsModal({
             <div>
               <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">Payment</h4>
               <div className="divide-y divide-border/40">
-                <DetailRow label="Method">{METHOD_LABELS[s.method] || s.method}</DetailRow>
+                <DetailRow label="Method">
+                  {METHOD_LABELS[s.method] || (s.method === 'NONE' ? '—' : s.method)}
+                </DetailRow>
                 {s.reference ? <DetailRow label="Reference">{s.reference}</DetailRow> : null}
                 {s.method === 'NONE' ? (
-                  <DetailRow label="Effect">
-                    Void — cancels the ticket, no revenue recorded
-                  </DetailRow>
+                  <DetailRow label="Effect">Cancels the ticket</DetailRow>
                 ) : null}
               </div>
             </div>
@@ -484,7 +494,7 @@ export const GlobalSettlementHistory: React.FC = () => {
         <div>
           <h3 className="text-lg font-bold">Settlement History</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Every payment — plus cancelled tickets, listed as voids. {pagination.total} records total.
+            Every payment, plus cancelled tickets. {pagination.total} records total.
           </p>
         </div>
 
@@ -607,7 +617,7 @@ export const GlobalSettlementHistory: React.FC = () => {
           <DropdownMenu>
             <DropdownMenuTrigger aria-label="Filter by method" className="shrink-0 h-11">
               {methodFilter ? METHOD_ICONS[methodFilter] : <CreditCard className="w-4 h-4 text-muted-foreground" />}
-              <span>{methodFilter ? METHOD_LABELS[methodFilter] : 'Method'}</span>
+              <span>{methodFilter ? METHOD_FILTER_LABELS[methodFilter] : 'Method'}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem selected={!methodFilter} onSelect={() => setMethodFilter('')}>
@@ -622,7 +632,7 @@ export const GlobalSettlementHistory: React.FC = () => {
                   onSelect={() => setMethodFilter(method)}
                 >
                   {METHOD_ICONS[method]}
-                  <span>{METHOD_LABELS[method]}</span>
+                  <span>{METHOD_FILTER_LABELS[method]}</span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -734,18 +744,19 @@ export const GlobalSettlementHistory: React.FC = () => {
                             'px-4 py-3 font-mono whitespace-nowrap',
                             isCancelled ? 'text-muted-foreground line-through' : 'font-semibold'
                           )}
-                          title={isCancelled ? 'Voided — not counted as revenue' : undefined}
+                          title={isCancelled ? 'Cancelled — not counted as revenue' : undefined}
                         >
                           {formatAmount(s.amountMinor)}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-1.5">
-                            {METHOD_ICONS[s.method]}
-                            {METHOD_LABELS[s.method] || s.method}
-                          </span>
-                          {s.method === 'NONE' && (
-                            <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                              no revenue
+                        <td className={cn('px-4 py-3', s.method === 'NONE' && 'text-center')}>
+                          {s.method === 'NONE' ? (
+                            /* A cancelled ticket has no payment method — the × sits
+                               alone, centred in the column. */
+                            METHOD_ICONS.NONE
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5">
+                              {METHOD_ICONS[s.method]}
+                              {METHOD_LABELS[s.method] || s.method}
                             </span>
                           )}
                         </td>
