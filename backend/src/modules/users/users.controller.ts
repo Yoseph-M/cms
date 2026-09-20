@@ -1,10 +1,26 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
-import { comparePassword, hashPassword } from '../../utils/security';
+import { comparePassword, hashPassword, hashPin } from '../../utils/security';
 import { recordAudit } from '../../services/audit.service';
 import { Role } from '@prisma/client';
 import crypto from 'crypto';
+
+/**
+ * Person names are stored display-ready: "abebe kebede" → "Abebe Kebede".
+ * Kept server-side too so an account created by any client (owner console,
+ * seed script, mobile) lands in the roster with proper capitalisation.
+ */
+function formatPersonName(name: string): string {
+  return name
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((word) =>
+      word.replace(/(^|[-'’])([a-z])/g, (_match, sep: string, ch: string) => sep + ch.toUpperCase()),
+    )
+    .join(' ');
+}
 
 export async function getUsers(req: AuthenticatedRequest, res: Response) {
   const { role, isActive } = req.query;
@@ -17,7 +33,9 @@ export async function getUsers(req: AuthenticatedRequest, res: Response) {
 
   // Managers only ever see the staff who work under them — never owners or
   // other managers. Requesting those roles explicitly yields an empty list.
-  if (isManager && (!role || role === Role.MANAGER || role === Role.OWNER)) {
+  // An unfiltered request (the staff / attendance roster) must NOT be empty:
+  // it is scoped to "everyone below me" by the branch below.
+  if (isManager && role && (role === Role.MANAGER || role === Role.OWNER)) {
     return res.json([]);
   }
 
@@ -49,16 +67,21 @@ export async function getUsers(req: AuthenticatedRequest, res: Response) {
       createdAt: true,
       updatedAt: true,
       loginAttempt: true,
+      pinCodeHash: true,
     },
     orderBy: { createdAt: 'desc' },
   });
 
-  return res.json(users);
+  // The hash never leaves the server — the roster only needs to know whether a
+  // mobile PIN is set for that person.
+  return res.json(
+    users.map(({ pinCodeHash, ...user }) => ({ ...user, hasPin: Boolean(pinCodeHash) })),
+  );
 }
 
 export async function createUser(req: AuthenticatedRequest, res: Response) {
   const callerRole = req.user!.role as Role;
-  const { name, role, phone, password, salaryAmount } = req.body;
+  const { name, role, phone, password, pinCode, salaryAmount } = req.body;
   // Store usernames trimmed so a stray space can never become part of the
   // account name people have to type at the login screen.
   const username: string | null = typeof req.body.username === 'string' && req.body.username.trim()
@@ -72,12 +95,17 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
     });
   }
 
-  // All roles use password authentication
-  if (!password) {
+  // App-only roles sign in with a PIN in the mobile app and never get a
+  // website password: no hash is created for them, so the account simply has
+  // no website credential. Owner, manager and cashier work on the site and
+  // must be given a real password.
+  const APP_ONLY_ROLES: Role[] = [Role.WAITER, Role.COOKER, Role.BARISTA];
+  const appOnly = APP_ONLY_ROLES.includes(role);
+  if (!password && !appOnly) {
     return res.status(400).json({ error: 'Password is required.' });
   }
 
-  const passHash = await hashPassword(password);
+  const passHash = password ? await hashPassword(password) : null;
 
   // Check unique username if provided
   if (username) {
@@ -90,11 +118,14 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
 
   const newUser = await prisma.user.create({
     data: {
-      name,
+      name: formatPersonName(name),
       role,
       username: username || null,
       phone,
       passwordHash: passHash,
+      // The mobile-app PIN is optional: a cashier never needs one, and an app
+      // user can be given theirs from the staff card later.
+      pinCodeHash: typeof pinCode === 'string' && pinCode ? await hashPin(pinCode) : null,
       salaryAmount: salaryAmount || 0, // Already in cents from frontend
     },
     select: {
@@ -106,6 +137,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
       salaryAmount: true,
       isActive: true,
       createdAt: true,
+      pinCodeHash: true,
     },
   });
 
@@ -117,7 +149,8 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
     details: { name: newUser.name, role: newUser.role },
   });
 
-  return res.status(201).json(newUser);
+  const { pinCodeHash, ...created } = newUser;
+  return res.status(201).json({ ...created, hasPin: Boolean(pinCodeHash) });
 }
 
 export async function updateUser(req: AuthenticatedRequest, res: Response) {
@@ -134,9 +167,12 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
     return res.status(403).json({ error: 'Forbidden: Managers cannot modify Manager or Owner profiles.' });
   }
 
-  const { password, ...profileChanges } = req.body;
+  const { password, pinCode, ...profileChanges } = req.body;
 
   const data: Record<string, unknown> = { ...profileChanges };
+  // A PIN typed on the staff card replaces the stored hash; blank keeps it.
+  if (typeof pinCode === 'string' && pinCode) data.pinCodeHash = await hashPin(pinCode);
+  if (typeof profileChanges.name === 'string') data.name = formatPersonName(profileChanges.name);
   // salaryAmount is already in cents from the frontend
   if (profileChanges.salaryAmount !== undefined) data.salaryAmount = profileChanges.salaryAmount;
   // A password supplied from the staff edit card replaces the stored hash.
@@ -154,6 +190,7 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
       salaryAmount: true,
       isActive: true,
       updatedAt: true,
+      pinCodeHash: true,
     },
   });
 
@@ -162,10 +199,11 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
     actionType: 'USER_UPDATED',
     targetType: 'User',
     targetId: id,
-    details: { changes: profileChanges, passwordChanged: Boolean(password) },
+    details: { changes: profileChanges, passwordChanged: Boolean(password), pinChanged: Boolean(pinCode) },
   });
 
-  return res.json(updatedUser);
+  const { pinCodeHash: updatedPin, ...updated } = updatedUser;
+  return res.json({ ...updated, hasPin: Boolean(updatedPin) });
 }
 
 export async function deactivateUser(req: AuthenticatedRequest, res: Response) {
@@ -238,6 +276,91 @@ export async function resetPassword(req: AuthenticatedRequest, res: Response) {
   return res.json({ message: `Password reset successfully for staff member ${targetUser.name}.`, password });
 }
 
+/**
+ * Records that put an account in the business record. A user with any of these
+ * must be deactivated rather than deleted — the rows reference the account by
+ * id and every reader (orders, settlements, payroll, attendance) expects that
+ * person to still exist.
+ */
+async function hasRecordedHistory(userId: string): Promise<boolean> {
+  const [orders, settlements, attendance, payments, adjustments, expenses, cancellations, shifts] =
+    await Promise.all([
+      prisma.order.count({
+        where: { OR: [{ waiterId: userId }, { cashierId: userId }, { cancelledById: userId }] },
+      }),
+      prisma.settlement.count({ where: { recordedById: userId } }),
+      prisma.attendance.count({ where: { userId } }),
+      prisma.userPayment.count({ where: { OR: [{ userId }, { processedById: userId }] } }),
+      prisma.payrollAdjustment.count({ where: { processedById: userId } }),
+      prisma.expense.count({ where: { recordedById: userId } }),
+      prisma.orderCancellationRequest.count({
+        where: { OR: [{ requestedById: userId }, { approvedById: userId }] },
+      }),
+      prisma.cashierShift.count({
+        where: { OR: [{ cashierId: userId }, { openedById: userId }] },
+      }),
+    ]);
+
+  return (
+    orders + settlements + attendance + payments + adjustments + expenses + cancellations + shifts >
+    0
+  );
+}
+
+/**
+ * Permanently remove a staff account.
+ *
+ * Deleting is only safe for accounts that never took part in business: no
+ * orders, settlements, attendance, payroll or expenses. Anyone with history is
+ * refused with a 409 so the caller (and the UI) can offer "deactivate" instead.
+ * The append-only audit trail is left alone — the audit feed renders rows whose
+ * actor account no longer exists.
+ */
+export async function deleteUser(req: AuthenticatedRequest, res: Response) {
+  const callerRole = req.user!.role as Role;
+  const { id } = req.params;
+
+  if (id === req.user!.userId) {
+    return res.status(400).json({ error: 'You cannot remove your own account.' });
+  }
+
+  const targetUser = await prisma.user.findUnique({ where: { id } });
+  if (!targetUser) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  if (targetUser.role === Role.OWNER) {
+    return res.status(403).json({ error: 'Forbidden: the owner account cannot be removed.' });
+  }
+
+  if (callerRole === Role.MANAGER && targetUser.role === Role.MANAGER) {
+    return res.status(403).json({ error: 'Forbidden: Managers cannot remove other managers.' });
+  }
+
+  if (await hasRecordedHistory(id)) {
+    return res.status(409).json({
+      error: `${targetUser.name} has orders, settlements, payroll or attendance on record. Deactivate the account instead so those records stay attributed.`,
+    });
+  }
+
+  // Ephemeral authentication rows follow the account out.
+  await prisma.refreshToken.deleteMany({ where: { userId: id } });
+  await prisma.loginAttempt.deleteMany({ where: { userId: id } });
+  await prisma.loginHistory.deleteMany({ where: { userId: id } });
+
+  await prisma.user.delete({ where: { id } });
+
+  await recordAudit({
+    actorId: req.user!.userId,
+    actionType: 'USER_DELETED',
+    targetType: 'User',
+    targetId: id,
+    details: { name: targetUser.name, role: targetUser.role },
+  });
+
+  return res.json({ message: `${targetUser.name} was removed.`, id });
+}
+
 export async function unlockUser(req: AuthenticatedRequest, res: Response) {
   const callerRole = req.user!.role as Role;
   const { id } = req.params;
@@ -275,6 +398,7 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
       preferredLanguage: true,
       createdAt: true,
       updatedAt: true,
+      pinCodeHash: true,
     },
   });
 
@@ -282,7 +406,8 @@ export async function getMe(req: AuthenticatedRequest, res: Response) {
     return res.status(404).json({ error: 'User not found.' });
   }
 
-  return res.json(user);
+  const { pinCodeHash, ...profile } = user;
+  return res.json({ ...profile, hasPin: Boolean(pinCodeHash) });
 }
 
 export async function updateOwnProfile(req: AuthenticatedRequest, res: Response) {
@@ -313,7 +438,7 @@ export async function updateOwnProfile(req: AuthenticatedRequest, res: Response)
   const updatedUser = await prisma.user.update({
     where: { id: userId },
     data: {
-      ...(name !== undefined && { name }),
+      ...(name !== undefined && { name: formatPersonName(String(name)) }),
       ...(username !== undefined && { username: username || null }),
       ...(phone !== undefined && { phone }),
       ...(avatarUrl !== undefined && { avatarUrl: avatarUrl || null }),
