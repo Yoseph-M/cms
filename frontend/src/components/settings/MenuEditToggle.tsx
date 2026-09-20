@@ -78,8 +78,8 @@ export const MenuEditToggle: React.FC = () => {
   return (
     <SettingsRow
       icon={UtensilsCrossed}
-      iconClassName="text-orange-600 dark:text-orange-400"
-      iconBgClassName="bg-orange-500/10"
+      iconClassName="text-blue-600 dark:text-blue-400"
+      iconBgClassName="bg-blue-500/10"
       title="Restrict cashier menu editing"
       description="Off by default — cashiers can add, edit, and hide menu items. Turn it on to make the menu read-only for cashiers. Owners and managers can always edit."
       control={
