@@ -24,9 +24,10 @@ These are safe utility scripts for development/operations:
 ### 🚨 Migration Scripts (MIGRATION-ONLY)
 These were used for specific schema migrations and should NOT be run again:
 
-- **`migrate-drop-password.ts`** - Removed PIN authentication (Phase 2)
-  - Status: COMPLETED
-  - Do not re-run - PIN fields no longer exist
+- **`migrate-drop-password.ts`** - SUPERSEDED / DO NOT RUN
+  - Would UNSET `passwordHash` on every user, which breaks website sign-in
+  - PINs now live in `pinCodeHash` alongside the password (bcrypt, no `pinSalt`),
+    so the app and the site credentials coexist — set PINs from the staff card
   
 - **`migrate-restore-password.ts`** - Restored password authentication (Phase 2)
   - Status: COMPLETED  
