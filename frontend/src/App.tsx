@@ -7,6 +7,7 @@ import { useOfflineSyncStore } from './store/offlineSyncStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useThemeStore } from './store/themeStore';
 import { useHardwarePrinter } from './hooks/useHardwarePrinter';
+import { useIdleLogout } from './hooks/useIdleLogout';
 
 import { ToastContainer } from './components/common/ToastContainer';
 
@@ -22,6 +23,9 @@ import { NotFoundPage } from './pages/error/NotFoundPage';
 
 const OwnerDashboard = lazy(() =>
   import('./pages/owner/OwnerDashboard').then((m) => ({ default: m.OwnerDashboard }))
+);
+const MenuSalesStats = lazy(() =>
+  import('./pages/owner/MenuSalesStats').then((m) => ({ default: m.MenuSalesStats }))
 );
 const OwnerFinance = lazy(() =>
   import('./pages/owner/OwnerFinance').then((m) => ({ default: m.OwnerFinance }))
@@ -63,6 +67,15 @@ const ManagerPayroll = lazy(() =>
 );
 const ManagerExpenses = lazy(() =>
   import('./pages/manager/ManagerExpenses').then((m) => ({ default: m.ManagerExpenses }))
+);
+const ManagerPrinters = lazy(() =>
+  import('./pages/manager/ManagerPrinters').then((m) => ({ default: m.ManagerPrinters }))
+);
+const CashierPrinters = lazy(() =>
+  import('./pages/cashier/CashierPrinters').then((m) => ({ default: m.CashierPrinters }))
+);
+const CashierEndOfDay = lazy(() =>
+  import('./pages/cashier/CashierEndOfDay').then((m) => ({ default: m.CashierEndOfDay }))
 );
 const OperationalReconciliation = lazy(() =>
   import('./pages/manager/OperationalReconciliation').then((m) => ({ default: m.OperationalReconciliation }))
@@ -177,7 +190,20 @@ export const AppRoutes: React.FC = () => {
   const { initListeners } = useOfflineSyncStore();
   const { settings, fetchSettings } = useSettingsStore();
 
+  /**
+   * Owner–manager consolidation: when the owner turns the Manager Dashboard
+   * feature OFF, the owner absorbs every tool the manager role had — the
+   * manager pages mount inside the owner shell (the backend gates them to
+   * OWNER+MANAGER, so the owner is already authorized). When the feature is
+   * on, the owner keeps their regular overview only.
+   */
+  const managerConsolidated = settings['managerDashboardEnabled'] === 'false';
+
   useHardwarePrinter();
+
+  // End the session after 30 minutes without interaction. This is what stops a
+  // tab left open on the counter from staying signed in indefinitely.
+  useIdleLogout();
 
   // Bootstrap session on app load - uses HttpOnly refresh cookie
   useEffect(() => {
@@ -250,12 +276,27 @@ export const AppRoutes: React.FC = () => {
           }
         >
           <Route index element={<OwnerDashboard />} />
-          <Route path="menu" element={<MenuCatalog canEdit />} />
+          {/* Menu editing is opt-in for the owner role (see Settings). */}
+          <Route
+            path="menu"
+            element={<MenuCatalog canEdit={settings['ownerMenuEditEnabled'] === 'true'} />}
+          />
+          {/* Sales statistics per menu item — how often each item sells. */}
+          <Route path="menu/sales" element={<MenuSalesStats />} />
           <Route path="finance" element={<OwnerFinance />} />
           <Route path="expenses" element={<OwnerExpenses />} />
-          <Route path="attendance" element={<AttendanceCalendar isOwner />} />
+          <Route path="attendance" element={<AttendanceCalendar isOwner={managerConsolidated ? false : true} />} />
           <Route path="payroll" element={<OwnerPayroll />} />
           <Route path="admin" element={<SystemAdminPage />} />
+
+          {managerConsolidated && (
+            /* Consolidation is surgical: End of Day is the only tool that
+               exists for managers but not for the owner, so it is the only
+               route absorbed. Staff/Payroll/Expenses/Printers already live in
+               this shell (same backend, OWNER-allowed), so duplicates would
+               just confuse navigation. */
+            <Route path="manager-end-of-day" element={<Lazy><OperationalReconciliation /></Lazy>} />
+          )}
 
           <Route path="settings" element={<OwnerSettings />} />
           <Route path="settlements" element={<GlobalSettlementHistory />} />
@@ -276,9 +317,13 @@ export const AppRoutes: React.FC = () => {
           <Route path="staff" element={<Lazy><ManagerStaff /></Lazy>} />
           <Route path="attendance" element={<Lazy><ManagerAttendance /></Lazy>} />
           <Route path="reconciliation" element={<Lazy><OperationalReconciliation /></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit /></Lazy>} />
+          <Route
+            path="menu"
+            element={<Lazy><MenuCatalog canEdit={settings['managerMenuEditEnabled'] === 'true'} /></Lazy>}
+          />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
           <Route path="expenses" element={<Lazy><ManagerExpenses /></Lazy>} />
+          <Route path="printers" element={<Lazy><ManagerPrinters /></Lazy>} />
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
@@ -295,8 +340,10 @@ export const AppRoutes: React.FC = () => {
         >
           <Route index element={<Lazy><CashierDashboard /></Lazy>} />
           <Route path="tickets" element={<Lazy><CashierTicketsPage /></Lazy>} />
-          <Route path="menu" element={<Lazy><MenuCatalog canEdit={settings['cashierMenuEditRestricted'] !== 'true'} /></Lazy>} />
+          <Route path="menu" element={<Lazy><MenuCatalog canEdit={true} /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
+          <Route path="printers" element={<Lazy><CashierPrinters /></Lazy>} />
+          <Route path="end-of-day" element={<Lazy><CashierEndOfDay /></Lazy>} />
           <Route path="settings" element={<Lazy><CashierSettings /></Lazy>} />
           <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
           <Route path="*" element={<Navigate to="/cashier" replace />} />
