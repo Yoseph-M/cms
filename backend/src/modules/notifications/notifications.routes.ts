@@ -7,7 +7,9 @@ import { Role } from '@prisma/client';
 const router = Router();
 
 router.use(requireAuth);
-router.use(requireRole([Role.OWNER, Role.MANAGER]));
+// Cashiers carry a bell of their own: they are told when a manager approves or
+// disapproves the End of Day request they sent.
+router.use(requireRole([Role.OWNER, Role.MANAGER, Role.CASHIER]));
 
 router.get('/', NotificationsController.listNotifications);
 router.patch('/read-all', NotificationsController.markAllRead);
