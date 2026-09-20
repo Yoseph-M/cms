@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import { SettingsShell, type SettingsShellCategory } from '../../components/settings/SettingsShell';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
-import { MenuEditToggle } from '../../components/settings/MenuEditToggle';
+import { ManagerMenuEditToggle } from '../../components/settings/ManagerMenuEditToggle';
 import { TableCountSetting } from '../../components/settings/TableCountSetting';
 import { WorkOnSundaysToggle } from '../../components/settings/WorkOnSundaysToggle';
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
@@ -31,9 +31,6 @@ export const ManagerSettings: React.FC = () => {
       id: 'preferences',
       label: 'Preferences',
       description: 'Display theme, language, and notification channels for this device',
-      icon: Sparkles,
-      iconClassName: 'text-violet-600 dark:text-violet-400',
-      iconBgClassName: 'bg-violet-500/10',
       items: [
         {
           id: 'appearance',
@@ -67,13 +64,15 @@ export const ManagerSettings: React.FC = () => {
       iconBgClassName: 'bg-emerald-500/10',
       items: [
         {
-          id: 'menu-tables',
-          title: 'Menu Editing & Dining Tables',
-          description: 'Control whether cashiers can change menu items, and set dining room table allocation.',
-          keywords: ['menu', 'cashier', 'tables', 'capacity', 'edit'],
+          id: 'menu-editing',
+          title: 'Menu Editing',
+          description: 'Control who can add, edit, and hide menu items.',
+          keywords: ['menu', 'edit', 'catalog', 'items', 'owner', 'manager'],
           content: (
             <div className="space-y-4">
-              <MenuEditToggle />
+              {/* Managers only get their own switch. The owner's menu-editing
+                  permission is the owner's setting, not one a manager flips. */}
+              <ManagerMenuEditToggle />
               <div className="border-t border-border/50 pt-4">
                 <TableCountSetting />
               </div>
@@ -95,12 +94,6 @@ export const ManagerSettings: React.FC = () => {
     <SettingsShell
       title={t('settings.title', { defaultValue: 'Manager Settings' })}
       description="Manage terminal preferences and operational rules shared with Owners."
-      badge={
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2.5 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-300 ring-1 ring-inset ring-violet-500/20">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Manager scope
-        </span>
-      }
       categories={categories}
     />
   );
