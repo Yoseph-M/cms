@@ -159,7 +159,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
           </div>
           <div>
             <p className="text-sm text-gray-600">Remaining</p>
-            <p className="text-xl font-bold text-orange-600">
+            <p className="text-xl font-bold text-amber-600">
               {formatAmount(remainingAmount)}
             </p>
           </div>
@@ -170,7 +170,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
                 <span className="text-green-600">✓ Settled</span>
               )}
               {settlementStatus === 'PARTIALLY_SETTLED' && (
-                <span className="text-orange-600">⚠ Partial</span>
+                <span className="text-amber-600">⚠ Partial</span>
               )}
               {settlementStatus === 'UNSETTLED' && (
                 <span className="text-red-600">✗ Unsettled</span>
