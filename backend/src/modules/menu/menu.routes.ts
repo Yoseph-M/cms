@@ -12,8 +12,10 @@ router.use(requireAuth);
 
 router.get('/', MenuController.getMenuItems);
 
-// Menu editing: Owners and Managers always; Cashiers unless a Manager has
-// turned on the "restrict menu editing" setting.
+// Menu editing is opt-in everywhere, per role: an Owner must enable
+// `ownerMenuEditEnabled` for themselves and a Manager `managerMenuEditEnabled`
+// for the manager role; Cashiers may edit unless a Manager turns on the
+// "restrict menu editing" setting.
 router.post(
   '/',
   requireMenuEditAccess,
