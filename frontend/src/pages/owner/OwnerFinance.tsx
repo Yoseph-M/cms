@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { BarList, Title, Text, Grid, Flex } from '@tremor/react';
 import { useQuery } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
-import { Select } from '../../components/ui/Select';
+import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { DateRangePicker, computeRange, type DateRange } from '../../components/ui/DateRangePicker';
 import { BarChart, LineChart, DONUT_COLORS } from '../../components/ui/Charts';
 import { RevenueDonut } from '../../components/owner/dashboard/RevenueDonut';
@@ -10,7 +10,7 @@ import { PeakHoursHeatmap } from '../../components/ui/PeakHoursHeatmap';
 import { TremorWidget, ChartToggle, KpiMetricCard } from '../../components/ui/TremorWidgets';
 import { GrowthBadge } from '../../components/ui/GrowthBadge';
 import { motion } from 'framer-motion';
-import { TrendingUp } from 'lucide-react';
+import { Clock, TrendingUp } from 'lucide-react';
 import { formatCurrency, formatCurrencyCompact } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
@@ -343,12 +343,21 @@ export const OwnerFinance: React.FC = () => {
               value={trendChart}
               onChange={(v) => setTrendChart(v as 'line' | 'bar')}
             />
-            <Select value={trendOverlay} onChange={(e) => setTrendOverlay(e.target.value as typeof trendOverlay)} className="h-7 text-xs w-24">
-              <option value="none">No overlay</option>
-              <option value="wow">WoW</option>
-              <option value="mom">MoM</option>
-              <option value="yoy">YoY</option>
-            </Select>
+            <DropdownSelect
+              ariaLabel="Compare against"
+              size="sm"
+              icon={TrendingUp}
+              className="h-8"
+              value={trendOverlay}
+              onChange={(v) => setTrendOverlay(v as typeof trendOverlay)}
+              options={[
+                { value: 'none', label: 'No overlay' },
+                { value: 'wow', label: 'WoW' },
+                { value: 'mom', label: 'MoM' },
+                { value: 'yoy', label: 'YoY' },
+              ]}
+              contentClassName="w-40"
+            />
           </Flex>
         }
       >
@@ -463,18 +472,16 @@ export const OwnerFinance: React.FC = () => {
         emptyTitle="No peak-hour data yet"
         emptyMsg="Orders placed during the selected window will populate this heatmap."
         headerExtra={
-          <Select
+          <DropdownSelect
+            ariaLabel="Peak hours time range"
+            size="sm"
+            icon={Clock}
+            className="h-8"
             value={peakPreset}
-            onChange={(e) => setPeakPreset(e.target.value as PeakRangePreset)}
-            className="h-7 w-36 text-xs"
-            aria-label="Peak hours time range"
-          >
-            {PEAK_RANGE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
+            onChange={(v) => setPeakPreset(v as PeakRangePreset)}
+            options={PEAK_RANGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            contentClassName="w-52"
+          />
         }
       >
         <PeakHoursHeatmap grid={heatmap} dayLabels={DAYS} />
