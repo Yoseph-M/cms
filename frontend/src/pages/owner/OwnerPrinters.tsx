@@ -11,6 +11,8 @@ import { Badge } from '../../components/ui/Badge';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Printer, Plus, Pencil, Trash2, Zap, X, AlertCircle, Bluetooth, Usb, ScanLine, Loader2, CheckCircle2, Wifi } from 'lucide-react';
 import { Tooltip } from '../../components/ui/Tooltip';
+import { Sheet } from '../../components/ui/Sheet';
+import { AlertDialog } from '../../components/ui/AlertDialog';
 import { usePrintersQuery } from '../../hooks/useCachedQueries';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
@@ -107,7 +109,15 @@ async function bluetoothUnavailableReason(bt: any): Promise<string | null> {
   return 'Either Bluetooth is switched off on this device, or this browser blocks Web Bluetooth. Check the device settings, or add a Network printer instead.';
 }
 
-export const OwnerPrinters: React.FC = () => {
+/**
+ * Printer stations for this terminal.
+ *
+ * Owners and managers configure stations; cashiers share the same panel but in
+ * read-only mode — they can see the devices and send a test slip, but adding,
+ * editing, and removing a station (which can silence kitchen tickets) stays with
+ * a manager.
+ */
+export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = true }) => {
   const { addToast } = useToastStore();
   const { socket } = useSocketStore();
   const queryClient = useQueryClient();
@@ -404,17 +414,23 @@ export const OwnerPrinters: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
+      {/* The header "Add Printer" button only shows once at least one printer
+          exists — with an empty list the EmptyState's own action is the single
+          CTA, so the operator never sees two identical buttons. */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-bold">LAN Printers</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            The first printer on this list prints the kitchen tickets. Add more only if you want a
-            spare.
+            {canManage
+              ? 'The first printer on this list prints the kitchen tickets. Add more only if you want a spare.'
+              : 'The first printer prints the kitchen tickets. Ask a manager to add or change a printer.'}
           </p>
         </div>
-        <Button id="add-printer-btn" onClick={openAdd}>
-          <Plus className="w-4 h-4 mr-2" />Add Printer
-        </Button>
+        {canManage && printers.length > 0 && (
+          <Button id="add-printer-btn" onClick={openAdd}>
+            <Plus className="w-4 h-4 mr-2" />Add Printer
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -431,14 +447,22 @@ export const OwnerPrinters: React.FC = () => {
         </div>
       ) : printers.length === 0 ? (
         <EmptyState
-          title="Let's set up your first printer"
-          message="Connect a printer here and kitchen tickets will print automatically. The first printer you add becomes your ticket printer."
+          title={canManage ? "Let's set up your first printer" : 'No printer set up yet'}
+          message={
+            canManage
+              ? 'Connect a printer here and kitchen tickets will print automatically. The first printer you add becomes your ticket printer.'
+              : 'No printer station is configured yet. Ask a manager to add one so tickets start printing.'
+          }
           icon={<Printer className="w-7 h-7" />}
-          action={{
-            label: 'Add Printer',
-            onClick: openAdd,
-            icon: <Plus className="w-4 h-4 mr-1.5" />,
-          }}
+          action={
+            canManage
+              ? {
+                  label: 'Add Printer',
+                  onClick: openAdd,
+                  icon: <Plus className="w-4 h-4 mr-1.5" />,
+                }
+              : undefined
+          }
         />
       ) : (
         <motion.div
@@ -494,22 +518,26 @@ export const OwnerPrinters: React.FC = () => {
                         <Zap className={`w-3.5 h-3.5 mr-1.5 ${isTesting ? 'animate-bounce' : ''}`} />
                         {isTesting ? 'Sending...' : 'Test Print'}
                       </Button>
-                      <Tooltip label="Edit printer">
-                        <button
-                          onClick={() => openEdit(printer)}
-                          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
-                      <Tooltip label="Delete printer">
-                        <button
-                          onClick={() => setDeleteTarget(printer)}
-                          className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </Tooltip>
+                      {canManage && (
+                        <>
+                          <Tooltip label="Edit printer">
+                            <button
+                              onClick={() => openEdit(printer)}
+                              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label="Delete printer">
+                            <button
+                              onClick={() => setDeleteTarget(printer)}
+                              className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        </>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -519,28 +547,23 @@ export const OwnerPrinters: React.FC = () => {
         </motion.div>
       )}
 
-      {/* Add/Edit Slide-over */}
-      <AnimatePresence>
-        {slideOverOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm" onClick={() => setSlideOverOpen(false)} />
-            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-              role="dialog"
-              aria-modal="true"
-              aria-label={editingPrinter ? 'Edit printer' : 'Add printer'}
-              className="fixed right-0 top-0 bottom-0 w-full max-w-sm bg-card border-l border-border z-50 flex flex-col shadow-2xl"
-            >
-              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border">
-                <h2 className="text-lg font-bold">{editingPrinter ? 'Edit Printer' : 'Add Printer'}</h2>
-                <Tooltip label="Close">
-                  <button onClick={() => setSlideOverOpen(false)} className="p-2 rounded-lg hover:bg-secondary transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </Tooltip>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+      {/* Add/Edit slide-over — the shared Sheet portals to <body>, so it reaches
+          the very top of the viewport instead of stopping at the page padding. */}
+      <Sheet
+        open={slideOverOpen}
+        onClose={() => setSlideOverOpen(false)}
+        title={editingPrinter ? 'Edit Printer' : 'Add Printer'}
+        className="max-w-sm"
+        footer={
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
+            <Button onClick={handleSave} disabled={isSaving} className="flex-1">
+              {isSaving ? 'Saving...' : (editingPrinter ? 'Update' : 'Add Printer')}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-5">
                 <div>
                   <label htmlFor="pr-transport" className="text-sm font-medium block mb-1.5">Transport Type</label>
                   <Select
@@ -648,50 +671,37 @@ export const OwnerPrinters: React.FC = () => {
                     </Button>
                   )}
                 </div>
-              </div>
-              <div className="p-4 sm:p-6 border-t border-border flex gap-3">
-                <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
-                <Button onClick={handleSave} disabled={isSaving} className="flex-1">
-                  {isSaving ? 'Saving...' : (editingPrinter ? 'Update' : 'Add Printer')}
-                </Button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+        </div>
+      </Sheet>
 
-      {/* Delete confirm */}
-      <AnimatePresence>
-        {deleteTarget && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-50 backdrop-blur-sm" onClick={() => setDeleteTarget(null)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-              <div className="bg-card border border-border rounded-xl shadow-2xl p-4 sm:p-6 max-w-sm w-full pointer-events-auto">
-                <h3 className="font-bold mb-2">Remove this printer?</h3>
-                <p className="text-sm text-muted-foreground mb-6">
-                  {deleteTargetId === (printers[0]?.id || printers[0]?.station)
-                    ? 'This is your ticket printer — kitchen tickets will stop printing until you add another one. '
-                    : ''}
-                  The printer at {deleteTarget.transport === 'BLUETOOTH'
-                    ? deleteTarget.macAddress
-                    : deleteTarget.transport === 'USB'
-                      ? `${deleteTarget.vendorId}:${deleteTarget.productId}`
-                      : `${deleteTarget.ip}${deleteTarget.port ? `:${deleteTarget.port}` : ''}`} will be removed.
-                </p>
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setDeleteTarget(null)} className="flex-1">Cancel</Button>
-                  <Button onClick={handleDelete} disabled={isDeleting}
-                    className="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    {isDeleting ? 'Removing...' : 'Remove'}
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Delete confirm — shared AlertDialog, which portals to <body> too. */}
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          if (!isDeleting) setDeleteTarget(null);
+        }}
+        onConfirm={handleDelete}
+        title="Remove this printer?"
+        description={
+          deleteTarget ? (
+            <>
+              {deleteTargetId === (printers[0]?.id || printers[0]?.station)
+                ? 'This is your ticket printer — kitchen tickets will stop printing until you add another one. '
+                : ''}
+              The printer at{' '}
+              {deleteTarget.transport === 'BLUETOOTH'
+                ? deleteTarget.macAddress
+                : deleteTarget.transport === 'USB'
+                  ? `${deleteTarget.vendorId}:${deleteTarget.productId}`
+                  : `${deleteTarget.ip}${deleteTarget.port ? `:${deleteTarget.port}` : ''}`}{' '}
+              will be removed.
+            </>
+          ) : null
+        }
+        confirmText="Remove"
+        tone="destructive"
+        loading={isDeleting}
+      />
     </div>
   );
 };
