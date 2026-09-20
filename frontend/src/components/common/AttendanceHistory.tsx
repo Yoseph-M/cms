@@ -4,8 +4,9 @@ import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { DropdownSelect } from '../ui/DropdownSelect';
 import { Sheet } from '../ui/Sheet';
-import { AlertCircle, ChevronRight, UserRound } from 'lucide-react';
+import { AlertCircle, CalendarDays, ChevronRight, UserRound } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { formatBusinessDate } from '../../utils/calendar';
 
@@ -26,23 +27,42 @@ interface StaffMember {
   role: string;
 }
 
-/** Selectable look-back windows for the status tracker. */
-const RANGE_OPTIONS = [7, 14, 30, 90] as const;
-type RangeDays = (typeof RANGE_OPTIONS)[number];
+/** Three-letter month names for the window selector ("Sep", "Jan", …). */
+const SHORT_MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
 
-/** Logged status → Tremor tracker colour. */
+/** How many months back the filter offers, including the current one. */
+const MONTH_WINDOW = 12;
+
+/**
+ * Logged status → Tremor tracker colour.
+ *
+ * Leave and Holiday used to sit at cyan-500 and gray-400, where Leave read as
+ * "some kind of present" and Holiday was indistinguishable from the gray-300
+ * "no record" block. They now use blue and violet: clearly apart from each
+ * other, from the emerald/red/amber working states, and from the gray gaps.
+ */
 const COLOR_MAPPING: Record<AttendanceStatus, string> = {
   PRESENT: 'emerald-500',
   ABSENT: 'red-500',
   HALF_DAY: 'amber-500',
-  LEAVE: 'cyan-500',
-  HOLIDAY: 'gray-400',
+  LEAVE: 'blue-500',
+  HOLIDAY: 'violet-500',
 };
+
+/** Build a local `YYYY-MM-DD` key — `toISOString()` would shift the day in UTC-negative zones. */
+const toIsoDate = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 /** No record logged on a working day. */
 const COLOR_MISSING = 'gray-300';
-/** Weekend with no record — lightest, so the working week reads first. */
-const COLOR_WEEKEND = 'gray-100';
+/** Weekend with no record — the SAME gray as weekday no-record. Weekend gaps
+ *  used to render at gray-100, which reads as white against the card and made
+ *  "No record" look like two different states; the tracker now speaks one
+ *  gray for every unlogged day. */
+const COLOR_WEEKEND = 'gray-300';
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   PRESENT: 'Present',
@@ -89,6 +109,13 @@ const StatusPill: React.FC<{ status: AttendanceStatus }> = ({ status }) => (
 
 interface AttendanceHistoryProps {
   isOwner?: boolean;
+  /**
+   * Controlled month, driven by the calendar's `< Month Year >` chevrons at
+   * the top of the Attendance page. When provided, this card hides its own
+   * month Select — the top controls are the single filter.
+   */
+  year?: number;
+  month?: number;
 }
 
 interface StaffRow {
@@ -108,22 +135,45 @@ interface StaffRow {
  * scannable strip rather than a wall of rows. Everything else (counts, notes,
  * who marked what) lives one click away in the staff sheet.
  */
-export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = false }) => {
+export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = false, year: controlledYear, month: controlledMonth }) => {
+  const controlled = typeof controlledYear === 'number' && typeof controlledMonth === 'number';
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-  const [rangeDays, setRangeDays] = useState<RangeDays>(90);
+  // 0 = the current month; each step back is one month further into the past.
+  const [monthOffset, setMonthOffset] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
 
+  /**
+   * Month choices, newest first — "Sep 2026", "Aug 2026", … (only used when
+   * the card is uncontrolled; the embedded view is driven by the calendar's
+   * chevrons instead).
+   */
+  const monthOptions = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: MONTH_WINDOW }, (_, i) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      return { offset: i, label: `${SHORT_MONTHS[date.getMonth()]} ${date.getFullYear()}` };
+    });
+  }, []);
+
+  const selectedMonth = controlled
+    ? `${SHORT_MONTHS[controlledMonth! - 1]} ${controlledYear}`
+    : monthOptions[monthOffset]?.label ?? monthOptions[0].label;
+
   const dateRange = useMemo(() => {
-    const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - (rangeDays - 1));
-    const iso = (d: Date) => d.toISOString().split('T')[0];
-    return { from: iso(from), to: iso(to) };
-  }, [rangeDays]);
+    if (controlled) {
+      const start = new Date(controlledYear!, controlledMonth! - 1, 1);
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+      return { from: toIsoDate(start), to: toIsoDate(end) };
+    }
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - monthOffset, 1);
+    const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+    return { from: toIsoDate(start), to: toIsoDate(end) };
+  }, [controlled, controlledYear, controlledMonth, monthOffset]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -150,16 +200,19 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  /** Every day in the selected month, in order. */
   const days = useMemo(() => {
     const list: string[] = [];
-    const start = new Date(dateRange.from);
-    for (let i = 0; i < rangeDays; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      list.push(d.toISOString().split('T')[0]);
+    const start = new Date(`${dateRange.from}T00:00:00`);
+    const count = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    for (let i = 0; i < count; i++) {
+      list.push(toIsoDate(new Date(start.getFullYear(), start.getMonth(), i + 1)));
     }
     return list;
-  }, [dateRange.from, rangeDays]);
+  }, [dateRange.from]);
+
+  /** Days in the selected month — the window length the tracker scales to. */
+  const windowDays = days.length;
 
   const staffHistory = useMemo<StaffRow[]>(() => {
     return staff
@@ -206,10 +259,10 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
 
   const counts = useMemo(() => {
     const present = staffHistory.reduce((acc, s) => acc + s.present, 0);
-    const total = staffHistory.length * rangeDays;
+    const total = staffHistory.length * windowDays;
     const overall = total > 0 ? Math.round((present / total) * 100) : 0;
     return { present, total, overall };
-  }, [staffHistory, rangeDays]);
+  }, [staffHistory, windowDays]);
 
   const overallTone =
     counts.overall >= 90
@@ -218,11 +271,15 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
         ? 'bg-[hsl(var(--warning))]'
         : 'bg-destructive';
 
-  // Narrow screens show a shorter tail of the same window, like the reference.
-  const smDays = Math.min(rangeDays, 60);
-  const mobileDays = Math.min(rangeDays, 30);
-  const tail = (blocks: { key: string; color: string; tooltip: string }[], count: number) =>
-    count >= rangeDays ? blocks : blocks.slice(rangeDays - count);
+  /**
+   * Every row renders the WHOLE month, on every screen width — the strip is
+   * scaled by CSS instead of being trimmed to a shorter tail. Trimming used to
+   * drop the leading days on anything under `lg` (a 31-day month showed 30
+   * blocks, so the axis started on the 2nd), which made the same month look
+   * like it began on a different date depending on the window size.
+   */
+  const windowStart = formatBusinessDate(days[0] ?? '');
+  const windowEnd = formatBusinessDate(days[days.length - 1] ?? '');
 
   const selectedStaff = staffHistory.find((s) => s.id === selectedStaffId) ?? null;
 
@@ -239,24 +296,25 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
             Attendance history
           </h3>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-0.5">
-              {RANGE_OPTIONS.map((daysOption) => (
-                <button
-                  key={daysOption}
-                  type="button"
-                  onClick={() => setRangeDays(daysOption)}
-                  aria-pressed={rangeDays === daysOption}
-                  className={cn(
-                    'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                    rangeDays === daysOption
-                      ? 'bg-card text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {daysOption}d
-                </button>
-              ))}
-            </div>
+            {!controlled && (
+              <DropdownSelect
+                ariaLabel="Filter attendance by month"
+                size="sm"
+                icon={CalendarDays}
+                value={String(monthOffset)}
+                onChange={(v) => setMonthOffset(Number(v))}
+                options={monthOptions.map((option) => ({
+                  value: String(option.offset),
+                  label: option.label,
+                }))}
+                contentClassName="w-36"
+              />
+            )}
+            {controlled && (
+              <span className="text-xs font-medium text-muted-foreground">
+                Use the arrows above to change the month
+              </span>
+            )}
             <span className="inline-flex items-center gap-2 rounded-tremor-full px-3 py-1 text-tremor-default text-tremor-content-emphasis ring-1 ring-inset ring-tremor-ring dark:text-dark-tremor-content-emphasis dark:ring-dark-tremor-ring">
               <span className={cn('-ml-0.5 size-2 rounded-tremor-full', overallTone)} aria-hidden={true} />
               {counts.present} days present
@@ -317,22 +375,15 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
                       </div>
                     </div>
 
-                    <Tracker data={s.blocks} className="mt-2.5 hidden h-6 w-full lg:flex" />
-                    <Tracker
-                      data={tail(s.blocks, smDays)}
-                      className="mt-2.5 hidden h-6 w-full sm:flex lg:hidden"
-                    />
-                    <Tracker data={tail(s.blocks, mobileDays)} className="mt-2.5 flex h-6 w-full sm:hidden" />
+                    <Tracker data={s.blocks} className="mt-2.5 flex h-6 w-full" />
                   </button>
                 </li>
               ))}
             </ul>
 
             <div className="mt-2 flex items-center justify-between px-2 text-[11px] text-muted-foreground">
-              <span className="hidden lg:block">{rangeDays} days ago</span>
-              <span className="hidden sm:block lg:hidden">{smDays} days ago</span>
-              <span className="sm:hidden">{mobileDays} days ago</span>
-              <span>Today</span>
+              <span>{windowStart}</span>
+              <span>{windowEnd}</span>
             </div>
           </div>
         )}
@@ -345,7 +396,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
         title={selectedStaff?.name ?? 'Attendance'}
         description={
           selectedStaff
-            ? `${selectedStaff.role.toLowerCase()} · last ${rangeDays} days`
+            ? `${selectedStaff.role.toLowerCase()} · ${selectedMonth}`
             : undefined
         }
       >
@@ -372,12 +423,12 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Last {rangeDays} days
+                {selectedMonth}
               </p>
               <Tracker data={selectedStaff.blocks} className="h-6 w-full" />
               <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
                 <span>{formatBusinessDate(selectedStaff.blocks[0]?.key ?? '')}</span>
-                <span>Today</span>
+                <span>{formatBusinessDate(selectedStaff.blocks.at(-1)?.key ?? '')}</span>
               </div>
             </div>
 
