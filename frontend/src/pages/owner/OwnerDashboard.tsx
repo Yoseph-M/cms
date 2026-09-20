@@ -84,9 +84,9 @@ const CATEGORY_LABEL: Record<string, string> = {
   DESSERT: 'Dessert',
 };
 const CATEGORY_COLOR: Record<string, string> = {
-  FOOD: 'hsl(20 95% 53%)',
-  DRINK: 'hsl(24 60% 35%)',
-  DESSERT: 'hsl(30 80% 75%)',
+  FOOD: 'hsl(217 91% 60%)',
+  DRINK: 'hsl(201 96% 45%)',
+  DESSERT: 'hsl(262 83% 62%)',
 };
 
 function pickIconForName(name: string): LucideIcon {
@@ -99,16 +99,16 @@ function pickIconForName(name: string): LucideIcon {
 
 // Semantic icon palette that adapts to dark mode
 const ICON_BG: Array<string> = [
-  'bg-orange-500/15',
-  'bg-amber-500/15',
+  'bg-blue-500/15',
   'bg-sky-500/15',
+  'bg-cyan-500/15',
   'bg-pink-500/15',
   'bg-stone-500/15',
 ];
 const ICON_COLOR: Array<string> = [
-  'text-orange-600 dark:text-orange-400',
-  'text-amber-600 dark:text-amber-400',
+  'text-blue-600 dark:text-blue-400',
   'text-sky-600 dark:text-sky-400',
+  'text-cyan-600 dark:text-cyan-400',
   'text-pink-600 dark:text-pink-400',
   'text-stone-600 dark:text-stone-400',
 ];
@@ -121,13 +121,6 @@ const TREND_OPTIONS: Array<{ key: TrendRange; label: string; months: number }> =
   { key: '90d',  label: 'Last 90 days', months: 0 },
   { key: '12m',  label: 'Last 12 months', months: 12 },
 ];
-
-const LegendDot = ({ color, label }: { color: string; label: string }) => (
-  <div className="flex items-center gap-1.5">
-    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-    <span className="text-xs text-muted-foreground font-medium">{label}</span>
-  </div>
-);
 
 export const OwnerDashboard: React.FC = () => {
   const { t } = useTranslation('owner');
@@ -178,21 +171,59 @@ export const OwnerDashboard: React.FC = () => {
   // Trend range filter for the line chart
   const [trendRange, setTrendRange] = useState<TrendRange>('12m');
 
+  /* ── Working filters — previously these dropdowns were decorative; they now
+        actually drive the data they label. ── */
+  // Category mix window
+  const [categoryWindow, setCategoryWindow] = useState<'This month' | 'Last month' | 'This year'>('This month');
+  const categoryFromTo = useMemo(() => {
+    const now = new Date();
+    if (categoryWindow === 'This month') {
+      return {
+        from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+        to: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString(),
+      };
+    }
+    if (categoryWindow === 'Last month') {
+      return {
+        from: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString(),
+        to: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).toISOString(),
+      };
+    }
+    return {
+      from: new Date(now.getFullYear(), 0, 1).toISOString(),
+      to: new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999).toISOString(),
+    };
+  }, [categoryWindow]);
+
+  // Recent orders window
+  const [recentWindow, setRecentWindow] = useState<'Today' | 'Last 7 days' | 'Last 30 days' | 'Last year'>('Last 7 days');
+  const recentFrom = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const days = recentWindow === 'Today' ? 0 : recentWindow === 'Last 7 days' ? 6 : recentWindow === 'Last 30 days' ? 29 : 364;
+    now.setDate(now.getDate() - days);
+    return now.toISOString();
+  }, [recentWindow]);
+
+  // Top items depth
+  const [topCount, setTopCount] = useState(5);
+
   /* ── Data (React Query — cached across navigations) ── */
   const fromIso = useMemo(() => new Date(dateRange.from).toISOString(), [dateRange.from]);
   const toIso = useMemo(() => new Date(`${dateRange.to}T23:59:59.999`).toISOString(), [dateRange.to]);
 
   const dailyQuery = useDailySalesQuery();
   const monthlyQuery = useMonthlySalesQuery();
+  // Fetch enough depth for the "Top 20" filter option; slicing happens below.
   const topItemsQuery = useAnalyticsQuery<TopItem[]>(
     '/analytics/top-items',
-    { from: fromIso, to: toIso, limit: '5' },
+    { from: fromIso, to: toIso, limit: '20' },
   );
   const categoriesQuery = useAnalyticsQuery<CategoryRow[]>(
     '/analytics/category-split',
-    { from: fromIso, to: toIso },
+    { from: categoryFromTo.from, to: categoryFromTo.to },
   );
-  const ordersQuery = useOrdersQuery({ limit: 8, sort: 'createdAt:desc' });
+  const ordersQuery = useOrdersQuery({ limit: 30, sort: 'createdAt:desc' });
   const totalSalesQuery = useTotalSalesQuery();
   const profitLossQuery = useProfitLossQuery();
   const waiterPerfQuery = useStaffPerformanceQuery({ from: fromIso, to: toIso, role: 'WAITER' });
@@ -249,9 +280,20 @@ export const OwnerDashboard: React.FC = () => {
 
   const trendLabel = TREND_OPTIONS.find((o) => o.key === trendRange)?.label ?? 'This year';
 
+  /* Totals strip above the revenue trend — the series sums plus net and the
+     net margin, so the chart reads at a glance without hovering. */
+  const incomeLabel = t('dashboard.series.income', { defaultValue: 'Income' });
+  const expensesLabel = t('dashboard.series.expenses', { defaultValue: 'Expenses' });
+  const trendTotals = useMemo(() => {
+    const income = lineData.income.reduce((s, v) => s + v, 0);
+    const expenses = lineData.expenses.reduce((s, v) => s + v, 0);
+    const net = income - expenses;
+    return { income, expenses, net, margin: income > 0 ? (net / income) * 100 : 0 };
+  }, [lineData]);
+
   /* ── Donut: category split ── */
   const donutSegments = useMemo(() => {
-    const FALLBACK_COLORS = ['#fb923c', '#fdba74', '#fed7aa'];
+    const FALLBACK_COLORS = ['#3b82f6', '#06b6d4', '#8b5cf6'];
     return categories.map((c, i) => ({
       label: CATEGORY_LABEL[c.category] ?? c.category,
       value: c.revenue,
@@ -264,10 +306,11 @@ export const OwnerDashboard: React.FC = () => {
     [categories],
   );
 
-  /* ── Order type bars: top 5 items by share ── */
+  /* ── Order type bars: top N items by share, N from the "Top 5/10/20" filter ── */
   const orderTypeEntries = useMemo<OrderTypeEntry[]>(() => {
-    const total = topItems.reduce((s, x) => s + x.totalRevenue, 0) || 1;
-    return topItems.slice(0, 5).map((it, i) => ({
+    const visible = topItems.slice(0, topCount);
+    const total = visible.reduce((s, x) => s + x.totalRevenue, 0) || 1;
+    return visible.map((it, i) => ({
       id: it.name,
       name: it.name,
       percent: Math.round((it.totalRevenue / total) * 100),
@@ -277,9 +320,9 @@ export const OwnerDashboard: React.FC = () => {
       iconBg: ICON_BG[i % ICON_BG.length],
       iconColor: ICON_COLOR[i % ICON_COLOR.length],
     }));
-  }, [topItems]);
+  }, [topItems, topCount]);
 
-  /* ── Recent orders (table) ── */
+  /* ── Recent orders (table) — honours the "Today / Last 7 days / …" filter ── */
   const recentRows = useMemo<RecentOrder[]>(() => {
     const STATUS_MAP: Record<string, OrderStatusKey> = {
       PAID: 'paid',
@@ -288,7 +331,11 @@ export const OwnerDashboard: React.FC = () => {
       SUBMITTED: 'pending',
       IN_KITCHEN: 'pending',
     };
-    return recentOrders.slice(0, 7).map((o) => {
+    const floor = new Date(recentFrom).getTime();
+    return recentOrders
+      .filter((o) => new Date(o.createdAt).getTime() >= floor)
+      .slice(0, 7)
+      .map((o) => {
       const attendant =
         o.waiter?.name ??
         o.cashier?.name ??
@@ -304,8 +351,8 @@ export const OwnerDashboard: React.FC = () => {
         status: STATUS_MAP[o.status] ?? 'pending',
         price: o.totalAmount,
       };
-    });
-  }, [recentOrders, user?.name]);
+      });
+  }, [recentOrders, recentFrom, user?.name]);
 
   return (
     <motion.div
@@ -328,8 +375,10 @@ export const OwnerDashboard: React.FC = () => {
         <div className="grid grid-cols-3 gap-5 max-[767px]:gap-3 max-[1023px]:gap-4">
           <SectionCard
             className="col-span-2 max-[767px]:col-span-3"
-            title="Revenue trend"
-            description="Income vs. operating expenses"
+            title={t('dashboard.sections.revenueTrend')}
+            description={t('dashboard.sections.revenueTrendDesc', {
+              defaultValue: 'Income vs. operating expenses',
+            })}
             filterAlign="right"
             filter={{
               label: trendLabel,
@@ -340,42 +389,61 @@ export const OwnerDashboard: React.FC = () => {
                 if (found) setTrendRange(found.key);
               },
             }}
-            rightAccessory={
-              <div className="flex items-center gap-4 shrink-0">
-                <LegendDot color="hsl(20 95% 53%)" label="Income" />
-                <LegendDot color="hsl(24 60% 35%)" label="Expenses" />
-              </div>
-            }
           >
             <RevenueLineChart
               labels={lineData.labels}
               series={[
                 {
                   key: 'income',
-                  label: 'Income',
+                  label: incomeLabel,
                   values: lineData.income,
-                  color: '#f97316',
-                  fill: true,
+                  color: 'blue',
                 },
                 {
                   key: 'expenses',
-                  label: 'Expenses',
+                  label: expensesLabel,
                   values: lineData.expenses,
-                  color: '#5d1a12',
-                  fill: false,
+                  color: 'cyan',
                 },
               ]}
               yFormat={(v) => v.toLocaleString('en-US')}
               tooltipFormat={(v) => formatCurrency(v)}
+              summary={[
+                {
+                  label: incomeLabel,
+                  value: formatCurrency(trendTotals.income),
+                  color: '#3b82f6',
+                },
+                {
+                  label: expensesLabel,
+                  value: formatCurrency(trendTotals.expenses),
+                  color: '#06b6d4',
+                },
+                {
+                  label: t('dashboard.series.net', { defaultValue: 'Net' }),
+                  value: formatCurrency(trendTotals.net),
+                },
+                {
+                  label: t('dashboard.series.margin', { defaultValue: 'Margin' }),
+                  value: `${trendTotals.margin.toFixed(1)}%`,
+                },
+              ]}
             />
           </SectionCard>
 
           <SectionCard
             className="col-span-1 max-[767px]:col-span-3"
-            title="Category mix"
-            description="Where the revenue is coming from"
+            title={t('dashboard.sections.categoryMix')}
+            description={t('dashboard.sections.categoryMixDesc', {
+              defaultValue: 'Where the revenue is coming from',
+            })}
             filterAlign="right"
-            filter={{ label: 'This month', options: ['This month', 'Last month', 'This year'] }}
+            filter={{
+              label: categoryWindow,
+              options: ['This month', 'Last month', 'This year'],
+              value: categoryWindow,
+              onChange: (v) => setCategoryWindow(v as typeof categoryWindow),
+            }}
           >
             {donutSegments.length > 0 ? (
               <RevenueDonut
@@ -383,7 +451,7 @@ export const OwnerDashboard: React.FC = () => {
               />
             ) : (
               <div className="py-16 text-center text-sm text-muted-foreground">
-                No sales data for this period.
+                {t('dashboard.emptySales')}
               </div>
             )}
           </SectionCard>
@@ -392,10 +460,17 @@ export const OwnerDashboard: React.FC = () => {
         {/* Bottom row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
           <SectionCard
-            title="Recent orders"
-            description="The latest activity across all stations"
+            title={t('dashboard.sections.recentOrders')}
+            description={t('dashboard.sections.recentOrdersDesc', {
+              defaultValue: 'The latest activity across all stations',
+            })}
             filterAlign="right"
-            filter={{ label: 'Last 7 days', options: ['Today', 'Last 7 days', 'Last 30 days', 'Last year'] }}
+            filter={{
+              label: recentWindow,
+              options: ['Today', 'Last 7 days', 'Last 30 days', 'Last year'],
+              value: recentWindow,
+              onChange: (v) => setRecentWindow(v as typeof recentWindow),
+            }}
             className="lg:col-span-2"
             flush
           >
@@ -405,15 +480,22 @@ export const OwnerDashboard: React.FC = () => {
           </SectionCard>
 
           <SectionCard
-            title="Top items"
-            description="Best sellers in the selected window"
-            filter={{ label: 'Top 5', options: ['Top 5', 'Top 10', 'Top 20'] }}
+            title={t('dashboard.sections.topItems')}
+            description={t('dashboard.sections.topItemsDesc', {
+              defaultValue: 'Best sellers in the selected window',
+            })}
+            filter={{
+              label: `Top ${topCount}`,
+              options: ['Top 5', 'Top 10', 'Top 20'],
+              value: `Top ${topCount}`,
+              onChange: (v) => setTopCount(Number(v.replace('Top ', '')) || 5),
+            }}
           >
             {orderTypeEntries.length > 0 ? (
               <OrderTypeBars entries={orderTypeEntries} />
             ) : (
               <div className="py-10 text-center text-sm text-muted-foreground">
-                No top items in this window.
+                {t('dashboard.emptyTopItems')}
               </div>
             )}
           </SectionCard>
@@ -421,15 +503,17 @@ export const OwnerDashboard: React.FC = () => {
 
         {/* Waiter Performance */}
         <SectionCard
-          title="Waiter performance"
-          description="Orders and revenue attributed per waiter in the selected period"
+          title={t('dashboard.sections.waiterPerformance')}
+          description={t('dashboard.sections.waiterPerformanceDesc', {
+            defaultValue: 'Orders and revenue attributed per waiter in the selected period',
+          })}
         >
           {waiterPerf.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground">
-              No waiter data for this period.
+              {t('dashboard.emptyWaiter')}
             </div>
           ) : (
-            <ul className="space-y-4" aria-label="Waiter performance by sales">
+            <ul className="space-y-4" aria-label={t('dashboard.sections.waiterPerformanceAria')}>
               {waiterPerf.map((w) => {
                 const maxRevenue = waiterPerf[0]?.totalSales || 1;
                 const revenueWidth = Math.min(100, Math.max(2, Math.round((w.totalSales / maxRevenue) * 100)));
@@ -467,7 +551,7 @@ export const OwnerDashboard: React.FC = () => {
         </SectionCard>
 
         {isLoading && (
-          <p className="text-center text-[11px] text-muted-foreground">Refreshing…</p>
+          <p className="text-center text-[11px] text-muted-foreground">{t('dashboard.refreshing')}</p>
         )}
       </div>
     </motion.div>
