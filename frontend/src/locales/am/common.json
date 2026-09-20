@@ -44,5 +44,61 @@
     "dark": "ጨለማ",
     "system": "ስርዓት",
     "description": "ብርሃን ወይም ጨለማ ሁነታ ይምረጡ። «ስርዓት» የመተግበሪያውን ነባሪ ብርሃን ሁነታ ይጠቀማል። በመሣሪያ ይቀመጣል።"
+  },
+  "chrome": {
+    "navigation": "ዳሰሳ"
+  },
+  "a11y": {
+    "closeSidebar": "የጎን አሞሌ ዝጋ",
+    "openSidebar": "የጎን አሞሌ ክፈት",
+    "close": "ዝጋ",
+    "clearSearch": "ፍለጋውን አጽዳ",
+    "clearFilters": "ማጣሪያዎችን አጽዳ",
+    "previousPage": "ቀዳሚ ገጽ",
+    "nextPage": "ቀጣይ ገጽ"
+  },
+  "access": {
+    "managerDashboardDisabled": "የሥራ አስኪያጅ ዳሽቦርድ ተሰናክሏል",
+    "systemAdminDisabled": "የስርዓት አስተዳደር ተሰናክሏል",
+    "systemAdminDisabledHint": "የስርዓት አስተዳደር ክፍል አሁን ተሰናክሏል። የሠራተኞች አስተዳደርን፣ የኦዲት መዝገቦችን እና የአታሚ ቅንብሮችን ለመጠቀም ከስርዓት ቅንብሮች ያስችሉት።",
+    "contactOwner": "ለመግባት ባለቤቱን ያግኙ።"
+  },
+  "menu": {
+    "searchPlaceholder": "የምናሌ ዕቃዎችን ፈልግ…",
+    "searchLabel": "የምናሌ ዕቃዎችን ፈልግ",
+    "sortLabel": "የምናሌ ዕቃዎችን ደርድር",
+    "filterCategory": "በምድብ አጣራ",
+    "viewMode": "የእይታ ሁነታ",
+    "selectMode": "የመምረጫ ሁነታ",
+    "all": "ሁሉም",
+    "grid": "ፍርግርግ",
+    "list": "ዝርዝር",
+    "gridView": "ፍርግርግ እይታ",
+    "listView": "ዝርዝር እይታ",
+    "addItem": "ዕቃ ጨምር",
+    "select": "ምረጥ",
+    "selectAll": "ሁሉንም ምረጥ",
+    "showing": "በማሳየት ላይ",
+    "available": "ይገኛል",
+    "unavailable": "አይገኝም",
+    "markAvailable": "ይገኛል ብለህ ምልክት አድርግ",
+    "markUnavailable": "አይገኝም ብለህ ምልክት አድርግ",
+    "toggleAvailability": "ተገኝነት ቀይር",
+    "photo": "ፎቶ",
+    "change": "ቀይር",
+    "remove": "አስወግድ",
+    "edit": "አስተካክል",
+    "uploadHint": "ምስሉን ጠቅ አድርግ፣ ጎትተህ ጣል ወይም አጣብቅ",
+    "uploadFormats": "PNG፣ JPG ወይም በCtrl+V አጣብቅ",
+    "name": "ስም",
+    "nameAmharic": "ስም (አማርኛ)",
+    "category": "ምድብ",
+    "price": "ዋጋ (ብር)",
+    "availableForSale": "ለሽያጭ ይገኛል",
+    "availableHint": "ይህን ዕቃ ለመደበቅ አጥፋ (አይገኝም)",
+    "totalItems": "ጠቅላላ ዕቃዎች",
+    "availableNow": "አሁን ይገኛል",
+    "unavailableItems": "የማይገኙ ዕቃዎች",
+    "categoriesUsed": "ምድቦች"
   }
 }
