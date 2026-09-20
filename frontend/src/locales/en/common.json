@@ -44,5 +44,61 @@
     "dark": "Dark",
     "system": "System",
     "description": "Choose light or dark mode. \"System\" uses the app's default light mode. Saved per device."
+  },
+  "chrome": {
+    "navigation": "Navigation"
+  },
+  "a11y": {
+    "closeSidebar": "Close sidebar",
+    "openSidebar": "Open sidebar",
+    "close": "Close",
+    "clearSearch": "Clear search",
+    "clearFilters": "Clear filters",
+    "previousPage": "Previous page",
+    "nextPage": "Next page"
+  },
+  "access": {
+    "managerDashboardDisabled": "Manager Dashboard Disabled",
+    "systemAdminDisabled": "System Administration Disabled",
+    "systemAdminDisabledHint": "The System Administration area is currently disabled. Enable it from System Settings to access staff management, audit logs, and printer configuration.",
+    "contactOwner": "Please contact the owner for access."
+  },
+  "menu": {
+    "searchPlaceholder": "Search menu items…",
+    "searchLabel": "Search menu items",
+    "sortLabel": "Sort menu items",
+    "filterCategory": "Filter by category",
+    "viewMode": "View mode",
+    "selectMode": "Select mode",
+    "all": "All",
+    "grid": "Grid",
+    "list": "List",
+    "gridView": "Grid view",
+    "listView": "List view",
+    "addItem": "Add Item",
+    "select": "Select",
+    "selectAll": "Select All",
+    "showing": "Showing",
+    "available": "Available",
+    "unavailable": "Unavailable",
+    "markAvailable": "Mark Available",
+    "markUnavailable": "Mark Unavailable",
+    "toggleAvailability": "Toggle availability",
+    "photo": "Photo",
+    "change": "Change",
+    "remove": "Remove",
+    "edit": "Edit",
+    "uploadHint": "Click, drag & drop, or paste an image",
+    "uploadFormats": "PNG, JPG, or paste with Ctrl+V",
+    "name": "Name",
+    "nameAmharic": "Name (Amharic)",
+    "category": "Category",
+    "price": "Price (ETB)",
+    "availableForSale": "Available for sale",
+    "availableHint": "Turn off to hide this item (unavailable)",
+    "totalItems": "Total Items",
+    "availableNow": "Available Now",
+    "unavailableItems": "Unavailable Items",
+    "categoriesUsed": "Categories"
   }
 }
