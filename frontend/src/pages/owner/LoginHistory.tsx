@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { RefreshCw, Shield, CheckCircle, XCircle, Lock, User, Clock, Monitor } from 'lucide-react';
+import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { axiosClient } from '../../api/axiosClient';
 
 interface LoginRecord {
@@ -37,7 +38,7 @@ interface LoginStats {
 const OUTCOME_ICONS: Record<string, React.ReactNode> = {
   SUCCESS: <CheckCircle className="w-4 h-4 text-green-600" />,
   FAILURE: <XCircle className="w-4 h-4 text-red-600" />,
-  LOCKED: <Lock className="w-4 h-4 text-orange-600" />,
+  LOCKED: <Lock className="w-4 h-4 text-blue-600" />,
 };
 
 const OUTCOME_LABELS: Record<string, string> = {
@@ -49,7 +50,7 @@ const OUTCOME_LABELS: Record<string, string> = {
 const OUTCOME_COLORS: Record<string, string> = {
   SUCCESS: 'text-green-600 bg-green-50',
   FAILURE: 'text-red-600 bg-red-50',
-  LOCKED: 'text-orange-600 bg-orange-50',
+  LOCKED: 'text-blue-600 bg-blue-50',
 };
 
 export const LoginHistory: React.FC = () => {
@@ -169,7 +170,7 @@ export const LoginHistory: React.FC = () => {
                   <p className="text-xs text-muted-foreground mb-1">Locked Today</p>
                   <p className="text-2xl font-bold">{stats.lockedToday}</p>
                 </div>
-                <Lock className="w-8 h-8 text-orange-600 opacity-80" />
+                <Lock className="w-8 h-8 text-blue-600 opacity-80" />
               </div>
             </CardContent>
           </Card>
@@ -180,17 +181,20 @@ export const LoginHistory: React.FC = () => {
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center gap-4">
-            <label className="text-sm font-medium">Filter by outcome:</label>
-            <select
+            <DropdownSelect
+              ariaLabel="Filter login records by outcome"
+              icon={Shield}
+              size="sm"
               value={outcomeFilter}
-              onChange={(e) => setOutcomeFilter(e.target.value)}
-              className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background text-foreground"
-            >
-              <option value="">All Outcomes</option>
-              <option value="SUCCESS">Success</option>
-              <option value="FAILURE">Failed</option>
-              <option value="LOCKED">Locked</option>
-            </select>
+              onChange={setOutcomeFilter}
+              options={[
+                { value: '', label: 'All Outcomes', icon: Shield },
+                { value: 'SUCCESS', label: 'Success', icon: CheckCircle },
+                { value: 'FAILURE', label: 'Failed', icon: XCircle },
+                { value: 'LOCKED', label: 'Locked', icon: Lock },
+              ]}
+              contentClassName="w-44"
+            />
           </div>
         </CardContent>
       </Card>
