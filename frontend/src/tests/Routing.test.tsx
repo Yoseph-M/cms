@@ -159,9 +159,13 @@ describe('Layout Architecture Regression Tests', () => {
       );
 
       // The cashier lands on their own layout. Cashiers may see the menu catalog
-      // (they can manage it by default now), but never manager-only areas.
+      // (they can manage it by default now) and have their own End of Day page,
+      // but never manager-only areas.
       expect(screen.queryByText(/Payroll/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/End of Day/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Staff$/i)).not.toBeInTheDocument();
+      // The cashier's End of Day entry is theirs — it must point into /cashier.
+      const endOfDay = screen.getByRole('link', { name: /End of Day/i });
+      expect(endOfDay).toHaveAttribute('href', '/cashier/end-of-day');
     });
   });
 });
