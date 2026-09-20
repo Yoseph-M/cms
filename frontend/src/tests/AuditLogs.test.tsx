@@ -111,18 +111,26 @@ describe('audit logs', () => {
     await waitFor(() => expect(requestedUrls().some((url) => url.includes('search=cancelled'))).toBe(true));
   });
 
+  /**
+   * The filters are dropdown menus (the house filter style, matching the menu
+   * library), not native <select>s — so a test choice is a click to open and a
+   * click on the option.
+   */
+  const chooseOption = async (triggerLabel: RegExp, optionName: string) => {
+    fireEvent.keyDown(screen.getByLabelText(triggerLabel), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: optionName }));
+  };
+
   it('filters by action and entity from the dropdowns', async () => {
     renderPage();
     await screen.findByText('User logged in as OWNER');
 
-    fireEvent.change(screen.getByLabelText(/Filter by action/i), { target: { value: 'ORDER_CANCELLED' } });
+    await chooseOption(/Filter by action/i, 'ORDER_CANCELLED');
     await waitFor(() => expect(requestedUrls().some((url) => url.includes('action=ORDER_CANCELLED'))).toBe(true));
 
     // The dropdown must keep its options while the previous request is still in
     // flight, otherwise this change silently does nothing.
-    const entitySelect = screen.getByLabelText(/Filter by entity/i);
-    await within(entitySelect).findByRole('option', { name: 'Order' });
-    fireEvent.change(entitySelect, { target: { value: 'Order' } });
+    await chooseOption(/Filter by entity/i, 'Order');
     await waitFor(() => expect(requestedUrls().some((url) => url.includes('entity=Order'))).toBe(true));
   });
 
@@ -130,7 +138,7 @@ describe('audit logs', () => {
     renderPage();
     await screen.findByText('User logged in as OWNER');
 
-    fireEvent.change(screen.getByLabelText(/Sort order/i), { target: { value: 'oldest' } });
+    await chooseOption(/Sort order/i, 'Oldest First');
     await waitFor(() => expect(requestedUrls().some((url) => url.includes('order=oldest'))).toBe(true));
   });
 
