@@ -4,6 +4,7 @@
 import request from 'supertest';
 import { OrderStatus } from '@prisma/client';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
+import { clearFeatureFlagCache } from '../src/middleware/feature.middleware';
 
 const app = getTestApp();
 
@@ -143,6 +144,12 @@ describe('Audit log API', () => {
 
   it('writes audit log when menu item is created', async () => {
     const owner = await seedTestUser({ role: 'OWNER' as any, email: 'audit-menu@pos.com' });
+
+    // Menu editing is opt-in per role; enable the owner's switch before writing.
+    await getPrisma().systemSetting.create({
+      data: { key: 'ownerMenuEditEnabled', value: 'true' },
+    });
+    clearFeatureFlagCache();
 
     const createRes = await request(app)
       .post('/api/menu')
