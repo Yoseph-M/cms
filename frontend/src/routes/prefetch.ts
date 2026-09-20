@@ -17,6 +17,7 @@ export function prefetchRoute(path: string) {
     '/manager/menu': () => import('../components/common/MenuCatalog'),
     '/manager/payroll': () => import('../pages/manager/ManagerPayroll'),
     '/manager/expenses': () => import('../pages/manager/ManagerExpenses'),
+    '/manager/printers': () => import('../pages/manager/ManagerPrinters'),
     '/manager/settings': () => import('../pages/settings/ManagerSettings'),
     '/manager/settlements': () => import('../pages/shared/GlobalSettlementHistory'),
     '/manager/profile': () => import('../pages/shared/ProfilePage'),
@@ -24,6 +25,8 @@ export function prefetchRoute(path: string) {
     '/cashier/tickets': () => import('../pages/cashier/CashierTicketsPage'),
     '/cashier/menu': () => import('../components/common/MenuCatalog'),
     '/cashier/settlements': () => import('../pages/shared/GlobalSettlementHistory'),
+    '/cashier/printers': () => import('../pages/cashier/CashierPrinters'),
+    '/cashier/end-of-day': () => import('../pages/cashier/CashierEndOfDay'),
     '/cashier/settings': () => import('../pages/settings/CashierSettings'),
     '/cashier/profile': () => import('../pages/shared/ProfilePage'),
   };
