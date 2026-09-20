@@ -246,6 +246,10 @@ export async function seedInitialData() {
       systemAdministrationEnabled: 'true',
       // Cashiers can manage the menu out of the box; a manager can restrict it.
       cashierMenuEditRestricted: 'false',
+      // Owners and managers must each opt in before they can edit the menu, and
+      // the two role switches are independent.
+      ownerMenuEditEnabled: 'false',
+      managerMenuEditEnabled: 'false',
     };
     for (const [key, value] of Object.entries(businessDefaults)) {
       const existing = await prisma.systemSetting.findUnique({ where: { key } });
