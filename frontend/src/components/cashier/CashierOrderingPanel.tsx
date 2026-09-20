@@ -288,12 +288,12 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('ordering.searchPlaceholder')}
                 className="h-10 pl-9 max-[767px]:h-10"
-                aria-label="Search menu items"
+                aria-label={t('a11y.searchMenu')}
               />
             </div>
 
             <DropdownMenu>
-              <DropdownMenuTrigger aria-label="Sort menu items" className="shrink-0 h-10 w-[168px] max-[419px]:w-full">
+              <DropdownMenuTrigger aria-label={t('a11y.sortMenu')} className="shrink-0 h-10 w-[168px] max-[419px]:w-full">
                 <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
                 <span className="truncate">{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label}</span>
               </DropdownMenuTrigger>
@@ -311,7 +311,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
             </DropdownMenu>
 
             <DropdownMenu>
-              <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0 h-10 max-[419px]:w-full">
+              <DropdownMenuTrigger aria-label={t('a11y.filterCategory')} className="shrink-0 h-10 max-[419px]:w-full">
                 {React.createElement(CATEGORY_META[category].icon, {
                   className: 'w-4 h-4 text-muted-foreground',
                 })}
@@ -343,8 +343,10 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
 
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-xs text-muted-foreground font-medium">
-              Showing <span className="font-bold text-foreground">{filtered.length}</span> of{' '}
-              <span className="font-bold text-foreground">{items.filter((i) => i.isAvailable).length}</span> items
+              {t('ordering.showingCount', {
+                shown: filtered.length,
+                total: items.filter((i) => i.isAvailable).length,
+              })}
             </p>
             {(search.trim() || category !== 'ALL' || sortBy !== 'name-asc') && (
               <button
@@ -360,7 +362,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                 )}
               >
                 <FilterX className="w-3 h-3" />
-                Clear filters
+                {t('ordering.clearFilters')}
               </button>
             )}
           </div>
@@ -464,7 +466,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           {/* Waiter selector */}
           <label htmlFor="order-waiter" className="text-xs text-muted-foreground mb-1 block">
             <UserRound className="inline w-3 h-3 mr-1" />
-            Waiter serving this table
+            {t('ordering.waiterLabel')}
           </label>
           <div className="relative mb-3">
             <select
