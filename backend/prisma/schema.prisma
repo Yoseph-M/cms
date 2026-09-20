@@ -88,6 +88,8 @@ enum NotificationType {
   PAYROLL_PERIOD_DUE
   MENU_ITEM_UNAVAILABLE
   SYSTEM_OVERRIDE
+  DAILY_CLOSE_REQUESTED // cashier asked to close the day — managers decide
+  DAILY_CLOSE_DECISION  // manager approved/rejected — the requesting cashier is told
 }
 
 enum CancellationRequestStatus {
@@ -125,8 +127,9 @@ enum VarianceReviewStatus {
 
 enum DailyCloseStatus {
   OPEN
-  PENDING_REVIEW
-  CLOSED
+  PENDING_REVIEW // a cashier requested the close; awaiting the manager's decision
+  CLOSED        // approved by a manager
+  REJECTED      // declined by a manager; the cashier can request again
 }
 
 enum IntegritySeverity {
@@ -156,6 +159,10 @@ model User {
   phone        String
   avatarUrl    String?
   passwordHash String?
+  /// PIN for the mobile app (waiters, cooks, baristas — and managers, who use
+  /// both). Hashed like a password, stored separately so the app credential and
+  /// the website password rotate independently.
+  pinCodeHash  String?
   salaryAmount      Int      @default(0) // Stored in ETB as entered (major units)
   isActive          Boolean  @default(true)
   preferredLanguage String   @default("en")
@@ -186,6 +193,7 @@ model User {
   cashDrawerEvents       CashDrawerEvent[] @relation("CashDrawerEventPerformedBy")
   varianceReviews        VarianceReview[] @relation("VarianceReviewedBy")
   dailyClosesClosed      DailyClose[] @relation("DailyCloseClosedBy")
+  dailyClosesRequested   DailyClose[] @relation("DailyCloseRequestedBy")
   integrityIssuesResolved IntegrityIssue[] @relation("IntegrityIssuesResolved")
 
   @@index([role, isActive])
@@ -595,6 +603,11 @@ model DailyClose {
   unsettledOrderCount    Int              @default(0)
   partialSettlementCount Int              @default(0)
   cancelledOrderCount    Int              @default(0)
+  // The cashier who asked for the day to close. Kept separate from closedBy so
+  // the approval screen can show who sent the request and who decided it.
+  requestedById          String?          @db.ObjectId
+  requestedBy            User?            @relation("DailyCloseRequestedBy", fields: [requestedById], references: [id])
+  requestedAt            DateTime?
   closedById             String?          @db.ObjectId
   closedBy               User?            @relation("DailyCloseClosedBy", fields: [closedById], references: [id])
   closedAt               DateTime?
