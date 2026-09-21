@@ -1,0 +1,2640 @@
+diff --git a/backend/src/modules/analytics/analytics.controller.ts b/backend/src/modules/analytics/analytics.controller.ts
+index 16f6507..cbd8563 100644
+--- a/backend/src/modules/analytics/analytics.controller.ts
++++ b/backend/src/modules/analytics/analytics.controller.ts
+@@ -197,6 +197,22 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
+   const pipeline = [
+     { $match: match },
+     { $unwind: '$items' },
++    // Look up the menu item so we can surface the image in the dashboard.
++    {
++      $lookup: {
++        from: 'menuitems',
++        let: { menuId: '$items.menuItemId' },
++        pipeline: [
++          {
++            $match: {
++              $expr: { $eq: [{ $toString: '$_id' }, '$$menuId'] },
++            },
++          },
++          { $project: { _id: 0, imageUrl: 1 } },
++        ],
++        as: 'menuItem',
++      },
++    },
+     {
+       $group: {
+         _id: '$items.name',
+@@ -204,6 +220,24 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
+         totalRevenue: {
+           $sum: { $multiply: ['$items.unitPrice', '$items.quantity'] },
+         },
++        // Keep the first non-null imageUrl we encounter for this item name.
++        imageUrl: {
++          $first: {
++            $first: {
++              $map: {
++                input: {
++                  $filter: {
++                    input: '$menuItem',
++                    as: 'm',
++                    cond: { $ne: ['$$m.imageUrl', null] },
++                  },
++                },
++                as: 'm',
++                in: '$$m.imageUrl',
++              },
++            },
++          },
++        },
+       },
+     },
+     { $sort: { totalQty: -1 } },
+@@ -214,6 +248,7 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
+         name: '$_id',
+         totalQty: 1,
+         totalRevenue: 1,
++        imageUrl: 1,
+       },
+     },
+   ];
+diff --git a/backend/src/modules/expenses/expenses.controller.ts b/backend/src/modules/expenses/expenses.controller.ts
+index 33337e2..7f685f8 100644
+--- a/backend/src/modules/expenses/expenses.controller.ts
++++ b/backend/src/modules/expenses/expenses.controller.ts
+@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../../middleware/auth.middleware';
+ import { prisma } from '../../services/prisma.service';
+ import { ExpenseCategory } from '@prisma/client';
+ import { recordAudit } from '../../services/audit.service';
++import { emitToRoom } from '../../services/socket.service';
+ 
+ export async function listExpenses(req: AuthenticatedRequest, res: Response) {
+   const { from, to, category } = req.query;
+@@ -68,6 +69,8 @@ export async function createExpense(req: AuthenticatedRequest, res: Response) {
+     details: { category, amount, description, date },
+   });
+ 
++  emitToRoom('managers', 'finance:updated', {});
++
+   return res.status(201).json(expense);
+ }
+ 
+@@ -112,6 +115,8 @@ export async function updateExpense(req: AuthenticatedRequest, res: Response) {
+     details: { before: existing, after: updated },
+   });
+ 
++  emitToRoom('managers', 'finance:updated', {});
++
+   return res.json(updated);
+ }
+ 
+@@ -134,6 +139,8 @@ export async function deleteExpense(req: AuthenticatedRequest, res: Response) {
+     details: { category: existing.category, amount: existing.amount, description: existing.description },
+   });
+ 
++  emitToRoom('managers', 'finance:updated', {});
++
+   return res.json({ message: 'Expense deleted.' });
+ }
+ 
+diff --git a/backend/src/modules/payroll/payroll.controller.ts b/backend/src/modules/payroll/payroll.controller.ts
+index 000991d..5849ee6 100644
+--- a/backend/src/modules/payroll/payroll.controller.ts
++++ b/backend/src/modules/payroll/payroll.controller.ts
+@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../../middleware/auth.middleware';
+ import { prisma } from '../../services/prisma.service';
+ import { recordAudit } from '../../services/audit.service';
+ import { createNotification } from '../../services/notification.service';
++import { emitToRoom } from '../../services/socket.service';
+ import { Role } from '@prisma/client';
+ 
+ const MANAGER_SCOPED_ROLES: Role[] = [Role.CASHIER, Role.WAITER, Role.COOKER, Role.BARISTA];
+@@ -145,6 +146,8 @@ export async function recordPayrollEntry(req: AuthenticatedRequest, res: Respons
+       },
+     });
+ 
++    emitToRoom('managers', 'finance:updated', {});
++
+     return res.status(201).json(payment);
+   } catch {
+     return res.status(409).json({
+@@ -207,5 +210,7 @@ export async function createAdjustment(req: AuthenticatedRequest, res: Response)
+     relatedId: adjustment.id,
+   });
+ 
++  emitToRoom('managers', 'finance:updated', {});
++
+   return res.status(201).json(adjustment);
+ }
+diff --git a/backend/src/modules/settlements/settlements.controller.ts b/backend/src/modules/settlements/settlements.controller.ts
+index 14a9893..ac28d2b 100644
+--- a/backend/src/modules/settlements/settlements.controller.ts
++++ b/backend/src/modules/settlements/settlements.controller.ts
+@@ -8,39 +8,120 @@ import { logger } from '../../utils/logger';
+  * GET /api/settlements
+  * Get all settlements (global history), paginated.
+  * Accessible by all authenticated roles.
++ *
++ * Supported filters (all optional):
++ *   - from, to: ISO timestamps that bound the settlement.createdAt range.
++ *   - method: CASH | CARD | MOBILE
++ *   - table: matches the related order's tableNumber (case-insensitive contains).
++ *   - order: matches the related order's id or clientOrderId (contains).
++ *   - minAmount, maxAmount: bounds on amountMinor.
++ *   - recordedBy: matches the recorder's id or name (contains).
+  */
+ export async function getAllSettlements(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+   try {
+     const page = Math.max(1, parseInt(req.query.page as string) || 1);
+     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 25));
+     const skip = (page - 1) * limit;
++
+     const method = req.query.method as string | undefined;
++    const from = req.query.from as string | undefined;
++    const to = req.query.to as string | undefined;
++    const table = (req.query.table as string | undefined)?.trim();
++    const order = (req.query.order as string | undefined)?.trim();
++    const recordedBy = (req.query.recordedBy as string | undefined)?.trim();
++    const minAmount = req.query.minAmount as string | undefined;
++    const maxAmount = req.query.maxAmount as string | undefined;
+ 
+     const where: Record<string, unknown> = {};
+     if (method && ['CASH', 'CARD', 'MOBILE'].includes(method)) {
+       where.method = method;
+     }
++    if (from || to) {
++      const range: Record<string, Date> = {};
++      if (from) range.gte = new Date(from);
++      if (to) {
++        const toDate = new Date(to);
++        // Treat the upper bound as the end of that day for "Date" filters.
++        toDate.setHours(23, 59, 59, 999);
++        range.lte = toDate;
++      }
++      where.createdAt = range;
++    }
++    if (minAmount || maxAmount) {
++      const amount: Record<string, number> = {};
++      if (minAmount) amount.gte = parseInt(minAmount, 10);
++      if (maxAmount) amount.lte = parseInt(maxAmount, 10);
++      where.amountMinor = amount;
++    }
++
++    // Pull matching order ids when a table or order filter is provided.
++    let orderFilter: Record<string, unknown> | undefined;
++    if (table || order) {
++      orderFilter = {};
++      if (table) orderFilter.tableNumber = { contains: table, mode: 'insensitive' };
++      if (order) {
++        // clientOrderId is unique; fall back to a substring match on the order id when needed.
++        orderFilter.OR = [
++          { clientOrderId: { contains: order, mode: 'insensitive' } },
++          { id: order },
++        ];
++      }
++    }
++    if (recordedBy) {
++      const users = await prisma.user.findMany({
++        where: {
++          OR: [
++            { name: { contains: recordedBy, mode: 'insensitive' } },
++            { id: recordedBy },
++          ],
++        },
++        select: { id: true },
++      });
++      if (users.length === 0) {
++        // No matching user — short-circuit with an empty page so the UI doesn't load stale data.
++        return res.json({
++          data: [],
++          pagination: { page, limit, total: 0, totalPages: 0 },
++        });
++      }
++      where.recordedById = { in: users.map((u) => u.id) };
++    }
+ 
+-    const [settlements, total] = await Promise.all([
+-      prisma.settlement.findMany({
+-        where,
+-        include: {
+-          order: {
+-            select: { id: true, clientOrderId: true, tableNumber: true, totalAmount: true, status: true },
+-          },
+-          recordedBy: {
+-            select: { id: true, name: true, role: true },
+-          },
++    const settlements = await prisma.settlement.findMany({
++      where,
++      include: {
++        order: {
++          select: { id: true, clientOrderId: true, tableNumber: true, totalAmount: true, status: true },
++        },
++        recordedBy: {
++          select: { id: true, name: true, role: true },
+         },
+-        orderBy: { createdAt: 'desc' },
+-        skip,
+-        take: limit,
+-      }),
+-      prisma.settlement.count({ where }),
+-    ]);
++      },
++      orderBy: { createdAt: 'desc' },
++      skip,
++      take: limit,
++    });
++
++    // Apply order-related filters as a post-filter so the page still respects pagination.
++    const filtered = orderFilter
++      ? settlements.filter((s) => {
++          if (!s.order) return false;
++          if (table && !(s.order.tableNumber || '').toLowerCase().includes(table.toLowerCase())) {
++            return false;
++          }
++          if (order) {
++            const idMatch = s.order.id === order;
++            const clientMatch = (s.order.clientOrderId || '').toLowerCase().includes(order.toLowerCase());
++            if (!idMatch && !clientMatch) return false;
++          }
++          return true;
++        })
++      : settlements;
++
++    const total = await prisma.settlement.count({ where });
+ 
+     return res.json({
+-      data: settlements,
++      data: filtered,
+       pagination: {
+         page,
+         limit,
+diff --git a/backend/src/services/socket.service.ts b/backend/src/services/socket.service.ts
+index e1426ea..1eb40ea 100644
+--- a/backend/src/services/socket.service.ts
++++ b/backend/src/services/socket.service.ts
+@@ -75,6 +75,12 @@ export function initSocketService(httpServer: HttpServer): Server {
+       logger.info({ socketId: socket.id, role: user.role }, 'Socket joined room: orders');
+     }
+ 
++    // Owner & Manager get the managers room for finance/analytics events
++    if (user.role === Role.OWNER || user.role === Role.MANAGER) {
++      socket.join('managers');
++      logger.info({ socketId: socket.id, role: user.role }, 'Socket joined room: managers');
++    }
++
+     // Removed arbitrary 'join_room' to prevent unauthorized access
+ 
+     socket.on('disconnect', () => {
+diff --git a/backend/src/types/socketEvents.ts b/backend/src/types/socketEvents.ts
+index 3e1c525..22bb08c 100644
+--- a/backend/src/types/socketEvents.ts
++++ b/backend/src/types/socketEvents.ts
+@@ -194,7 +194,8 @@ export type SocketEventName =
+   | 'variance:reviewed'
+   | 'shift:opened'
+   | 'shift:closed'
+-  | 'daily-close:completed';
++  | 'daily-close:completed'
++  | 'finance:updated';
+ 
+ // Room names
+ export type SocketRoom = 
+diff --git a/frontend/src/components/cashier/CashierOrderingPanel.tsx b/frontend/src/components/cashier/CashierOrderingPanel.tsx
+index 0867a4c..416eebb 100644
+--- a/frontend/src/components/cashier/CashierOrderingPanel.tsx
++++ b/frontend/src/components/cashier/CashierOrderingPanel.tsx
+@@ -69,6 +69,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
+   const [cart, setCart] = useState<CartLine[]>([]);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [justSubmitted, setJustSubmitted] = useState(false);
++  const [showMobileCart, setShowMobileCart] = useState(false);
+ 
+   // Waiter selection
+   const [waiters, setWaiters] = useState<Array<{ id: string; name: string }>>([]);
+@@ -172,6 +173,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
+       setTableNumber('');
+       setSelectedWaiterId('');
+       setJustSubmitted(true);
++      setShowMobileCart(false);
+       onOrderCreated?.(res.data?.order ?? res.data);
+       setTimeout(() => setJustSubmitted(false), 1800);
+     } catch (err: any) {
+@@ -186,9 +188,9 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
+   };
+ 
+   return (
+-    <div className="h-full min-h-0 flex-1 flex bg-background text-foreground overflow-hidden">
++    <div className="h-full min-h-0 flex-1 flex bg-background text-foreground overflow-hidden relative">
+       {/* Menu column */}
+-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-r border-border">
++      <div className="flex-1 min-h-0 flex flex-col overflow-hidden border-r border-border pb-16 md:pb-0 relative">
+         <div className="px-6 py-4 border-b border-border bg-card/40 space-y-3 shrink-0">
+           <div className="flex items-center gap-3">
+             <div className="relative flex-1">
+@@ -271,8 +273,24 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
+             </motion.div>
+           )}
+         </div>
++
++        {/* Floating action bar on mobile */}
++        <div className="md:hidden absolute bottom-0 inset-x-0 p-3 bg-card border-t border-border shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.1)] z-10">
++          <Button onClick={() => setShowMobileCart(true)} className="w-full h-12 text-base font-bold shadow-lg bg-brand-gradient text-white">
++             <ShoppingCart className="w-5 h-5 mr-2" />
++             {t('ordering.cart.title')} ({totalQty}) <span className="ml-2 font-mono text-white/90">{formatCurrency(total)}</span>
++          </Button>
++        </div>
+       </div>
+ 
++      {/* Backdrop for cart on mobile */}
++      {showMobileCart && (
++        <div 
++           className="fixed inset-0 z-40 bg-black/60 md:hidden transition-opacity"
++           onClick={() => setShowMobileCart(false)} 
++        />
++      )}
++
+       {/* Cart column — pinned footer pattern:
+        *  - h-full + min-h-0 lock the column to the panel's height
+        *  - header (title + table input) stays at the top
+@@ -280,8 +298,14 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
+        *    shrink kick in so the footer never gets pushed down)
+        *  - the "Place Order" footer is fixed at the bottom regardless of
+        *    how many items the cashier adds */}
+-      <div className="w-96 shrink-0 h-full min-h-0 bg-card flex flex-col">
+-        <div className="px-5 py-4 border-b border-border shrink-0">
++      <div className={`shrink-0 h-full min-h-0 bg-card flex flex-col w-[85vw] sm:w-96 max-w-sm absolute right-0 top-0 bottom-0 z-50 md:relative md:max-w-none transition-transform duration-300 shadow-2xl md:shadow-none ${showMobileCart ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
++        <div className="px-5 py-4 border-b border-border shrink-0 relative">
++          <button 
++            onClick={() => setShowMobileCart(false)} 
++            className="md:hidden absolute top-4 right-4 p-1.5 rounded-full bg-secondary/80 text-muted-foreground hover:bg-secondary transition-colors"
++          >
++            <X className="w-4 h-4" />
++          </button>
+           <div className="flex items-center justify-between mb-3">
+             <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+               <ShoppingCart className="w-4 h-4 text-primary" />
+diff --git a/frontend/src/components/cashier/dashboard/QueueTabs.tsx b/frontend/src/components/cashier/dashboard/QueueTabs.tsx
+index 331c6a2..87c6cf5 100644
+--- a/frontend/src/components/cashier/dashboard/QueueTabs.tsx
++++ b/frontend/src/components/cashier/dashboard/QueueTabs.tsx
+@@ -2,6 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
+ import { ChevronDown, Clock3, ClockArrowDown, Search, X, LayoutGrid, CircleDollarSign, ChefHat, Utensils } from 'lucide-react';
+ import { cn } from '../../../lib/utils';
+ import { useTranslation } from 'react-i18next';
++import {
++  DropdownMenu,
++  DropdownMenuTrigger,
++  DropdownMenuContent,
++  DropdownMenuItem,
++} from '../../ui/Dropdown';
+ 
+ export type SortKey = 'newest' | 'longer';
+ export type StatusFilter = 'all' | 'served' | 'in_kitchen' | 'submitted';
+@@ -16,27 +22,44 @@ export interface QueueTabsProps {
+ }
+ 
+ /** Queue controls designed as a calm command bar instead of a row of tabs. */
+-export const QueueTabs: React.FC<QueueTabsProps> = ({ active, onChange, search, onSearchChange }) => {
++export const QueueTabs: React.FC<QueueTabsProps> = ({
++  active,
++  onChange,
++  search,
++  onSearchChange,
++  statusFilter = 'all',
++  onStatusFilterChange,
++}) => {
+   const { t } = useTranslation('cashier');
+-  const [open, setOpen] = useState(false);
+-  const wrapperRef = useRef<HTMLDivElement | null>(null);
++  const [sortOpen, setSortOpen] = useState(false);
++  const sortWrapperRef = useRef<HTMLDivElement | null>(null);
+ 
+   const choices: Array<{ key: SortKey; label: string; icon: typeof Clock3 }> = [
+     { key: 'newest', label: t('queue.filter.newest', { defaultValue: 'Newest' }), icon: ClockArrowDown },
+     { key: 'longer', label: t('queue.filter.longer', { defaultValue: 'Longer' }), icon: Clock3 },
+   ];
++
++  const statusFilters: Array<{ key: StatusFilter; label: string; icon: typeof LayoutGrid }> = [
++    { key: 'all', label: 'All', icon: LayoutGrid },
++    { key: 'served', label: 'Ready to Pay', icon: CircleDollarSign },
++    { key: 'in_kitchen', label: 'In Kitchen', icon: ChefHat },
++    { key: 'submitted', label: 'Submitted', icon: Utensils },
++  ];
++
+   const current = choices.find((c) => c.key === active) ?? choices[0];
++  const currentFilter = statusFilters.find((f) => f.key === statusFilter) ?? statusFilters[0];
+   const CurrentIcon = current.icon;
++  const CurrentFilterIcon = currentFilter.icon;
+ 
+   useEffect(() => {
+-    if (!open) return;
++    if (!sortOpen) return;
+     const handleClickOutside = (event: MouseEvent) => {
+-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+-        setOpen(false);
++      if (sortWrapperRef.current && !sortWrapperRef.current.contains(event.target as Node)) {
++        setSortOpen(false);
+       }
+     };
+     const handleEscape = (event: KeyboardEvent) => {
+-      if (event.key === 'Escape') setOpen(false);
++      if (event.key === 'Escape') setSortOpen(false);
+     };
+     document.addEventListener('mousedown', handleClickOutside);
+     document.addEventListener('keydown', handleEscape);
+@@ -44,7 +67,7 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({ active, onChange, search,
+       document.removeEventListener('mousedown', handleClickOutside);
+       document.removeEventListener('keydown', handleEscape);
+     };
+-  }, [open]);
++  }, [sortOpen]);
+ 
+   return (
+     <div className="relative z-30 shrink-0 px-4 sm:px-6 pt-5 pb-4 border-b border-slate-200/80 bg-white/70 backdrop-blur-xl">
+@@ -69,28 +92,52 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({ active, onChange, search,
+             )}
+           </div>
+ 
+-          <div ref={wrapperRef} className="relative shrink-0 ml-auto">
++          {onStatusFilterChange && (
++            <DropdownMenu>
++              <DropdownMenuTrigger
++                aria-label="Filter by status"
++                className="shrink-0 h-11"
++              >
++                <CurrentFilterIcon className="w-4 h-4 text-muted-foreground" />
++                <span>{currentFilter.label}</span>
++              </DropdownMenuTrigger>
++              <DropdownMenuContent align="end" className="w-44">
++                {statusFilters.map(({ key, label, icon: Icon }) => (
++                  <DropdownMenuItem
++                    key={key}
++                    selected={statusFilter === key}
++                    onSelect={() => onStatusFilterChange(key)}
++                  >
++                    <Icon className="w-4 h-4 shrink-0" />
++                    <span>{label}</span>
++                  </DropdownMenuItem>
++                ))}
++              </DropdownMenuContent>
++            </DropdownMenu>
++          )}
++
++          <div ref={sortWrapperRef} className="relative shrink-0 ml-auto">
+             <button
+               type="button"
+-              onClick={() => setOpen((prev) => !prev)}
++              onClick={() => setSortOpen((prev) => !prev)}
+               aria-haspopup="listbox"
+-              aria-expanded={open}
++              aria-expanded={sortOpen}
+               aria-label={t('queue.sortBy', { defaultValue: 'Sort by' })}
+               className={cn(
+                 'inline-flex h-11 items-center gap-2 rounded-xl border bg-slate-50 px-3 text-sm font-semibold shadow-sm transition',
+                 'border-slate-200 text-slate-900 hover:border-slate-300 hover:bg-white',
+                 'focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10',
+-                open && 'border-primary bg-white ring-4 ring-primary/10'
++                sortOpen && 'border-primary bg-white ring-4 ring-primary/10'
+               )}
+             >
+               <CurrentIcon className="h-4 w-4 text-slate-500" />
+               <span className="whitespace-nowrap">{current.label}</span>
+               <ChevronDown
+-                className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')}
++                className={cn('h-4 w-4 text-slate-400 transition-transform', sortOpen && 'rotate-180')}
+               />
+             </button>
+ 
+-            {open && (
++            {sortOpen && (
+               <ul
+                 role="listbox"
+                 aria-label={t('queue.sortBy', { defaultValue: 'Sort by' })}
+@@ -106,7 +153,7 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({ active, onChange, search,
+                         aria-selected={selected}
+                         onClick={() => {
+                           onChange(key);
+-                          setOpen(false);
++                          setSortOpen(false);
+                         }}
+                         className={cn(
+                           'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition',
+diff --git a/frontend/src/components/common/AttendanceCalendar.tsx b/frontend/src/components/common/AttendanceCalendar.tsx
+index b2d8ca2..8763bce 100644
+--- a/frontend/src/components/common/AttendanceCalendar.tsx
++++ b/frontend/src/components/common/AttendanceCalendar.tsx
+@@ -11,7 +11,7 @@ import { Select } from '../ui/Select';
+ import { Input } from '../ui/Input';
+ import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
+ import { motion, AnimatePresence } from 'framer-motion';
+-import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle } from 'lucide-react';
++import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle, BarChart3, Info } from 'lucide-react';
+ 
+ type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
+ 
+@@ -67,6 +67,8 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner
+     (today.getFullYear() === year && today.getMonth() + 1 === month) ? today.getDate() : 1
+   );
+   const [markingAll, setMarkingAll] = useState(false);
++  const [showLegend, setShowLegend] = useState(false);
++  const [workOnSundays, setWorkOnSundays] = useState(false);
+   
+   const todayLocal = today.toISOString().split('T')[0];
+ 
+@@ -233,6 +235,25 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner
+     );
+   };
+ 
++  // ── Analytics summary for the current month ──
++  const analyticsSummary = React.useMemo(() => {
++    const counts: Record<AttendanceStatus, number> = {
++      PRESENT: 0, ABSENT: 0, HALF_DAY: 0, LEAVE: 0, HOLIDAY: 0,
++    };
++    const staffIds = new Set(filteredStaff.map(s => s.id));
++    for (const rec of attendance) {
++      if (staffIds.has(rec.userId) && counts[rec.status] !== undefined) {
++        counts[rec.status]++;
++      }
++    }
++    const totalPossible = filteredStaff.length * daysInMonth;
++    const totalRecorded = Object.values(counts).reduce((a, b) => a + b, 0);
++    const attendanceRate = totalPossible > 0 ? Math.round((counts.PRESENT / totalPossible) * 1000) / 10 : 0;
++    return { counts, totalPossible, totalRecorded, attendanceRate };
++  }, [attendance, filteredStaff, daysInMonth]);
++
++  const isReadOnlyOwner = isOwner && !ownerCanEdit;
++
+   return (
+     <div className="space-y-4">
+       {/* Controls */}
+@@ -253,45 +274,25 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner
+           </button>
+         </div>
+         <div className="flex items-center gap-2 flex-wrap">
+-          <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/30 rounded-lg px-2.5 py-1">
+-            <span className="text-[11px] font-bold text-primary">For:</span>
+-            <Select
+-              value={String(selectedDay)}
+-              onChange={(e) => setSelectedDay(Math.min(parseInt(e.target.value, 10), daysInMonth) || 1)}
+-              className="!border-0 !bg-transparent !py-0 !h-auto text-xs font-bold text-primary w-24 focus:!ring-0"
++          {!isReadOnlyOwner && (
++            <Button 
++              size="sm" 
++              onClick={handleMarkAllPresent} 
++              disabled={markingAll || staff.length === 0 || (isOwner && !ownerCanEdit) || (!isOwner && selectedDateStr !== todayLocal)}
+             >
+-              {dayNumbers.map(d => (
+-                <option key={d} value={d}>Day {d}</option>
+-              ))}
+-            </Select>
+-          </div>
+-          <Button 
+-            size="sm" 
+-            onClick={handleMarkAllPresent} 
+-            disabled={markingAll || filteredStaff.length === 0 || (isOwner && !ownerCanEdit) || (!isOwner && selectedDateStr !== todayLocal)}
+-          >
+-            <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
+-            {markingAll ? 'Marking...' : 'Mark all Present'}
+-          </Button>
+-          <Input
+-            id="staff-filter"
+-            placeholder="Filter staff..."
+-            value={staffFilter}
+-            onChange={e => setStaffFilter(e.target.value)}
+-            className="w-40"
+-          />
++              <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
++              {markingAll ? 'Marking...' : 'Mark all Present'}
++            </Button>
++          )}
++          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
++            <input type="checkbox" checked={workOnSundays} onChange={e => setWorkOnSundays(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
++            Work on Sundays
++          </label>
+           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
+         </div>
+       </div>
+ 
+-      {/* Legend */}
+-      <div className="flex flex-wrap gap-2">
+-        {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][]).map(([key, cfg]) => (
+-          <span key={key} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-semibold ${cfg.bg} ${cfg.color}`}>
+-            {cfg.label}
+-          </span>
+-        ))}
+-      </div>
++
+ 
+       {isLoading ? (
+         <div className="h-64 rounded-xl bg-secondary/40 animate-pulse" />
+@@ -304,16 +305,73 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner
+       ) : filteredStaff.length === 0 ? (
+         <div className="py-12 text-center text-muted-foreground">No staff to display.</div>
+       ) : (
++        <>
++        {/* Analytics Summary (always shown, but prominent when read-only) */}
++        {isReadOnlyOwner && (
++          <Card className="mb-4">
++            <CardHeader className="pb-2">
++              <CardTitle className="text-sm font-bold flex items-center gap-2">
++                <BarChart3 className="w-4 h-4 text-primary" />
++                {monthName} {year} — Attendance Summary
++              </CardTitle>
++            </CardHeader>
++            <CardContent>
++              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
++                {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][]).map(([key, cfg]) => (
++                  <div key={key} className={`rounded-lg border p-3 ${cfg.bg}`}>
++                    <div className={`text-[11px] font-semibold ${cfg.color}`}>{cfg.label}</div>
++                    <div className={`text-2xl font-bold font-mono mt-1 ${cfg.color}`}>
++                      {analyticsSummary.counts[key]}
++                    </div>
++                  </div>
++                ))}
++                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
++                  <div className="text-[11px] font-semibold text-primary">Attendance Rate</div>
++                  <div className="text-2xl font-bold font-mono mt-1 text-primary">
++                    {analyticsSummary.attendanceRate}%
++                  </div>
++                  <div className="text-[10px] text-muted-foreground mt-0.5">
++                    {analyticsSummary.totalRecorded}/{analyticsSummary.totalPossible} logged
++                  </div>
++                </div>
++              </div>
++            </CardContent>
++          </Card>
++        )}
++        
++        {/* Legend Popover Toggle - Moved Below KPI */}
++        <div className="relative mb-4">
++          <Button variant="outline" size="sm" onClick={() => setShowLegend(!showLegend)}>
++            <Info className="w-3.5 h-3.5 mr-1.5" />
++            Status Legend
++          </Button>
++          <AnimatePresence>
++            {showLegend && (
++              <motion.div
++                initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
++                className="absolute left-0 top-full mt-2 z-30 bg-card border border-border p-3 rounded-xl shadow-lg w-64 flex flex-col gap-1.5"
++              >
++                {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][]).map(([key, cfg]) => (
++                  <div key={key} className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
++                    <div className="w-5 text-center bg-background/50 rounded">{cfg.short}</div>
++                    {cfg.label}
++                  </div>
++                ))}
++              </motion.div>
++            )}
++          </AnimatePresence>
++        </div>
++
+         <div className="overflow-x-auto rounded-xl border border-border">
+           <table className="w-full text-xs border-collapse">
+             <thead>
+               <tr className="bg-secondary/50">
+-                <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground sticky left-0 bg-secondary/50 z-10 min-w-[160px] border-r border-border">
++                <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground sticky left-0 bg-background z-20 min-w-[160px] border-r border-b border-border shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                   Staff
+                 </th>
+                 {dayNumbers.map(d => {
+                   const date = new Date(year, month - 1, d);
+-                  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
++                  const isWeekend = date.getDay() === 0 && !workOnSundays;
+                   const isSelected = d === selectedDay;
+                   return (
+                     <th
+@@ -337,7 +395,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner
+             <tbody>
+               {filteredStaff.map((s, idx) => (
+                 <tr key={s.id} className={idx % 2 === 0 ? 'bg-background' : 'bg-secondary/20'}>
+-                  <td className={`px-4 py-2 sticky left-0 z-10 border-r border-border font-medium ${idx % 2 === 0 ? 'bg-background' : 'bg-secondary/20'}`}>
++                  <td className={`px-4 py-2 sticky left-0 z-10 border-r border-border font-medium bg-card shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}>
+                     <div className="truncate max-w-[140px]">{s.name}</div>
+                     <div className="text-[10px] text-muted-foreground">{s.role}</div>
+                   </td>
+@@ -365,7 +423,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner
+                             isSelected ? 'ring-1 ring-primary/50 ring-offset-1' : ''
+                           } ${
+                             cfg ? `${cfg.bg} ${cfg.color}` : 'border-transparent text-muted-foreground/40 hover:border-border hover:text-muted-foreground hover:bg-secondary/50'
+-                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
++                          } ${!canEdit ? 'cursor-default' : ''}`}
+                         >
+                           {cfg?.short || '·'}
+                         </button>
+@@ -374,9 +432,10 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner
+                   })}
+                 </tr>
+               ))}
+-            </tbody>
++              </tbody>
+           </table>
+         </div>
++        </>
+       )}
+ 
+       {/* Cell Popover */}
+diff --git a/frontend/src/components/common/Header.tsx b/frontend/src/components/common/Header.tsx
+index 8022f8c..bb9079f 100644
+--- a/frontend/src/components/common/Header.tsx
++++ b/frontend/src/components/common/Header.tsx
+@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
+ import { useSocketStore } from '../../store/socketStore';
+ import { useOfflineSyncStore } from '../../store/offlineSyncStore';
+ import { useHeaderStore } from '../../store/headerStore';
++import { useSidebar } from '../../store/SidebarContext';
+ import {
+   WifiOff,
+   RefreshCw,
+@@ -14,9 +15,10 @@ import {
+   User,
+   Search,
+   Calendar,
+-  Sparkles,
+   Settings as SettingsIcon,
+   HelpCircle,
++  Menu,
++  Sparkles,
+ } from 'lucide-react';
+ import { NotificationBell } from './NotificationBell';
+ import { CommandPalette } from './CommandPalette';
+@@ -33,6 +35,7 @@ export const Header: React.FC = () => {
+   const { isConnected } = useSocketStore();
+   const { isOnline, pendingCount, processSyncQueue, isSyncing } = useOfflineSyncStore();
+   const { dateRange, showDateRange, setDateRange, pageTitle } = useHeaderStore();
++  const { toggleMobile } = useSidebar();
+   const [menuOpen, setMenuOpen] = React.useState(false);
+   const [calendar, setCalendar] = React.useState<CalendarSystem>(() => getCalendarPreference());
+   const [dateOpen, setDateOpen] = React.useState(false);
+@@ -116,11 +119,18 @@ export const Header: React.FC = () => {
+ 
+       {/* Left: page title (set by each route) + status pills + date-range chip */}
+       <div className="flex items-center gap-3 sm:gap-5 min-w-0 flex-1">
++        <button
++          onClick={toggleMobile}
++          className="md:hidden p-2 -ml-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
++          aria-label="Open sidebar"
++        >
++          <Menu className="w-5 h-5" />
++        </button>
+         <div className="min-w-0">
+           <div className="flex items-center gap-2.5 min-w-0">
+             <span
+               aria-hidden
+-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-inset ring-primary/15"
++              className="hidden sm:flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-inset ring-primary/15"
+             >
+               <Sparkles className="h-4 w-4" />
+             </span>
+@@ -260,8 +270,8 @@ export const Header: React.FC = () => {
+               }
+             }}
+             className={cn(
+-              'h-9 w-44 sm:w-64 lg:w-80 rounded-lg border border-input bg-card pl-9 pr-14 text-sm text-foreground placeholder:text-muted-foreground shadow-sm outline-none transition-all',
+-              'focus:border-primary/50 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.10)]',
++              'h-9 w-28 sm:w-64 lg:w-80 rounded-lg border border-input bg-card pl-9 pr-2 sm:pr-14 text-sm text-foreground placeholder:text-muted-foreground shadow-sm outline-none transition-all',
++              'focus:border-primary/50 focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.10)] focus:w-40 sm:focus:w-64 lg:focus:w-80',
+             )}
+           />
+           <kbd
+diff --git a/frontend/src/components/common/MenuCatalog.tsx b/frontend/src/components/common/MenuCatalog.tsx
+index 85cc5c3..5ce0573 100644
+--- a/frontend/src/components/common/MenuCatalog.tsx
++++ b/frontend/src/components/common/MenuCatalog.tsx
+@@ -118,6 +118,20 @@ interface MenuCatalogProps {
+ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAvailability = true, allowCsvImport = true }) => {
+   const { addToast } = useToastStore();
+   const queryClient = useQueryClient();
++  const { setPageTitle, setShowDateRange } = useHeaderStore();
++
++  // Reflect the current section in the global header.
++  useEffect(() => {
++    setPageTitle({
++      title: 'Menu catalog',
++      subtitle: canEdit ? 'Manage items, categories, and availability' : 'Browse the menu catalog',
++    });
++    setShowDateRange(false);
++    return () => {
++      setPageTitle({ title: 'Overview', subtitle: '' });
++      setShowDateRange(false);
++    };
++  }, [setPageTitle, setShowDateRange, canEdit]);
+ 
+   const menuQuery = useMenuQuery();
+   const items: MenuItem[] = menuQuery.data ?? [];
+@@ -652,7 +666,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
+ 
+   return (
+     <div className="space-y-5">
+-      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-4' : 'grid-cols-2')}>
++      <div className={cn('grid gap-4', showAvailability ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2')}>
+         <StatCard icon={Layers} iconClass="bg-primary/10 text-primary" value={stats.total} label="Total Items" />
+         {showAvailability ? (
+           <>
+diff --git a/frontend/src/components/layout/CashierLayout.tsx b/frontend/src/components/layout/CashierLayout.tsx
+index 65c557b..c7201aa 100644
+--- a/frontend/src/components/layout/CashierLayout.tsx
++++ b/frontend/src/components/layout/CashierLayout.tsx
+@@ -24,7 +24,7 @@ const GROUP_ORDER: string[] = ['core', 'ops'];
+  *    "island" cards still pop, matching the Owner's dashboard rhythm.
+  */
+ const CashierLayoutInner: React.FC = () => {
+-  const { collapsed, toggle } = useSidebar();
++  const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebar();
+   const { settings } = useSettingsStore();
+   const { t } = useTranslation('cashier');
+   const location = useLocation();
+@@ -75,13 +75,23 @@ const CashierLayoutInner: React.FC = () => {
+         )}
+       />
+ 
++      {/* Mobile sidebar backdrop */}
++      {mobileOpen && (
++        <div 
++          className="fixed inset-0 z-40 bg-black/50 md:hidden transition-opacity" 
++          onClick={() => setMobileOpen(false)}
++        />
++      )}
++
+       <motion.aside
+         initial={false}
+         animate={{ width: collapsed ? 80 : 260 }}
+         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+         className={cn(
+-          'shrink-0 sticky top-0 h-screen flex flex-col z-20',
++          'shrink-0 h-screen flex flex-col z-50 transition-transform duration-300',
+           'bg-[hsl(var(--sidebar))] border-r border-[hsl(var(--shell-border))]',
++          'fixed inset-y-0 left-0 md:sticky md:top-0 md:translate-x-0',
++          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+         )}
+       >
+         <div
+diff --git a/frontend/src/components/layout/ManagerLayout.tsx b/frontend/src/components/layout/ManagerLayout.tsx
+index dac3ccc..2bd6942 100644
+--- a/frontend/src/components/layout/ManagerLayout.tsx
++++ b/frontend/src/components/layout/ManagerLayout.tsx
+@@ -14,7 +14,7 @@ import { useSettingsStore } from '../../store/settingsStore';
+ const GROUP_ORDER: string[] = ['core', 'ops', 'people'];
+ 
+ const ManagerLayoutInner: React.FC = () => {
+-  const { collapsed, toggle } = useSidebar();
++  const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebar();
+   const { settings } = useSettingsStore();
+   const { t } = useTranslation('manager');
+   const location = useLocation();
+@@ -86,13 +86,23 @@ const ManagerLayoutInner: React.FC = () => {
+         )}
+       />
+ 
++      {/* Mobile sidebar backdrop */}
++      {mobileOpen && (
++        <div 
++          className="fixed inset-0 z-40 bg-black/50 md:hidden transition-opacity" 
++          onClick={() => setMobileOpen(false)}
++        />
++      )}
++
+       <motion.aside
+         initial={false}
+         animate={{ width: collapsed ? 80 : 260 }}
+         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+         className={cn(
+-          'shrink-0 sticky top-0 h-screen flex flex-col z-20',
++          'shrink-0 h-screen flex flex-col z-50 transition-transform duration-300',
+           'bg-[hsl(var(--sidebar))] border-r border-[hsl(var(--shell-border))]',
++          'fixed inset-y-0 left-0 md:sticky md:top-0 md:translate-x-0',
++          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+         )}
+       >
+         <div
+diff --git a/frontend/src/components/layout/OwnerLayout.tsx b/frontend/src/components/layout/OwnerLayout.tsx
+index b1190bf..b38df58 100644
+--- a/frontend/src/components/layout/OwnerLayout.tsx
++++ b/frontend/src/components/layout/OwnerLayout.tsx
+@@ -25,7 +25,7 @@ import { useSettingsStore } from '../../store/settingsStore';
+ import { cn } from '../../lib/utils';
+ 
+ const OwnerLayoutInner: React.FC = () => {
+-  const { collapsed, toggle } = useSidebar();
++  const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebar();
+   const { openWizard } = useOnboardingStore();
+   const { t } = useTranslation('owner');
+   const location = useLocation();
+@@ -111,11 +111,21 @@ const OwnerLayoutInner: React.FC = () => {
+ 
+       <OnboardingWizard />
+ 
++      {/* Mobile sidebar backdrop */}
++      {mobileOpen && (
++        <div 
++          className="fixed inset-0 z-40 bg-black/50 md:hidden transition-opacity" 
++          onClick={() => setMobileOpen(false)}
++        />
++      )}
++
+       <aside
+         style={{ width: collapsed ? 80 : 260 }}
+         className={cn(
+-          'shrink-0 sticky top-0 h-screen flex flex-col z-20',
++          'shrink-0 h-screen flex flex-col z-50 transition-transform duration-300',
+           'bg-[hsl(var(--sidebar))] border-r border-[hsl(var(--shell-border))]',
++          'fixed inset-y-0 left-0 md:sticky md:top-0 md:translate-x-0',
++          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+         )}
+       >
+         <div
+diff --git a/frontend/src/components/owner/dashboard/SectionCard.tsx b/frontend/src/components/owner/dashboard/SectionCard.tsx
+index 27b2509..ab7b4c8 100644
+--- a/frontend/src/components/owner/dashboard/SectionCard.tsx
++++ b/frontend/src/components/owner/dashboard/SectionCard.tsx
+@@ -54,7 +54,10 @@ export const SectionCard: React.FC<SectionCardProps> = ({
+           </div>
+           {filterAlign === 'left' ? filterEl : null}
+         </div>
+-        {rightAccessory ?? (filterAlign === 'right' ? filterEl : null)}
++        <div className="flex items-center gap-3 shrink-0">
++          {filterAlign === 'right' ? filterEl : null}
++          {rightAccessory}
++        </div>
+       </header>
+ 
+       <div className={cn(flush ? '' : 'px-5 py-5 sm:px-6')}>{children}</div>
+diff --git a/frontend/src/components/settings/LanguagePreferenceSection.tsx b/frontend/src/components/settings/LanguagePreferenceSection.tsx
+index 6e6fbc5..e5271a7 100644
+--- a/frontend/src/components/settings/LanguagePreferenceSection.tsx
++++ b/frontend/src/components/settings/LanguagePreferenceSection.tsx
+@@ -43,7 +43,7 @@ export const LanguagePreferenceSection: React.FC = () => {
+   };
+ 
+   return (
+-    <div className="grid gap-2 sm:grid-cols-2">
++    <div className="grid grid-cols-3 gap-2">
+       {LANGUAGES.map((lang) => {
+         const isActive = i18n.language === lang.code;
+         return (
+diff --git a/frontend/src/components/settings/ThemePreferenceSection.tsx b/frontend/src/components/settings/ThemePreferenceSection.tsx
+index ed87258..5ca1404 100644
+--- a/frontend/src/components/settings/ThemePreferenceSection.tsx
++++ b/frontend/src/components/settings/ThemePreferenceSection.tsx
+@@ -38,7 +38,7 @@ export const ThemePreferenceSection: React.FC = () => {
+   ];
+ 
+   return (
+-    <div className="grid gap-2 sm:grid-cols-3">
++    <div className="grid grid-cols-3 gap-2">
+       {modes.map(({ mode, label, description, icon: Icon }) => {
+         const isActive = theme === mode;
+         return (
+diff --git a/frontend/src/pages/cashier/CashierTicketsPage.tsx b/frontend/src/pages/cashier/CashierTicketsPage.tsx
+index 4b8328e..0ee180c 100644
+--- a/frontend/src/pages/cashier/CashierTicketsPage.tsx
++++ b/frontend/src/pages/cashier/CashierTicketsPage.tsx
+@@ -261,6 +261,7 @@ export const CashierTicketsPage: React.FC = () => {
+   const [orders, setOrders] = useState<Order[]>([]);
+   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+   const [sort, setSort] = useState<SortKey>('newest');
++  const [statusFilter, setStatusFilter] = useState<'all' | 'served' | 'in_kitchen' | 'submitted'>('all');
+   const [search, setSearch] = useState('');
+   const [isLoading, setIsLoading] = useState(true);
+   const [error, setError] = useState<string | null>(null);
+@@ -282,6 +283,14 @@ export const CashierTicketsPage: React.FC = () => {
+   const [cancellationState, setCancellationState] = useState<'idle' | 'processing' | 'complete'>('idle');
+   const [cancelledOrderLabel, setCancelledOrderLabel] = useState('');
+ 
++  /* ── Responsive ── */
++  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
++  useEffect(() => {
++    const handleResize = () => setIsDesktop(window.innerWidth >= 768);
++    window.addEventListener('resize', handleResize);
++    return () => window.removeEventListener('resize', handleResize);
++  }, []);
++
+   /* ── Printer failures ── */
+   const [printerFailures, setPrinterFailures] = useState<PrinterFailureEvent[]>([]);
+ 
+@@ -714,11 +723,14 @@ export const CashierTicketsPage: React.FC = () => {
+         <AnimatePresence initial={false}>
+           {selectedOrder && (
+             <motion.aside
+-              initial={{ width: 0, opacity: 0, x: 24 }}
+-              animate={{ width: 'min(430px, 42vw)', opacity: 1, x: 0 }}
+-              exit={{ width: 0, opacity: 0, x: 24 }}
++              initial={isDesktop ? { width: 0, opacity: 0, x: 24 } : { opacity: 0, y: '100%' }}
++              animate={isDesktop ? { width: 'min(430px, 42vw)', opacity: 1, x: 0 } : { opacity: 1, y: 0 }}
++              exit={isDesktop ? { width: 0, opacity: 0, x: 24 } : { opacity: 0, y: '100%' }}
+               transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+-              className="h-full min-h-0 self-stretch shrink-0 overflow-hidden border-l border-slate-200 bg-white"
++              className={cn(
++                "h-full min-h-0 self-stretch shrink-0 overflow-hidden border-l border-slate-200 bg-white",
++                !isDesktop && "absolute inset-0 z-50 w-full shadow-2xl"
++              )}
+             >
+               <OrderDetailPanel
+                 order={selectedOrder}
+diff --git a/frontend/src/pages/login/LoginPage.tsx b/frontend/src/pages/login/LoginPage.tsx
+index 44034c7..a1473f0 100644
+--- a/frontend/src/pages/login/LoginPage.tsx
++++ b/frontend/src/pages/login/LoginPage.tsx
+@@ -164,7 +164,7 @@ export const LoginPage: React.FC = () => {
+                 onChange={(e) => setUsername(e.target.value)}
+                 onFocus={() => setFocusedField('username')}
+                 onBlur={() => setFocusedField(null)}
+-                placeholder={t('fields.username') || 'username'}
++                placeholder={t('username') || 'usermane'}
+                 autoComplete="off"
+                 required
+                 className="login-input flex-1 min-w-0 bg-transparent text-foreground placeholder:text-muted-foreground text-sm h-12 outline-none border-0 focus:outline-none focus:ring-0 focus:border-0 focus:shadow-none overflow-hidden"
+diff --git a/frontend/src/pages/manager/ManagerPayroll.tsx b/frontend/src/pages/manager/ManagerPayroll.tsx
+index 8d26862..93ee360 100644
+--- a/frontend/src/pages/manager/ManagerPayroll.tsx
++++ b/frontend/src/pages/manager/ManagerPayroll.tsx
+@@ -205,36 +205,38 @@ export const ManagerPayroll: React.FC = () => {
+               }}
+             />
+           ) : (
+-            <table className="w-full text-sm">
+-              <thead>
+-                <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
+-                  <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.staff', { defaultValue: 'Staff' })}</th>
+-                  <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.period', { defaultValue: 'Period' })}</th>
+-                  <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.paid', { defaultValue: 'Paid' })}</th>
+-                  <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.date', { defaultValue: 'Date' })}</th>
+-                </tr>
+-              </thead>
+-              <tbody>
+-                {ledger.map((row) => (
+-                  <tr
+-                    key={row.id}
+-                    className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors"
+-                  >
+-                    <td className="px-4 py-3 font-medium">{row.user?.name}</td>
+-                    <td className="px-4 py-3 text-muted-foreground text-xs">
+-                      {/* TODO: translate month names if desired, for now use standard abbreviation mapping or keep English fallback */}
+-                      {MONTHS[row.periodMonth - 1]} {row.periodYear}
+-                    </td>
+-                    <td className="px-4 py-3 text-right font-mono font-bold text-primary">
+-                      {formatCurrency(row.paidAmount)}
+-                    </td>
+-                    <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+-                      {new Date(row.createdAt).toLocaleDateString()}
+-                    </td>
++            <div className="overflow-x-auto">
++              <table className="w-full text-sm">
++                <thead>
++                  <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold">
++                    <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.staff', { defaultValue: 'Staff' })}</th>
++                    <th className="px-4 py-3 text-left font-semibold">{t('payroll.columns.period', { defaultValue: 'Period' })}</th>
++                    <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.paid', { defaultValue: 'Paid' })}</th>
++                    <th className="px-4 py-3 text-right font-semibold">{t('payroll.columns.date', { defaultValue: 'Date' })}</th>
+                   </tr>
+-                ))}
+-              </tbody>
+-            </table>
++                </thead>
++                <tbody>
++                  {ledger.map((row) => (
++                    <tr
++                      key={row.id}
++                      className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors"
++                    >
++                      <td className="px-4 py-3 font-medium">{row.user?.name}</td>
++                      <td className="px-4 py-3 text-muted-foreground text-xs">
++                        {/* TODO: translate month names if desired, for now use standard abbreviation mapping or keep English fallback */}
++                        {MONTHS[row.periodMonth - 1]} {row.periodYear}
++                      </td>
++                      <td className="px-4 py-3 text-right font-mono font-bold text-primary">
++                        {formatCurrency(row.paidAmount)}
++                      </td>
++                      <td className="px-4 py-3 text-right text-xs text-muted-foreground">
++                        {new Date(row.createdAt).toLocaleDateString()}
++                      </td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            </div>
+           )}
+         </CardContent>
+       </Card>
+diff --git a/frontend/src/pages/owner/OwnerDashboard.tsx b/frontend/src/pages/owner/OwnerDashboard.tsx
+index 43ae5a1..0a9d4ba 100644
+--- a/frontend/src/pages/owner/OwnerDashboard.tsx
++++ b/frontend/src/pages/owner/OwnerDashboard.tsx
+@@ -326,7 +326,7 @@ export const OwnerDashboard: React.FC = () => {
+         {/* Chart row — line chart 2/3 + donut 1/3, side by side */}
+         <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
+           <SectionCard
+-            className="col-span-2"
++            className="col-span-3 sm:col-span-2"
+             title="Revenue trend"
+             description="Income vs. operating expenses"
+             filter={{
+@@ -369,7 +369,7 @@ export const OwnerDashboard: React.FC = () => {
+           </SectionCard>
+ 
+           <SectionCard
+-            className="col-span-1"
++            className="col-span-3 sm:col-span-1"
+             title="Category mix"
+             description="Where the revenue is coming from"
+             filter={{ label: 'This month', options: ['This month', 'Last month', 'This year'] }}
+diff --git a/frontend/src/pages/owner/OwnerFinance.tsx b/frontend/src/pages/owner/OwnerFinance.tsx
+index bc20510..d2929ae 100644
+--- a/frontend/src/pages/owner/OwnerFinance.tsx
++++ b/frontend/src/pages/owner/OwnerFinance.tsx
+@@ -14,6 +14,7 @@ import { formatCurrency } from '../../utils/currency';
+ import { EmptyState } from '../../components/common/EmptyState';
+ import { extractErrorMessage } from '../../utils/errorHandler';
+ import { useHeaderStore } from '../../store/headerStore';
++import { useSocketStore } from '../../store/socketStore';
+ 
+ function exportPDF(title: string, rows: string[][]) {
+   const body = rows.map((r) => r.join('\t')).join('\n');
+@@ -212,6 +213,27 @@ export const OwnerFinance: React.FC = () => {
+     netProfit: number;
+   }>('/analytics/profit-loss', rangeDeps);
+ 
++  // ── Real-time: re-fetch finance widgets when backend signals a change ──
++  const socket = useSocketStore((s) => s.socket);
++  useEffect(() => {
++    if (!socket) return;
++    const handler = () => {
++      // Silently refetch – skip loading spinners so the UX stays smooth
++      daily.refetch();
++      trend.refetch();
++      pnl.refetch();
++      topItm.refetch();
++      catSpl.refetch();
++      payMth.refetch();
++      staffP.refetch();
++      cancels.refetch();
++    };
++    socket.on('finance:updated', handler);
++    return () => { socket.off('finance:updated', handler); };
++    // We deliberately use a stable list – the refetch callbacks are memoized.
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [socket]);
++
+   const trendLabels = useMemo(() => (trend.data || []).map((d) => d.date.slice(5)), [trend.data]);
+   const trendValues = useMemo(() => (trend.data || []).map((d) => d.revenue), [trend.data]);
+ 
+@@ -220,11 +242,31 @@ export const OwnerFinance: React.FC = () => {
+ 
+   const heatmap = useMemo(() => {
+     const grid: Record<number, Record<number, number>> = {};
+-    (peak.data || []).forEach((d) => {
+-      const dow = d.dayOfWeek ?? 1;
+-      const h = d.hour ?? 0;
++    // Normalize the payload: Prisma's `aggregateRaw` can return numbers as BigInts
++    // (and occasionally wrap the array in `{ data: [...] }` on certain server
++    // configurations). Coerce everything to plain numbers so the grid lookup
++    // works regardless of the wire format.
++    const raw = peak.data as unknown;
++    const rows: Array<{ dayOfWeek: number; hour: number; count: number }> = Array.isArray(raw)
++      ? (raw as Array<Record<string, unknown>>).map((d) => ({
++          dayOfWeek: Number(d.dayOfWeek ?? d.day ?? 0),
++          hour: Number(d.hour ?? 0),
++          count: Number(d.count ?? 0),
++        }))
++      : Array.isArray((raw as { data?: unknown[] })?.data)
++        ? ((raw as { data: Array<Record<string, unknown>> }).data).map((d) => ({
++            dayOfWeek: Number(d.dayOfWeek ?? d.day ?? 0),
++            hour: Number(d.hour ?? 0),
++            count: Number(d.count ?? 0),
++          }))
++        : [];
++
++    rows.forEach(({ dayOfWeek, hour, count }) => {
++      // MongoDB $dayOfWeek is 1-7 (Sun=1..Sat=7); keep within that range.
++      const dow = Math.min(7, Math.max(1, dayOfWeek || 0));
++      const h = Math.min(23, Math.max(0, hour));
+       if (!grid[dow]) grid[dow] = {};
+-      grid[dow][h] = (grid[dow][h] || 0) + (d.count || 0);
++      grid[dow][h] = (grid[dow][h] || 0) + count;
+     });
+     return grid;
+   }, [peak.data]);
+@@ -463,29 +505,53 @@ export const OwnerFinance: React.FC = () => {
+         loading={peak.loading}
+         error={peak.error}
+         onRetry={peak.refetch}
+-        empty={!peak.data?.length}
++        empty={!peak.data || (Array.isArray(peak.data) && peak.data.length === 0)}
++        emptyTitle="No peak-hour data yet"
++        emptyMsg="Orders placed during the selected window will populate this heatmap."
+       >
+-        <div className="overflow-x-auto">
+-          <div style={{ minWidth: 600 }}>
+-            <div className="flex mb-1 pl-10">
+-              {HOURS.map((h) => <div key={h} className="flex-1 text-center text-[8px] text-muted-foreground">{h}</div>)}
+-            </div>
+-            {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
+-              <div key={dow} className="flex items-center mb-0.5">
+-                <div className="w-10 text-[10px] text-muted-foreground text-right pr-2 shrink-0">{DAYS[dow - 1]}</div>
+-                {HOURS.map((h) => {
+-                  const v = heatmap[dow]?.[h] || 0;
+-                  const intensity = maxHeat > 0 ? v / maxHeat : 0;
+-                  return (
+-                    <div key={h} className="flex-1 mx-px">
+-                      <Tooltip label={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`} side="top">
+-                        <div className="h-5 w-full rounded-sm cursor-default" style={{ background: `hsla(24,80%,55%,${0.08 + intensity * 0.87})` }} />
+-                      </Tooltip>
+-                    </div>
+-                  );
+-                })}
++        <div className="space-y-3">
++          <div className="overflow-x-auto">
++            <div style={{ minWidth: 600 }}>
++              <div className="flex mb-1 pl-10">
++                {HOURS.map((h) => <div key={h} className="flex-1 text-center text-[8px] text-muted-foreground">{h}</div>)}
+               </div>
+-            ))}
++              {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
++                <div key={dow} className="flex items-center mb-0.5">
++                  <div className="w-10 text-[10px] text-muted-foreground text-right pr-2 shrink-0">{DAYS[dow - 1]}</div>
++                  {HOURS.map((h) => {
++                    const v = heatmap[dow]?.[h] || 0;
++                    const intensity = maxHeat > 0 ? v / maxHeat : 0;
++                    return (
++                      <div key={h} className="flex-1 mx-px">
++                        <Tooltip label={`${DAYS[dow - 1]} ${h}:00 — ${v} orders`} side="top">
++                          <div
++                            className="h-5 w-full rounded-sm cursor-default ring-1 ring-inset ring-black/[0.04]"
++                            style={{ background: `hsla(24,80%,55%,${0.12 + intensity * 0.88})` }}
++                          />
++                        </Tooltip>
++                      </div>
++                    );
++                  })}
++                </div>
++              ))}
++            </div>
++          </div>
++          {/* Legend — anchors the colour scale so the grid is always interpretable. */}
++          <div className="flex items-center justify-end gap-2 text-[10px] text-muted-foreground">
++            <span>Less</span>
++            <div className="flex gap-0.5">
++              {[0, 0.25, 0.5, 0.75, 1].map((step) => (
++                <span
++                  key={step}
++                  className="h-3 w-4 rounded-sm ring-1 ring-inset ring-black/[0.04]"
++                  style={{ background: `hsla(24,80%,55%,${0.12 + step * 0.88})` }}
++                />
++              ))}
++            </div>
++            <span>More</span>
++            {maxHeat > 0 && (
++              <span className="ml-2 font-mono text-muted-foreground">peak: {maxHeat}</span>
++            )}
+           </div>
+         </div>
+       </Widget>
+diff --git a/frontend/src/pages/owner/OwnerPayroll.tsx b/frontend/src/pages/owner/OwnerPayroll.tsx
+index cd5c217..b0e84fc 100644
+--- a/frontend/src/pages/owner/OwnerPayroll.tsx
++++ b/frontend/src/pages/owner/OwnerPayroll.tsx
+@@ -10,7 +10,7 @@ import { Select } from '../../components/ui/Select';
+ import { Sheet } from '../../components/ui/Sheet';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import {
+-  DollarSign, Plus, Download, RotateCcw, ChevronRight
++  DollarSign, Plus, Download, RotateCcw, ChevronRight, User, TrendingUp, TrendingDown, Minus, Info
+ } from 'lucide-react';
+ import { formatCurrency } from '../../utils/currency';
+ import { exportRowsCSV } from '../../utils/csvExport';
+@@ -22,6 +22,7 @@ interface StaffUser {
+   name: string;
+   role: string;
+   isActive: boolean;
++  salaryAmount: number; // in cents
+ }
+ 
+ interface PayrollRecord {
+@@ -43,7 +44,8 @@ interface PayrollRecord {
+ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+ const LEDGER_ROW_HEIGHT = 48;
+ const LEDGER_LIST_HEIGHT = 420;
+-const YEARS = [2024, 2025, 2026, 2027];
++const currentYear = new Date().getFullYear();
++const YEARS = Array.from({ length: 5 }, (_, i) => currentYear + i);
+ 
+ type LedgerDisplayRow =
+   | { kind: 'payment'; data: PayrollRecord }
+@@ -64,18 +66,20 @@ export const OwnerPayroll: React.FC = () => {
+   }, [setPageTitle, setShowDateRange]);
+ 
+   const [ledger, setLedger] = useState<PayrollRecord[]>([]);
++  const [staff, setStaff] = useState<StaffUser[]>([]);
+   const [isLoading, setIsLoading] = useState(true);
+   const [error, setError] = useState<string | null>(null);
+ 
+-  const [staff, setStaff] = useState<StaffUser[]>([]);
+   const [formOpen, setFormOpen] = useState(false);
+   const [userId, setUserId] = useState('');
+   const [periodMonth, setPeriodMonth] = useState(() => new Date().getMonth() + 1);
+   const [periodYear, setPeriodYear] = useState(() => new Date().getFullYear());
+-  const [paidAmount, setPaidAmount] = useState('');
++  
++  // Form specific state for bonus/deduction logic
++  const [adjustmentType, setAdjustmentType] = useState<'none' | 'bonus' | 'deduction'>('none');
++  const [adjustmentAmount, setAdjustmentAmount] = useState(''); // user types here
++  const [editableBaseSalary, setEditableBaseSalary] = useState<string>('');
+   const [note, setNote] = useState('');
+-  const [refSalary, setRefSalary] = useState<number | null>(null);
+-  const [isLoadingRef, setIsLoadingRef] = useState(false);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+ 
+   const [detailRow, setDetailRow] = useState<PayrollRecord | null>(null);
+@@ -85,15 +89,11 @@ export const OwnerPayroll: React.FC = () => {
+   const [isAdjusting, setIsAdjusting] = useState(false);
+ 
+   const fetchLedger = useCallback(async () => {
+-    setIsLoading(true);
+-    setError(null);
+     try {
+       const res = await axiosClient.get('/payroll');
+       setLedger(res.data);
+     } catch (err: any) {
+       setError(extractErrorMessage(err, 'Failed to load payroll ledger.'));
+-    } finally {
+-      setIsLoading(false);
+     }
+   }, []);
+ 
+@@ -104,63 +104,72 @@ export const OwnerPayroll: React.FC = () => {
+         res.data.filter((u: StaffUser) => u.isActive && u.role !== 'OWNER')
+       );
+     } catch {
+-      // silent — form will show empty select
++      // silent
+     }
+   }, []);
+ 
+-  useEffect(() => { fetchLedger(); }, [fetchLedger]);
++  useEffect(() => {
++    setIsLoading(true);
++    Promise.all([fetchLedger(), fetchStaff()]).finally(() => {
++      setIsLoading(false);
++    });
++  }, [fetchLedger, fetchStaff]);
+ 
+   const resetForm = () => {
+     setUserId('');
+     setPeriodMonth(new Date().getMonth() + 1);
+     setPeriodYear(new Date().getFullYear());
+-    setPaidAmount('');
++    setAdjustmentType('none');
++    setAdjustmentAmount('');
+     setNote('');
+-    setRefSalary(null);
+   };
+ 
+-  const openForm = () => {
++  const openFormForStaff = (staffId: string) => {
+     resetForm();
+-    fetchStaff();
++    setUserId(staffId);
+     setFormOpen(true);
+   };
+ 
+-  const handleStaffChange = async (id: string) => {
+-    setUserId(id);
+-    setRefSalary(null);
+-    setPaidAmount('');
+-    if (!id) return;
+-    setIsLoadingRef(true);
+-    try {
+-      const res = await axiosClient.get(`/payroll/staff-ref/${id}`);
+-      const salary = Number(res.data.salaryAmount) || 0;
+-      setRefSalary(salary);
+-      setPaidAmount(String(salary));
+-    } catch (err: any) {
+-      addToast({ type: 'error', title: 'Could not load salary reference', message: extractErrorMessage(err) });
+-    } finally {
+-      setIsLoadingRef(false);
+-    }
+-  };
++  const selectedStaff = useMemo(() => staff.find(s => s.id === userId), [staff, userId]);
++  
++  useEffect(() => {
++    setEditableBaseSalary(String(selectedStaff?.salaryAmount || ''));
++  }, [selectedStaff]);
++
++  const calculatedPaidAmount = useMemo(() => {
++    const base = Number(editableBaseSalary) || 0;
++    const adj = Number(adjustmentAmount) || 0;
++    if (adjustmentType === 'bonus') return base + adj;
++    if (adjustmentType === 'deduction') return Math.max(0, base - adj);
++    return base;
++  }, [editableBaseSalary, adjustmentType, adjustmentAmount]);
+ 
+   const handleRecordEntry = async () => {
+-    if (!userId || !paidAmount) {
+-      addToast({ type: 'error', title: 'Staff and paid amount are required.' });
++    if (!userId) {
++      addToast({ type: 'error', title: 'Staff is required.' });
+       return;
+     }
+-    const amount = parseFloat(paidAmount);
+-    if (!Number.isFinite(amount) || amount < 0) {
+-      addToast({ type: 'error', title: 'Paid amount must be a non-negative number.' });
++    
++    if (calculatedPaidAmount < 0) {
++      addToast({ type: 'error', title: 'Calculated paid amount cannot be negative.' });
+       return;
+     }
++
++    let finalNote = note.trim();
++    if (adjustmentType === 'bonus' && Number(adjustmentAmount) > 0) {
++      finalNote = finalNote ? `[Bonus: +${adjustmentAmount}] ${finalNote}` : `[Bonus: +${adjustmentAmount}]`;
++    } else if (adjustmentType === 'deduction' && Number(adjustmentAmount) > 0) {
++      finalNote = finalNote ? `[Deduction: -${adjustmentAmount}] ${finalNote}` : `[Deduction: -${adjustmentAmount}]`;
++    }
++
+     setIsSubmitting(true);
+     try {
+       await axiosClient.post('/payroll/entries', {
+         userId,
+         periodMonth,
+         periodYear,
+-        paidAmount: amount,
+-        note: note.trim() || undefined,
++        paidAmount: calculatedPaidAmount,
++        note: finalNote || undefined,
+       });
+       addToast({ type: 'success', title: 'Payroll entry recorded' });
+       setFormOpen(false);
+@@ -203,7 +212,6 @@ export const OwnerPayroll: React.FC = () => {
+     }
+   };
+ 
+-  const MONTHS_LOCAL = MONTHS;
+   const paymentRows = useMemo(
+     () => ledger.filter((r) => r.recordType !== 'adjustment'),
+     [ledger]
+@@ -213,12 +221,18 @@ export const OwnerPayroll: React.FC = () => {
+     const rows: LedgerDisplayRow[] = [];
+     paymentRows.forEach((payment) => {
+       rows.push({ kind: 'payment', data: payment });
+-      ledger
+-        .filter((a) => a.recordType === 'adjustment' && a.originalPaymentId === payment.id)
+-        .forEach((adj) => rows.push({ kind: 'adjustment', data: adj }));
+     });
+     return rows;
+-  }, [paymentRows, ledger]);
++  }, [paymentRows]);
++
++  const totalPaid = useMemo(() => {
++    return ledger.reduce((sum, r) => {
++      if (r.recordType === 'adjustment') {
++        return sum + r.paidAmount;
++      }
++      return sum + r.paidAmount;
++    }, 0);
++  }, [ledger]);
+ 
+   const exportCSV = useCallback(() => {
+     exportRowsCSV(
+@@ -254,7 +268,7 @@ export const OwnerPayroll: React.FC = () => {
+           >
+             <div className="flex-[2] font-medium truncate">{p.user.name}</div>
+             <div className="flex-1 text-center hidden sm:block text-muted-foreground">
+-              {MONTHS_LOCAL[p.periodMonth - 1]} {p.periodYear}
++              {MONTHS[p.periodMonth - 1]} {p.periodYear}
+             </div>
+             <div className="flex-1 text-right hidden md:block font-mono text-muted-foreground">
+               {formatCurrency(p.baseSalary)}
+@@ -272,54 +286,79 @@ export const OwnerPayroll: React.FC = () => {
+           </div>
+         );
+       }
+-
+-      const adj = row.data;
+-      return (
+-        <div
+-          style={style}
+-          className="flex items-center border-b border-border/30 bg-[hsl(var(--warning))]/5 text-sm px-4 pl-8"
+-        >
+-          <div className="flex-[2] text-xs text-muted-foreground italic">↳ Correction</div>
+-          <div className="flex-1 hidden sm:block" />
+-          <div className="flex-1 hidden md:block" />
+-          <div className="flex-1 text-right font-mono text-xs text-[hsl(var(--warning))]">
+-            {formatCurrency(adj.paidAmount)}
+-          </div>
+-          <div className="flex-[2] hidden lg:block text-xs text-muted-foreground truncate">
+-            {adj.reason}
+-          </div>
+-        </div>
+-      );
++      return null;
+     },
+     [displayRows]
+   );
+ 
++  const staffWithRecords = useMemo(() => {
++    const recordedIds = new Set(ledger.map(l => l.userId));
++    return staff.filter(s => recordedIds.has(s.id));
++  }, [staff, ledger]);
++
+   return (
+     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
+-      <Card>
+-        <CardHeader className="pb-4">
+-          <div className="flex items-center justify-between">
+-            <CardTitle className="text-base font-bold flex items-center gap-2">
+-              <DollarSign className="w-4 h-4 text-primary" />Record Payroll Entry
+-            </CardTitle>
+-            <Button id="record-payroll-btn" onClick={openForm}>
+-              <Plus className="w-4 h-4 mr-2" />New Entry
+-            </Button>
++      
++      {/* Staff Grid for quick payroll insertion */}
++      <div>
++        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Active Staff</h2>
++        
++        {isLoading ? (
++          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
++            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-secondary/40 rounded-xl animate-pulse" />)}
+           </div>
+-        </CardHeader>
+-      </Card>
++        ) : (
++          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
++            <motion.div 
++              whileHover={{ y: -2, scale: 1.02 }}
++              whileTap={{ scale: 0.98 }}
++              onClick={() => { resetForm(); setFormOpen(true); }}
++              className="bg-primary/5 border border-primary/20 hover:border-primary/40 rounded-xl p-4 shadow-sm cursor-pointer transition-colors flex flex-col items-center justify-center text-primary min-h-[6rem]"
++            >
++              <Plus className="w-8 h-8 mb-2" />
++              <div className="font-semibold text-sm">Add Record</div>
++            </motion.div>
++            {staffWithRecords.map(s => (
++              <motion.div 
++                whileHover={{ y: -2, scale: 1.02 }}
++                whileTap={{ scale: 0.98 }}
++                key={s.id} 
++                onClick={() => openFormForStaff(s.id)}
++                className="bg-card border border-border hover:border-primary/40 rounded-xl p-4 shadow-sm cursor-pointer transition-colors"
++              >
++                <div className="font-semibold text-foreground truncate">{s.name}</div>
++                <div className="text-xs text-muted-foreground mb-3">{s.role}</div>
++                <div className="text-sm font-mono font-medium text-primary">
++                  {formatCurrency(s.salaryAmount)} <span className="text-[10px] text-muted-foreground ml-1">/ mo</span>
++                </div>
++              </motion.div>
++            ))}
++          </div>
++        )}
++      </div>
+ 
+       <Card>
+-        <CardHeader className="pb-4">
+-          <div className="flex items-center justify-between">
+-            <CardTitle className="text-base font-bold">Payroll Ledger</CardTitle>
++        <CardHeader className="flex flex-row items-center justify-between pb-3">
++          <CardTitle className="text-sm font-bold text-foreground flex items-center gap-3">
++            Historical Ledger
++            <div className="flex items-center gap-2">
++              <span className="text-xs font-normal text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full">
++                {paymentRows.length} records
++              </span>
++              <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
++                {formatCurrency(totalPaid)} total paid
++              </span>
++            </div>
++          </CardTitle>
++          <div className="flex gap-2">
+             <Button variant="outline" size="sm" onClick={exportCSV}>
+-              <Download className="w-3.5 h-3.5 mr-2" />Export CSV
++              <Download className="w-3.5 h-3.5 mr-1" />
++              CSV
+             </Button>
+           </div>
+         </CardHeader>
+         <CardContent className="p-0">
+-          {isLoading ? (
++          {isLoading && paymentRows.length === 0 ? (
+             <div className="p-6 space-y-2">{Array.from({length: 5}).map((_,i)=><div key={i} className="h-12 rounded-lg bg-secondary/40 animate-pulse" />)}</div>
+           ) : error ? (
+             <div className="p-8 text-center">
+@@ -329,13 +368,8 @@ export const OwnerPayroll: React.FC = () => {
+           ) : paymentRows.length === 0 ? (
+             <EmptyState
+               title="No payroll entries yet"
+-              message="Record your first payroll entry to build the ledger. You can log what was actually paid per staff member and period."
++              message="Click on a staff card above to record your first payroll entry."
+               icon={<DollarSign className="w-7 h-7" />}
+-              action={{
+-                label: 'Record your first payroll entry',
+-                onClick: openForm,
+-                icon: <Plus className="w-4 h-4 mr-1.5" />,
+-              }}
+             />
+           ) : (
+             <div>
+@@ -365,35 +399,38 @@ export const OwnerPayroll: React.FC = () => {
+         open={formOpen}
+         onClose={() => setFormOpen(false)}
+         title="Record Payroll Entry"
+-        description="Log what was actually paid for a staff member and period."
++        description={selectedStaff ? `Log payment for ${selectedStaff.name}` : ''}
+         footer={
+           <div className="flex gap-3">
+             <Button variant="outline" onClick={() => setFormOpen(false)} className="flex-1">Cancel</Button>
+             <Button
+               onClick={handleRecordEntry}
+-              disabled={isSubmitting || !userId || !paidAmount}
++              disabled={isSubmitting || !userId || calculatedPaidAmount < 0}
+               className="flex-1"
+             >
+-              {isSubmitting ? 'Saving...' : 'Record Entry'}
++              {isSubmitting ? 'Saving...' : 'Record Payment'}
+             </Button>
+           </div>
+         }
+       >
+-        <div className="space-y-5">
+-          <div>
+-            <label htmlFor="payroll-staff" className="text-sm font-medium text-foreground block mb-1.5">
+-              Staff <span className="text-destructive">*</span>
+-            </label>
+-            <Select
+-              id="payroll-staff"
+-              value={userId}
+-              onChange={(e) => handleStaffChange(e.target.value)}
+-            >
+-              <option value="">Select staff member</option>
+-              {staff.map((s) => (
+-                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+-              ))}
++        <div className="space-y-6">
++          
++          <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
++            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">Staff Member</label>
++            <Select value={userId} onChange={e => setUserId(e.target.value)} className="mb-4">
++              <option value="">Select Staff</option>
++              {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
+             </Select>
++            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">Base Salary</label>
++            <div className="relative">
++              <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold font-mono text-foreground text-base">ETB</span>
++              <Input
++                type="number"
++                value={editableBaseSalary}
++                onChange={e => setEditableBaseSalary(e.target.value)}
++                className="font-bold font-mono text-foreground text-lg pl-12 bg-background border-border"
++              />
++            </div>
+           </div>
+ 
+           <div className="flex gap-3">
+@@ -428,29 +465,56 @@ export const OwnerPayroll: React.FC = () => {
+           </div>
+ 
+           <div>
+-            <label htmlFor="payroll-amount" className="text-sm font-medium text-foreground block mb-1.5">
+-              Paid Amount (ETB) <span className="text-destructive">*</span>
+-            </label>
+-            {userId && (
+-              <p className="text-xs text-muted-foreground mb-1.5">
+-                {isLoadingRef
+-                  ? 'Loading reference salary…'
+-                  : refSalary !== null
+-                    ? `Suggested reference salary — edit to what you actually paid (${formatCurrency(refSalary)})`
+-                    : 'Suggested reference salary — edit to what you actually paid'}
+-              </p>
+-            )}
+-            <Input
+-              id="payroll-amount"
+-              type="number"
+-              step="0.01"
+-              min="0"
+-              value={paidAmount}
+-              onChange={(e) => setPaidAmount(e.target.value)}
+-              placeholder="0.00"
+-              className="font-mono"
+-              disabled={isLoadingRef}
+-            />
++            <label className="text-sm font-medium text-foreground block mb-2">Adjustments (Optional)</label>
++            <div className="flex gap-2 mb-3">
++              <button 
++                onClick={() => setAdjustmentType('none')}
++                className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'none' ? 'bg-secondary border-border text-foreground' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
++              >
++                <Minus className="w-4 h-4 mx-auto mb-1" />
++                None
++              </button>
++              <button 
++                onClick={() => setAdjustmentType('bonus')}
++                className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'bonus' ? 'bg-[hsl(var(--success))]/10 border-[hsl(var(--success))]/30 text-[hsl(var(--success))]' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
++              >
++                <TrendingUp className="w-4 h-4 mx-auto mb-1" />
++                Bonus
++              </button>
++              <button 
++                onClick={() => setAdjustmentType('deduction')}
++                className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'deduction' ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
++              >
++                <TrendingDown className="w-4 h-4 mx-auto mb-1" />
++                Deduct
++              </button>
++            </div>
++
++            <AnimatePresence>
++              {adjustmentType !== 'none' && (
++                <motion.div
++                  initial={{ height: 0, opacity: 0 }}
++                  animate={{ height: 'auto', opacity: 1 }}
++                  exit={{ height: 0, opacity: 0 }}
++                  className="overflow-hidden"
++                >
++                  <Input
++                    type="number"
++                    placeholder={`Enter ${adjustmentType} amount in ETB`}
++                    value={adjustmentAmount}
++                    onChange={(e) => setAdjustmentAmount(e.target.value)}
++                    className="font-mono mt-1"
++                  />
++                </motion.div>
++              )}
++            </AnimatePresence>
++          </div>
++          
++          <div className="bg-primary/5 rounded-lg p-4 border border-primary/20 flex justify-between items-center">
++            <span className="font-semibold text-primary text-sm">Total to Pay:</span>
++            <span className="font-bold font-mono text-primary text-xl">
++              {formatCurrency(calculatedPaidAmount)}
++            </span>
+           </div>
+ 
+           <div>
+@@ -489,35 +553,9 @@ export const OwnerPayroll: React.FC = () => {
+                     </div>
+                   ))}
+                 </div>
+-                {!adjOpen ? (
+-                  <div className="flex gap-3">
+-                    <Button variant="outline" onClick={() => setDetailRow(null)} className="flex-1">Close</Button>
+-                    <Button onClick={() => { setAdjOpen(true); setAdjReason(''); setAdjAmount(''); }} className="flex-1">
+-                      <RotateCcw className="w-3.5 h-3.5 mr-2" />Issue Correction
+-                    </Button>
+-                  </div>
+-                ) : (
+-                  <div className="space-y-4">
+-                    <p className="text-xs text-[hsl(var(--warning))] font-medium">
+-                      A correction creates a new linked record — the original is never modified.
+-                    </p>
+-                    <div>
+-                      <label className="text-sm font-medium block mb-1.5">Adjustment Amount (ETB)</label>
+-                      <Input id="adj-amount" value={adjAmount} onChange={e => setAdjAmount(e.target.value)}
+-                        placeholder="-100 (deduction) or +200 (bonus)" type="number" step="0.01" />
+-                    </div>
+-                    <div>
+-                      <label className="text-sm font-medium block mb-1.5">Reason <span className="text-destructive">*</span></label>
+-                      <Input id="adj-reason" value={adjReason} onChange={e => setAdjReason(e.target.value)} placeholder="e.g. Advance repayment deduction" />
+-                    </div>
+-                    <div className="flex gap-3">
+-                      <Button variant="outline" onClick={() => setAdjOpen(false)} className="flex-1">Back</Button>
+-                      <Button onClick={handleAdjustment} disabled={isAdjusting} className="flex-1">
+-                        {isAdjusting ? 'Saving...' : 'Confirm Correction'}
+-                      </Button>
+-                    </div>
+-                  </div>
+-                )}
++                <div className="flex gap-3 mt-6">
++                  <Button variant="outline" onClick={() => setDetailRow(null)} className="w-full">Close</Button>
++                </div>
+               </div>
+             </motion.div>
+           </>
+diff --git a/frontend/src/pages/owner/OwnerStaff.tsx b/frontend/src/pages/owner/OwnerStaff.tsx
+index 02d5307..fac4279 100644
+--- a/frontend/src/pages/owner/OwnerStaff.tsx
++++ b/frontend/src/pages/owner/OwnerStaff.tsx
+@@ -266,78 +266,80 @@ export const OwnerStaff: React.FC = () => {
+               </Select>
+             </div>
+           </div>
+-          <table className="w-full text-sm">
+-            <thead>
+-              <tr className="bg-secondary/50 border-b border-border">
+-                <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Staff</th>
+-                <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden sm:table-cell">Role</th>
+-                <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Contact</th>
+-                <th className="text-right px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Salary</th>
+-                <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Status</th>
+-                <th className="text-right px-4 py-3 font-semibold text-muted-foreground">Actions</th>
+-              </tr>
+-            </thead>
+-            <tbody>
+-              {filteredUsers.map((user, idx) => (
+-                <tr key={user.id} className={`border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors ${!user.isActive ? 'opacity-50' : ''}`}>
+-                  <td className="px-4 py-3">
+-                    <div className="flex items-center gap-3">
+-                      <Avatar>
+-                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+-                          {initials(user.name)}
+-                        </AvatarFallback>
+-                      </Avatar>
+-                      <span className="font-medium truncate max-w-[120px]">{user.name}</span>
+-                    </div>
+-                  </td>
+-                  <td className="px-4 py-3 hidden sm:table-cell">
+-                    <Badge variant={ROLE_COLORS[user.role]}>{user.role}</Badge>
+-                  </td>
+-                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground text-xs">
+-                    <div>{user.username || '—'}</div>
+-                    <div>{user.phone}</div>
+-                  </td>
+-                  <td className="px-4 py-3 hidden md:table-cell text-right font-mono text-sm">
+-                    {formatCurrency(user.salaryAmount)}
+-                  </td>
+-                  <td className="px-4 py-3 text-center">
+-                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${user.isActive ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] border-[hsl(var(--success))]/40' : 'bg-secondary text-muted-foreground border-border'}`}>
+-                      {user.isActive ? 'Active' : 'Inactive'}
+-                    </span>
+-                  </td>
+-                  <td className="px-4 py-3">
+-                    <div className="flex items-center justify-end gap-1">
+-                      <Tooltip label="Edit">
+-                        <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+-                          <Pencil className="w-3.5 h-3.5" />
+-                        </button>
+-                      </Tooltip>
+-                      {user.id !== currentUser?.id && (
+-                        <Tooltip label="Reset Password">
+-                          <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+-                            <KeyRound className="w-3.5 h-3.5" />
+-                          </button>
+-                        </Tooltip>
+-                      )}
+-                      {user.isActive ? (
+-                        <Tooltip label="Deactivate">
+-                          <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+-                            <ShieldOff className="w-3.5 h-3.5" />
+-                          </button>
+-                        </Tooltip>
+-                      ) : (
+-                        <Tooltip label="Reactivate">
+-                          <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
+-                            <ShieldCheck className="w-3.5 h-3.5" />
++          <div className="overflow-x-auto">
++            <table className="w-full text-sm">
++              <thead>
++                <tr className="bg-secondary/50 border-b border-border">
++                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Staff</th>
++                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden sm:table-cell">Role</th>
++                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Contact</th>
++                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Salary</th>
++                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Status</th>
++                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground">Actions</th>
++                </tr>
++              </thead>
++              <tbody>
++                {filteredUsers.map((user, idx) => (
++                  <tr key={user.id} className={`border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors ${!user.isActive ? 'opacity-50' : ''}`}>
++                    <td className="px-4 py-3">
++                      <div className="flex items-center gap-3">
++                        <Avatar>
++                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
++                            {initials(user.name)}
++                          </AvatarFallback>
++                        </Avatar>
++                        <span className="font-medium truncate max-w-[120px]">{user.name}</span>
++                      </div>
++                    </td>
++                    <td className="px-4 py-3 hidden sm:table-cell">
++                      <Badge variant={ROLE_COLORS[user.role]}>{user.role}</Badge>
++                    </td>
++                    <td className="px-4 py-3 hidden md:table-cell text-muted-foreground text-xs">
++                      <div>{user.username || '—'}</div>
++                      <div>{user.phone}</div>
++                    </td>
++                    <td className="px-4 py-3 hidden md:table-cell text-right font-mono text-sm">
++                      {formatCurrency(user.salaryAmount)}
++                    </td>
++                    <td className="px-4 py-3 text-center">
++                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${user.isActive ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] border-[hsl(var(--success))]/40' : 'bg-secondary text-muted-foreground border-border'}`}>
++                        {user.isActive ? 'Active' : 'Inactive'}
++                      </span>
++                    </td>
++                    <td className="px-4 py-3">
++                      <div className="flex items-center justify-end gap-1">
++                        <Tooltip label="Edit">
++                          <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
++                            <Pencil className="w-3.5 h-3.5" />
+                           </button>
+                         </Tooltip>
+-                      )}
+-                    </div>
+-                  </td>
+-                </tr>
+-              ))}
+-            </tbody>
+-          </table>
++                        {user.id !== currentUser?.id && (
++                          <Tooltip label="Reset Password">
++                            <button onClick={() => handleReset(user)} disabled={isResetting} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
++                              <KeyRound className="w-3.5 h-3.5" />
++                            </button>
++                          </Tooltip>
++                        )}
++                        {user.isActive ? (
++                          <Tooltip label="Deactivate">
++                            <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
++                              <ShieldOff className="w-3.5 h-3.5" />
++                            </button>
++                          </Tooltip>
++                        ) : (
++                          <Tooltip label="Reactivate">
++                            <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
++                              <ShieldCheck className="w-3.5 h-3.5" />
++                            </button>
++                          </Tooltip>
++                        )}
++                      </div>
++                    </td>
++                  </tr>
++                ))}
++              </tbody>
++            </table>
++          </div>
+         </div>
+       )}
+ 
+diff --git a/frontend/src/pages/shared/GlobalSettlementHistory.tsx b/frontend/src/pages/shared/GlobalSettlementHistory.tsx
+index 3aeba69..f9c16c1 100644
+--- a/frontend/src/pages/shared/GlobalSettlementHistory.tsx
++++ b/frontend/src/pages/shared/GlobalSettlementHistory.tsx
+@@ -5,12 +5,22 @@
+  * Accessible by all authenticated roles (OWNER, MANAGER, CASHIER, WAITER).
+  */
+ 
+-import React, { useEffect, useState, useCallback } from 'react';
++import React, { useEffect, useState, useCallback, useMemo } from 'react';
+ import { axiosClient } from '../../api/axiosClient';
+ import { useHeaderStore } from '../../store/headerStore';
+ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+ import { Button } from '../../components/ui/Button';
+-import { ArrowLeft, ArrowRight, RefreshCw, CreditCard, Banknote, Smartphone, Filter } from 'lucide-react';
++import { Input } from '../../components/ui/Input';
++import { ArrowLeft, ArrowRight, CreditCard, Banknote, Smartphone, ChevronDown, Calendar, Users, Hash, Table2, CircleDollarSign, X, Search } from 'lucide-react';
++import { cn } from '../../lib/utils';
++import {
++  DropdownMenu,
++  DropdownMenuTrigger,
++  DropdownMenuContent,
++  DropdownMenuItem,
++  DropdownMenuLabel,
++  DropdownMenuSeparator,
++} from '../../components/ui/Dropdown';
+ 
+ interface SettlementRecord {
+   id: string;
+@@ -40,6 +50,9 @@ interface Pagination {
+   totalPages: number;
+ }
+ 
++type SortColumn = 'date' | 'amount' | 'method' | 'table' | 'total' | 'recordedBy';
++type SortDirection = 'asc' | 'desc';
++
+ const METHOD_ICONS: Record<string, React.ReactNode> = {
+   CASH: <Banknote className="w-4 h-4 text-green-600" />,
+   CARD: <CreditCard className="w-4 h-4 text-blue-600" />,
+@@ -52,11 +65,77 @@ const METHOD_LABELS: Record<string, string> = {
+   MOBILE: 'Mobile',
+ };
+ 
++const DATE_PRESETS: Array<{ key: string; label: string; get: () => { from: string; to: string } }> = [
++  { key: 'all', label: 'All dates', get: () => ({ from: '', to: '' }) },
++  {
++    key: 'today',
++    label: 'Today',
++    get: () => {
++      const t = new Date();
++      const iso = (d: Date) => d.toISOString().split('T')[0];
++      return { from: iso(t), to: iso(t) };
++    },
++  },
++  {
++    key: '7d',
++    label: 'Last 7 days',
++    get: () => {
++      const t = new Date();
++      const f = new Date();
++      f.setDate(t.getDate() - 6);
++      const iso = (d: Date) => d.toISOString().split('T')[0];
++      return { from: iso(f), to: iso(t) };
++    },
++  },
++  {
++    key: '30d',
++    label: 'Last 30 days',
++    get: () => {
++      const t = new Date();
++      const f = new Date();
++      f.setDate(t.getDate() - 29);
++      const iso = (d: Date) => d.toISOString().split('T')[0];
++      return { from: iso(f), to: iso(t) };
++    },
++  },
++  {
++    key: '90d',
++    label: 'Last 90 days',
++    get: () => {
++      const t = new Date();
++      const f = new Date();
++      f.setDate(t.getDate() - 89);
++      const iso = (d: Date) => d.toISOString().split('T')[0];
++      return { from: iso(f), to: iso(t) };
++    },
++  },
++];
++
++const AMOUNT_PRESETS: Array<{ key: string; label: string; get: () => { min: string; max: string } }> = [
++  { key: 'all', label: 'Any amount', get: () => ({ min: '', max: '' }) },
++  { key: 'lt50', label: 'Under 50', get: () => ({ min: '', max: '5000' }) },
++  { key: '50-200', label: '50 – 200', get: () => ({ min: '5000', max: '20000' }) },
++  { key: '200-1000', label: '200 – 1,000', get: () => ({ min: '20000', max: '100000' }) },
++  { key: 'gt1000', label: 'Over 1,000', get: () => ({ min: '100000', max: '' }) },
++];
++
+ export const GlobalSettlementHistory: React.FC = () => {
+   const [settlements, setSettlements] = useState<SettlementRecord[]>([]);
+   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 25, total: 0, totalPages: 0 });
+   const [loading, setLoading] = useState(true);
+   const [methodFilter, setMethodFilter] = useState<string>('');
++  const [datePreset, setDatePreset] = useState<string>('all');
++  const [dateFrom, setDateFrom] = useState<string>('');
++  const [dateTo, setDateTo] = useState<string>('');
++  const [amountPreset, setAmountPreset] = useState<string>('all');
++  const [minAmount, setMinAmount] = useState<string>('');
++  const [maxAmount, setMaxAmount] = useState<string>('');
++  const [tableFilter, setTableFilter] = useState<string>('');
++  const [orderFilter, setOrderFilter] = useState<string>('');
++  const [totalFilter, setTotalFilter] = useState<string>('');
++  const [recordedByFilter, setRecordedByFilter] = useState<string>('');
++  const [sortColumn, setSortColumn] = useState<SortColumn>('date');
++  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+   const { setPageTitle, setShowDateRange } = useHeaderStore();
+ 
+   // Reflect the current section in the global header.
+@@ -74,6 +153,16 @@ export const GlobalSettlementHistory: React.FC = () => {
+     try {
+       const params: Record<string, string | number> = { page, limit: 25 };
+       if (methodFilter) params.method = methodFilter;
++      if (dateFrom) params.from = new Date(`${dateFrom}T00:00:00.000`).toISOString();
++      if (dateTo) {
++        const d = new Date(`${dateTo}T23:59:59.999`);
++        params.to = d.toISOString();
++      }
++      if (minAmount) params.minAmount = String(Math.round(parseFloat(minAmount) * 100));
++      if (maxAmount) params.maxAmount = String(Math.round(parseFloat(maxAmount) * 100));
++      if (tableFilter.trim()) params.table = tableFilter.trim();
++      if (orderFilter.trim()) params.order = orderFilter.trim();
++      if (recordedByFilter.trim()) params.recordedBy = recordedByFilter.trim();
+ 
+       const res = await axiosClient.get('/settlements', { params });
+       setSettlements(res.data.data);
+@@ -83,7 +172,16 @@ export const GlobalSettlementHistory: React.FC = () => {
+     } finally {
+       setLoading(false);
+     }
+-  }, [methodFilter]);
++  }, [
++    methodFilter,
++    dateFrom,
++    dateTo,
++    minAmount,
++    maxAmount,
++    tableFilter,
++    orderFilter,
++    recordedByFilter,
++  ]);
+ 
+   useEffect(() => {
+     fetchSettlements(1);
+@@ -97,30 +195,317 @@ export const GlobalSettlementHistory: React.FC = () => {
+     return new Date(iso).toLocaleString();
+   };
+ 
++  const handleSort = (column: SortColumn) => {
++    if (sortColumn === column) {
++      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
++    } else {
++      setSortColumn(column);
++      setSortDirection('desc');
++    }
++  };
++
++  // Apply the table-side "Total" filter on the client because the API filters
++  // the settlement amount, not the parent order total.
++  const visibleSettlements = useMemo(() => {
++    if (!totalFilter.trim()) return settlements;
++    const q = totalFilter.trim();
++    const asNumber = Number(q);
++    return settlements.filter((s) => {
++      if (!s.order) return false;
++      const total = (s.order.totalAmount / 100).toString();
++      if (!Number.isNaN(asNumber) && /^\d+(\.\d+)?$/.test(q)) {
++        return Math.round(s.order.totalAmount / 100) === Math.round(asNumber);
++      }
++      return total.includes(q);
++    });
++  }, [settlements, totalFilter]);
++
++  const sortedSettlements = useMemo(() => {
++    const sorted = [...visibleSettlements].sort((a, b) => {
++      let comparison = 0;
++      switch (sortColumn) {
++        case 'date':
++          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
++          break;
++        case 'amount':
++          comparison = a.amountMinor - b.amountMinor;
++          break;
++        case 'method':
++          comparison = a.method.localeCompare(b.method);
++          break;
++        case 'table':
++          comparison = (a.order?.tableNumber || '').localeCompare(b.order?.tableNumber || '');
++          break;
++        case 'total':
++          comparison = (a.order?.totalAmount || 0) - (b.order?.totalAmount || 0);
++          break;
++        case 'recordedBy':
++          comparison = (a.recordedBy?.name || '').localeCompare(b.recordedBy?.name || '');
++          break;
++      }
++      return sortDirection === 'asc' ? comparison : -comparison;
++    });
++    return sorted;
++  }, [visibleSettlements, sortColumn, sortDirection]);
++
++  const handleDatePreset = (preset: typeof DATE_PRESETS[number]) => {
++    setDatePreset(preset.key);
++    const { from, to } = preset.get();
++    setDateFrom(from);
++    setDateTo(to);
++  };
++
++  const handleAmountPreset = (preset: typeof AMOUNT_PRESETS[number]) => {
++    setAmountPreset(preset.key);
++    const { min, max } = preset.get();
++    setMinAmount(min);
++    setMaxAmount(max);
++  };
++
++  const activeDateLabel = useMemo(() => {
++    if (datePreset !== 'all') {
++      return DATE_PRESETS.find((p) => p.key === datePreset)?.label ?? 'All dates';
++    }
++    if (dateFrom || dateTo) {
++      return `${dateFrom || '…'} → ${dateTo || '…'}`;
++    }
++    return 'Date';
++  }, [datePreset, dateFrom, dateTo]);
++
++  const activeAmountLabel = useMemo(() => {
++    if (amountPreset !== 'all') {
++      return AMOUNT_PRESETS.find((p) => p.key === amountPreset)?.label ?? 'Any amount';
++    }
++    if (minAmount || maxAmount) {
++      return `${minAmount || '0'} – ${maxAmount || '∞'}`;
++    }
++    return 'Amount';
++  }, [amountPreset, minAmount, maxAmount]);
++
+   return (
+     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
+-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
++      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+         <div>
+           <h3 className="text-lg font-bold">Settlement History</h3>
+           <p className="text-sm text-muted-foreground mt-0.5">
+             All payment settlements across all orders. {pagination.total} records total.
+           </p>
+         </div>
+-        <div className="flex items-center gap-2">
+-          <select
+-            value={methodFilter}
+-            onChange={(e) => setMethodFilter(e.target.value)}
+-            className="px-3 py-1.5 text-sm rounded-lg border border-border bg-background text-foreground"
+-          >
+-            <option value="">All Methods</option>
+-            <option value="CASH">Cash</option>
+-            <option value="CARD">Card</option>
+-            <option value="MOBILE">Mobile</option>
+-          </select>
+-          <Button variant="outline" size="sm" onClick={() => fetchSettlements(pagination.page)} className="gap-1.5">
+-            <RefreshCw className="w-3.5 h-3.5" />
+-            Refresh
+-          </Button>
++
++        <div className="flex flex-wrap items-center justify-end gap-2">
++          {/* Date filter */}
++          <DropdownMenu>
++            <DropdownMenuTrigger aria-label="Filter by date" className="shrink-0 h-11">
++              <Calendar className="w-4 h-4 text-muted-foreground" />
++              <span>{activeDateLabel}</span>
++            </DropdownMenuTrigger>
++            <DropdownMenuContent align="end" className="w-72">
++              <DropdownMenuLabel>Date range</DropdownMenuLabel>
++              {DATE_PRESETS.map((preset) => (
++                <DropdownMenuItem
++                  key={preset.key}
++                  selected={datePreset === preset.key && !dateFrom && !dateTo}
++                  onSelect={() => handleDatePreset(preset)}
++                >
++                  <Calendar className="w-4 h-4 shrink-0" />
++                  <span>{preset.label}</span>
++                </DropdownMenuItem>
++              ))}
++              <DropdownMenuSeparator />
++              <div className="px-2.5 py-2 space-y-2">
++                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Custom range</p>
++                <div className="flex items-center gap-2">
++                  <input
++                    type="date"
++                    value={dateFrom}
++                    onChange={(e) => {
++                      setDateFrom(e.target.value);
++                      setDatePreset('custom');
++                    }}
++                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none focus:border-primary"
++                  />
++                  <span className="text-muted-foreground text-xs">to</span>
++                  <input
++                    type="date"
++                    value={dateTo}
++                    onChange={(e) => {
++                      setDateTo(e.target.value);
++                      setDatePreset('custom');
++                    }}
++                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none focus:border-primary"
++                  />
++                </div>
++              </div>
++            </DropdownMenuContent>
++          </DropdownMenu>
++
++          {/* Amount filter */}
++          <DropdownMenu>
++            <DropdownMenuTrigger aria-label="Filter by amount" className="shrink-0 h-11">
++              <CircleDollarSign className="w-4 h-4 text-muted-foreground" />
++              <span>{activeAmountLabel}</span>
++            </DropdownMenuTrigger>
++            <DropdownMenuContent align="end" className="w-56">
++              <DropdownMenuLabel>Amount range</DropdownMenuLabel>
++              {AMOUNT_PRESETS.map((preset) => (
++                <DropdownMenuItem
++                  key={preset.key}
++                  selected={amountPreset === preset.key && !minAmount && !maxAmount}
++                  onSelect={() => handleAmountPreset(preset)}
++                >
++                  <CircleDollarSign className="w-4 h-4 shrink-0" />
++                  <span>{preset.label}</span>
++                </DropdownMenuItem>
++              ))}
++              <DropdownMenuSeparator />
++              <div className="px-2.5 py-2 space-y-2">
++                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Custom range</p>
++                <div className="flex items-center gap-2">
++                  <input
++                    type="number"
++                    inputMode="decimal"
++                    value={minAmount}
++                    onChange={(e) => {
++                      setMinAmount(e.target.value);
++                      setAmountPreset('custom');
++                    }}
++                    placeholder="Min"
++                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none focus:border-primary"
++                  />
++                  <span className="text-muted-foreground text-xs">–</span>
++                  <input
++                    type="number"
++                    inputMode="decimal"
++                    value={maxAmount}
++                    onChange={(e) => {
++                      setMaxAmount(e.target.value);
++                      setAmountPreset('custom');
++                    }}
++                    placeholder="Max"
++                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none focus:border-primary"
++                  />
++                </div>
++              </div>
++            </DropdownMenuContent>
++          </DropdownMenu>
++
++          {/* Method filter */}
++          <DropdownMenu>
++            <DropdownMenuTrigger aria-label="Filter by method" className="shrink-0 h-11">
++              {methodFilter ? METHOD_ICONS[methodFilter] : <CreditCard className="w-4 h-4 text-muted-foreground" />}
++              <span>{methodFilter ? METHOD_LABELS[methodFilter] : 'Method'}</span>
++            </DropdownMenuTrigger>
++            <DropdownMenuContent align="end" className="w-44">
++              <DropdownMenuItem selected={!methodFilter} onSelect={() => setMethodFilter('')}>
++                <CreditCard className="w-4 h-4 shrink-0" />
++                <span>All methods</span>
++              </DropdownMenuItem>
++              <DropdownMenuSeparator />
++              {(['CASH', 'CARD', 'MOBILE'] as const).map((method) => (
++                <DropdownMenuItem
++                  key={method}
++                  selected={methodFilter === method}
++                  onSelect={() => setMethodFilter(method)}
++                >
++                  {METHOD_ICONS[method]}
++                  <span>{METHOD_LABELS[method]}</span>
++                </DropdownMenuItem>
++              ))}
++            </DropdownMenuContent>
++          </DropdownMenu>
++
++          {/* Table filter */}
++          <div className="relative">
++            <Table2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
++            <Input
++              type="text"
++              value={tableFilter}
++              onChange={(e) => setTableFilter(e.target.value)}
++              placeholder="Table"
++              aria-label="Filter by table"
++              className="h-11 w-28 pl-9 pr-7"
++            />
++            {tableFilter && (
++              <button
++                type="button"
++                onClick={() => setTableFilter('')}
++                aria-label="Clear table filter"
++                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
++              >
++                <X className="w-3.5 h-3.5" />
++              </button>
++            )}
++          </div>
++
++          {/* Order filter */}
++          <div className="relative">
++            <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
++            <Input
++              type="text"
++              value={orderFilter}
++              onChange={(e) => setOrderFilter(e.target.value)}
++              placeholder="Order"
++              aria-label="Filter by order"
++              className="h-11 w-32 pl-9 pr-7"
++            />
++            {orderFilter && (
++              <button
++                type="button"
++                onClick={() => setOrderFilter('')}
++                aria-label="Clear order filter"
++                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
++              >
++                <X className="w-3.5 h-3.5" />
++              </button>
++            )}
++          </div>
++
++          {/* Total filter */}
++          <div className="relative">
++            <CircleDollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
++            <Input
++              type="text"
++              inputMode="decimal"
++              value={totalFilter}
++              onChange={(e) => setTotalFilter(e.target.value)}
++              placeholder="Total"
++              aria-label="Filter by order total"
++              className="h-11 w-28 pl-9 pr-7"
++            />
++            {totalFilter && (
++              <button
++                type="button"
++                onClick={() => setTotalFilter('')}
++                aria-label="Clear total filter"
++                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
++              >
++                <X className="w-3.5 h-3.5" />
++              </button>
++            )}
++          </div>
++
++          {/* Recorded By filter */}
++          <div className="relative">
++            <Users className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
++            <Input
++              type="text"
++              value={recordedByFilter}
++              onChange={(e) => setRecordedByFilter(e.target.value)}
++              placeholder="Recorded by"
++              aria-label="Filter by recorded by"
++              className="h-11 w-36 pl-9 pr-7"
++            />
++            {recordedByFilter && (
++              <button
++                type="button"
++                onClick={() => setRecordedByFilter('')}
++                aria-label="Clear recorded by filter"
++                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
++              >
++                <X className="w-3.5 h-3.5" />
++              </button>
++            )}
++          </div>
+         </div>
+       </header>
+ 
+@@ -130,7 +515,7 @@ export const GlobalSettlementHistory: React.FC = () => {
+             <div className="flex items-center justify-center py-12">
+               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+             </div>
+-          ) : settlements.length === 0 ? (
++          ) : sortedSettlements.length === 0 ? (
+             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+               <CreditCard className="w-10 h-10 mb-3 opacity-40" />
+               <p className="font-medium">No settlements found</p>
+@@ -141,17 +526,77 @@ export const GlobalSettlementHistory: React.FC = () => {
+               <table className="w-full text-sm">
+                 <thead>
+                   <tr className="border-b border-border bg-muted/30">
+-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Date</th>
+-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Amount</th>
+-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Method</th>
+-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Table</th>
+-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Order Total</th>
+-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Recorded By</th>
++                    <th className="text-left px-4 py-3">
++                      <button
++                        onClick={() => handleSort('date')}
++                        className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
++                      >
++                        Date
++                        {sortColumn === 'date' && (
++                          <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
++                        )}
++                      </button>
++                    </th>
++                    <th className="text-left px-4 py-3">
++                      <button
++                        onClick={() => handleSort('amount')}
++                        className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
++                      >
++                        Amount
++                        {sortColumn === 'amount' && (
++                          <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
++                        )}
++                      </button>
++                    </th>
++                    <th className="text-left px-4 py-3">
++                      <button
++                        onClick={() => handleSort('method')}
++                        className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
++                      >
++                        Method
++                        {sortColumn === 'method' && (
++                          <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
++                        )}
++                      </button>
++                    </th>
++                    <th className="text-left px-4 py-3">
++                      <button
++                        onClick={() => handleSort('table')}
++                        className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
++                      >
++                        Table
++                        {sortColumn === 'table' && (
++                          <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
++                        )}
++                      </button>
++                    </th>
++                    <th className="text-left px-4 py-3">
++                      <button
++                        onClick={() => handleSort('total')}
++                        className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
++                      >
++                        Order Total
++                        {sortColumn === 'total' && (
++                          <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
++                        )}
++                      </button>
++                    </th>
++                    <th className="text-left px-4 py-3">
++                      <button
++                        onClick={() => handleSort('recordedBy')}
++                        className="flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors"
++                      >
++                        Recorded By
++                        {sortColumn === 'recordedBy' && (
++                          <span className="text-xs">{sortDirection === 'asc' ? '↑' : '↓'}</span>
++                        )}
++                      </button>
++                    </th>
+                     <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Reference</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+-                  {settlements.map((s) => (
++                  {sortedSettlements.map((s) => (
+                     <tr key={s.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                       <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">
+                         {formatDate(s.createdAt)}
+diff --git a/frontend/src/pages/shared/ProfilePage.tsx b/frontend/src/pages/shared/ProfilePage.tsx
+index 5a19a57..e63c481 100644
+--- a/frontend/src/pages/shared/ProfilePage.tsx
++++ b/frontend/src/pages/shared/ProfilePage.tsx
+@@ -429,7 +429,7 @@ export const ProfilePage: React.FC = () => {
+                 }}
+                 aria-label={avatarSrc ? 'Change photo' : 'Add photo'}
+                 title={avatarSrc ? 'Change photo' : 'Add photo'}
+-                className="group relative shrink-0 rounded-2xl cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-card"
++                className="group relative shrink-0 rounded-2xl cursor-pointer focus:outline-none"
+               >
+                 <div className={cn(
+                   'w-28 h-28 rounded-2xl bg-gradient-to-br text-white flex items-center justify-center',
+diff --git a/frontend/src/store/SidebarContext.tsx b/frontend/src/store/SidebarContext.tsx
+index 93ae536..981d7e2 100644
+--- a/frontend/src/store/SidebarContext.tsx
++++ b/frontend/src/store/SidebarContext.tsx
+@@ -3,6 +3,9 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
+ interface SidebarContextType {
+   collapsed: boolean;
+   toggle: () => void;
++  mobileOpen: boolean;
++  toggleMobile: () => void;
++  setMobileOpen: (open: boolean) => void;
+ }
+ 
+ const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
+@@ -16,15 +19,18 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({ child
+       return false;
+     }
+   });
++  
++  const [mobileOpen, setMobileOpen] = useState(false);
+ 
+   const toggle = () => setCollapsed((prev) => !prev);
++  const toggleMobile = () => setMobileOpen((prev) => !prev);
+ 
+   useEffect(() => {
+     localStorage.setItem('cafeflow:sidebar-collapsed', String(collapsed));
+   }, [collapsed]);
+ 
+   return (
+-    <SidebarContext.Provider value={{ collapsed, toggle }}>
++    <SidebarContext.Provider value={{ collapsed, toggle, mobileOpen, toggleMobile, setMobileOpen }}>
+       {children}
+     </SidebarContext.Provider>
+   );
+diff --git a/frontend/src/store/authStore.ts b/frontend/src/store/authStore.ts
+index fcc9853..2210ce0 100644
+--- a/frontend/src/store/authStore.ts
++++ b/frontend/src/store/authStore.ts
+@@ -70,15 +70,18 @@ export const useAuthStore = create<AuthState>((set, get) => {
+       set({ user });
+     },
+ 
+-    logout: () => {
++    logout: async () => {
+       // Broadcast logout to other tabs BEFORE clearing local
+       if (authChannel) {
+         authChannel.postMessage({ type: 'SESSION_LOGGED_OUT' });
+       }
+ 
+-      void axiosClient.post('/auth/logout', {}, { withCredentials: true }).catch(() => {
+-        /* still clear local session */
+-      });
++      try {
++        await axiosClient.post('/auth/logout', {}, { withCredentials: true });
++      } catch (err) {
++        // even if it fails, we still want to clear local auth below
++        console.warn('Logout API call failed', err);
++      }
+       clearLocalAuth(set);
+     },
+ 
+diff --git a/frontend/tailwind.config.js b/frontend/tailwind.config.js
+index 10e51ed..cf255b5 100644
+--- a/frontend/tailwind.config.js
++++ b/frontend/tailwind.config.js
+@@ -6,12 +6,12 @@ export default {
+     "./src/**/*.{js,ts,jsx,tsx}",
+   ],
+   theme: {
+-    screens: {
+-      'tablet-portrait': '768px',
+-      'tablet-landscape': '1024px',
+-      'desktop': '1280px',
+-    },
+     extend: {
++      screens: {
++        'tablet-portrait': '768px',
++        'tablet-landscape': '1024px',
++        'desktop': '1280px',
++      },
+       colors: {
+         border: "hsl(var(--border))",
+         input: "hsl(var(--input))",
