@@ -378,14 +378,6 @@ export const ManagerStaff: React.FC = () => {
         <div className="rounded-xl border border-border overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/30 px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Button id="add-staff-btn" onClick={openAdd} size="sm" className="shadow-sm">
-                <Plus className="w-4 h-4 mr-2" />Add Staff
-              </Button>
-              <Badge variant="neutral" className="text-xs font-semibold tabular-nums" aria-live="polite">
-                {t('count.total', { count: totalStaff })}
-              </Badge>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                 <Input
@@ -421,6 +413,22 @@ export const ManagerStaff: React.FC = () => {
                 ]}
                 contentClassName="w-36"
               />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                data-testid="staff-count"
+                aria-label={t('count.total', { count: totalStaff })}
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 shadow-sm"
+              >
+                <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="flex items-baseline gap-1.5 leading-none">
+                  <span className="text-sm font-bold tabular-nums text-foreground">{totalStaff}</span>
+                  <span className="text-xs text-muted-foreground">{t('count.label')}</span>
+                </span>
+              </div>
+              <Button id="add-staff-btn" onClick={openAdd} size="sm" className="shadow-sm">
+                <Plus className="w-4 h-4 mr-2" />Add Staff
+              </Button>
             </div>
           </div>
           {/* The result list is what the search narrows — the toolbar above is
@@ -558,7 +566,11 @@ export const ManagerStaff: React.FC = () => {
         title={editingUser ? 'Edit Staff Member' : 'Add Staff Member'}
         footer={
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
+            {form.credentialsDone ? (
+              <Button variant="outline" onClick={() => setForm(f => ({ ...f, credentialsDone: false }))} className="flex-1">Back</Button>
+            ) : (
+              <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
+            )}
             <Button onClick={handleSave} disabled={isSaving} className="flex-1">
               {isSaving
                 ? 'Saving...'
