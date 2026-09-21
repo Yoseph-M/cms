@@ -99,14 +99,13 @@ describe('audit logs', () => {
     expect(within(dialog).getByText('665f1c2b3d4e5f6a7b8c9d0e')).toBeInTheDocument();
   });
 
-  it('sends the search term to the server when Search is pressed', async () => {
+  it('applies the search term to the server as it is typed', async () => {
     renderPage();
     await screen.findByText('User logged in as OWNER');
 
     fireEvent.change(screen.getByLabelText(/Search logs by action or description/i), {
       target: { value: 'cancelled' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await waitFor(() => expect(requestedUrls().some((url) => url.includes('search=cancelled'))).toBe(true));
   });
