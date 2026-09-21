@@ -13,6 +13,22 @@ export interface PeakHoursHeatmapProps {
 const DEFAULT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /**
+ * Order density → colour, in the brand warm ramp.
+ *
+ * Zero orders is a flat canvas tile — the pale grid of the empty state — so a
+ * quiet week reads as an empty grid rather than a wall of ink. Any sales at all
+ * switch the cell to orange, and the busiest hour of the visible window is the
+ * deepest orange (hue stays put; lightness drops and saturation climbs as the
+ * count rises).
+ */
+export function heatColor(intensity: number): string {
+  const t = Math.max(0, Math.min(1, intensity));
+  // Zero orders is the flat tile the empty grid is drawn from.
+  if (t === 0) return 'hsl(var(--secondary))';
+  return `hsl(24 ${Math.round(84 + t * 14)}% ${Math.round(74 - t * 36)}%)`;
+}
+
+/**
  * Peak-hours heatmap powered by Nivo — complex grid visualization for order density.
  */
 export const PeakHoursHeatmap: React.FC<PeakHoursHeatmapProps> = ({
@@ -33,6 +49,12 @@ export const PeakHoursHeatmap: React.FC<PeakHoursHeatmapProps> = ({
     });
     return { data: rows, maxValue: max };
   }, [grid, dayLabels]);
+
+  // Relative ramp: the busiest cell of the visible window is the deepest orange.
+  const colorFor = useMemo(() => {
+    const max = maxValue || 1;
+    return (value: number) => heatColor(value / max);
+  }, [maxValue]);
 
   return (
     <div className={cn('w-full', className)}>
@@ -59,12 +81,7 @@ export const PeakHoursHeatmap: React.FC<PeakHoursHeatmapProps> = ({
             legendPosition: 'middle',
             legendOffset: -40,
           }}
-          colors={{
-            type: 'sequential',
-            scheme: 'blues',
-            minValue: 0,
-            maxValue: maxValue || 1,
-          }}
+          colors={(cell) => colorFor(Number(cell.value) || 0)}
           emptyColor="hsl(var(--secondary))"
           borderColor="hsl(var(--background))"
           borderWidth={2}
@@ -90,17 +107,17 @@ export const PeakHoursHeatmap: React.FC<PeakHoursHeatmapProps> = ({
         />
       </div>
       <div className="flex items-center justify-end gap-2 mt-2 text-[10px] text-muted-foreground">
-        <span>Less</span>
+        <span>0</span>
         <div className="flex gap-0.5">
           {[0, 0.25, 0.5, 0.75, 1].map((step) => (
             <span
               key={step}
-              className="h-3 w-4 rounded-sm ring-1 ring-inset ring-black/[0.04]"
-              style={{ background: `hsla(24,80%,55%,${0.12 + step * 0.88})` }}
+              className="h-3 w-4 rounded-sm ring-1 ring-inset ring-foreground/10"
+              style={{ background: heatColor(step) }}
             />
           ))}
         </div>
-        <span>More</span>
+        <span>{maxValue > 0 ? `${maxValue}+` : 'orders'}</span>
         {maxValue > 0 && <span className="ml-2 font-mono">peak: {maxValue}</span>}
       </div>
     </div>
