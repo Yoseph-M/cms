@@ -293,7 +293,7 @@ export const OwnerAuditLogs: React.FC = () => {
                   }}
                   placeholder="Search logs by action or description…"
                   aria-label="Search logs by action or description"
-                  className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-0"
                 />
               </div>
               <Button variant="secondary" onClick={applySearch} className="shrink-0">
