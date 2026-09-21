@@ -9,6 +9,7 @@ import { Sheet } from '../ui/Sheet';
 import { AlertCircle, CalendarDays, ChevronRight, UserRound } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { formatBusinessDate } from '../../utils/calendar';
+import { useTranslation } from 'react-i18next';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
 
@@ -27,11 +28,26 @@ interface StaffMember {
   role: string;
 }
 
-/** Three-letter month names for the window selector ("Sep", "Jan", …). */
-const SHORT_MONTHS = [
+/**
+ * Month names for the window selector. English three-letter names are the
+ * fallback; the Amharic names below match the Ethiopic-month spellings used
+ * across the calendar views, indexed 0–11 for January–December.
+ */
+const SHORT_MONTHS_EN = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
+const SHORT_MONTHS_AM = [
+  'ጃንዩ', 'ፌብሩ', 'ማርች', 'ኤፕሪ', 'ሜይ', 'ጁን',
+  'ጁላይ', 'ኦገስ', 'ሴፕቴ', 'ኦክቶ', 'ኖቬ', 'ዲሴ',
+];
+
+/** Localised short month name for a 1-based month index. */
+const useShortMonth = (): ((month1to12: number) => string) => {
+  const { i18n } = useTranslation();
+  const months = i18n.language?.startsWith('am') ? SHORT_MONTHS_AM : SHORT_MONTHS_EN;
+  return (month1to12: number) => months[(month1to12 - 1) % 12] ?? SHORT_MONTHS_EN[month1to12 - 1];
+};
 
 /** How many months back the filter offers, including the current one. */
 const MONTH_WINDOW = 12;
@@ -64,22 +80,30 @@ const COLOR_MISSING = 'gray-300';
  *  gray for every unlogged day. */
 const COLOR_WEEKEND = 'gray-300';
 
-const STATUS_LABEL: Record<AttendanceStatus, string> = {
-  PRESENT: 'Present',
-  ABSENT: 'Absent',
-  HALF_DAY: 'Half day',
-  LEAVE: 'Leave',
-  HOLIDAY: 'Holiday',
+/**
+ * Localised labels. Status names come from the common namespace (already
+ * translated); month labels use the runtime locale so an Amharic UI shows
+ * Amharic month names like "መስከረም 2026".
+ */
+const useStatusLabels = (): Record<AttendanceStatus, string> => {
+  const { t } = useTranslation('common');
+  return {
+    PRESENT: t('status.present', { defaultValue: 'Present' }),
+    ABSENT: t('status.absent', { defaultValue: 'Absent' }),
+    HALF_DAY: t('status.halfDay', { defaultValue: 'Half day' }),
+    LEAVE: t('status.leave', { defaultValue: 'Leave' }),
+    HOLIDAY: t('status.holiday', { defaultValue: 'Holiday' }),
+  };
 };
 
-const LEGEND: Array<{ color: string; label: string }> = [
-  { color: COLOR_MAPPING.PRESENT, label: 'Present' },
-  { color: COLOR_MAPPING.ABSENT, label: 'Absent' },
-  { color: COLOR_MAPPING.HALF_DAY, label: 'Half day' },
-  { color: COLOR_MAPPING.LEAVE, label: 'Leave' },
-  { color: COLOR_MAPPING.HOLIDAY, label: 'Holiday' },
-  { color: COLOR_MISSING, label: 'No record' },
-];
+const LEGEND_COLORS = {
+  present: COLOR_MAPPING.PRESENT,
+  absent: COLOR_MAPPING.ABSENT,
+  halfDay: COLOR_MAPPING.HALF_DAY,
+  leave: COLOR_MAPPING.LEAVE,
+  holiday: COLOR_MAPPING.HOLIDAY,
+  missing: COLOR_MISSING,
+};
 
 const STATUS_ORDER: AttendanceStatus[] = ['PRESENT', 'ABSENT', 'HALF_DAY', 'LEAVE', 'HOLIDAY'];
 
@@ -100,12 +124,15 @@ const ColorDot: React.FC<{ color: string; label: string; className?: string }> =
   />
 );
 
-const StatusPill: React.FC<{ status: AttendanceStatus }> = ({ status }) => (
-  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-semibold text-foreground">
-    <ColorDot color={COLOR_MAPPING[status]} label={STATUS_LABEL[status]} className="h-2 w-2" />
-    {STATUS_LABEL[status]}
-  </span>
-);
+const StatusPill: React.FC<{ status: AttendanceStatus }> = ({ status }) => {
+  const labels = useStatusLabels();
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] font-semibold text-foreground">
+      <ColorDot color={COLOR_MAPPING[status]} label={labels[status]} className="h-2 w-2" />
+      {labels[status]}
+    </span>
+  );
+};
 
 interface AttendanceHistoryProps {
   isOwner?: boolean;
@@ -137,6 +164,9 @@ interface StaffRow {
  */
 export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = false, year: controlledYear, month: controlledMonth }) => {
   const controlled = typeof controlledYear === 'number' && typeof controlledMonth === 'number';
+  const { t } = useTranslation('attendance');
+  const statusLabels = useStatusLabels();
+  const shortMonth = useShortMonth();
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   // 0 = the current month; each step back is one month further into the past.
@@ -155,12 +185,14 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
     const now = new Date();
     return Array.from({ length: MONTH_WINDOW }, (_, i) => {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      return { offset: i, label: `${SHORT_MONTHS[date.getMonth()]} ${date.getFullYear()}` };
+      return { offset: i, label: `${shortMonth(date.getMonth() + 1)} ${date.getFullYear()}` };
     });
-  }, []);
+    // shortMonth follows the active language; re-derive when it changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shortMonth]);
 
   const selectedMonth = controlled
-    ? `${SHORT_MONTHS[controlledMonth! - 1]} ${controlledYear}`
+    ? `${shortMonth(controlledMonth!)} ${controlledYear}`
     : monthOptions[monthOffset]?.label ?? monthOptions[0].label;
 
   const dateRange = useMemo(() => {
@@ -293,12 +325,12 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
       <Card className="dark:bg-card dark:ring-border/40">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-tremor-title font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
-            Attendance history
+            {t('history.title')}
           </h3>
           <div className="flex flex-wrap items-center gap-2">
             {!controlled && (
               <DropdownSelect
-                ariaLabel="Filter attendance by month"
+                ariaLabel={t('history.filterByMonth')}
                 size="sm"
                 icon={CalendarDays}
                 value={String(monthOffset)}
@@ -312,12 +344,12 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
             )}
             {controlled && (
               <span className="text-xs font-medium text-muted-foreground">
-                Use the arrows above to change the month
+                {t('history.useArrowsAbove')}
               </span>
             )}
             <span className="inline-flex items-center gap-2 rounded-tremor-full px-3 py-1 text-tremor-default text-tremor-content-emphasis ring-1 ring-inset ring-tremor-ring dark:text-dark-tremor-content-emphasis dark:ring-dark-tremor-ring">
               <span className={cn('-ml-0.5 size-2 rounded-tremor-full', overallTone)} aria-hidden={true} />
-              {counts.present} days present
+              {t('history.daysPresent', { count: counts.present })}
             </span>
           </div>
         </div>
@@ -328,19 +360,28 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <AlertCircle className="w-8 h-8 text-destructive" />
             <p className="text-destructive font-medium">{error}</p>
-            <Button variant="outline" size="sm" onClick={fetchData}>Retry</Button>
+            <Button variant="outline" size="sm" onClick={fetchData}>{t('history.retry')}</Button>
           </div>
         ) : staffHistory.length === 0 ? (
-          <div className="py-12 text-center text-muted-foreground">No staff to display.</div>
+          <div className="py-12 text-center text-muted-foreground">{t('history.noStaff')}</div>
         ) : (
           <div aria-busy={isLoading} className={cn('transition-opacity', isLoading && 'opacity-60')}>
             {/* Legend and window axis are stated once, so each row can stay a
                 bare tracker instead of repeating labels 90 times over. */}
             <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-muted-foreground">
-              {LEGEND.map((entry) => (
-                <span key={entry.label} className="inline-flex items-center gap-1.5">
-                  <ColorDot color={entry.color} label={entry.label} className="rounded-sm" />
-                  {entry.label}
+              {(
+                [
+                  ['present', statusLabels.PRESENT],
+                  ['absent', statusLabels.ABSENT],
+                  ['halfDay', statusLabels.HALF_DAY],
+                  ['leave', statusLabels.LEAVE],
+                  ['holiday', statusLabels.HOLIDAY],
+                  ['missing', t('history.noRecord')],
+                ] as Array<[keyof typeof LEGEND_COLORS, string]>
+              ).map(([colorKey, label]) => (
+                <span key={colorKey} className="inline-flex items-center gap-1.5">
+                  <ColorDot color={LEGEND_COLORS[colorKey]} label={label} className="rounded-sm" />
+                  {label}
                 </span>
               ))}
             </div>
@@ -351,7 +392,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
                   <button
                     type="button"
                     onClick={() => setSelectedStaffId(s.id)}
-                    aria-label={`${s.name} attendance details`}
+                    aria-label={t('history.rowAria', { name: s.name })}
                     className="group w-full rounded-lg px-2 py-3 text-left transition-colors hover:bg-secondary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -366,7 +407,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <p className="text-tremor-default font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
-                          {s.present} days present
+                          {t('history.daysPresent', { count: s.present })}
                         </p>
                         <ChevronRight
                           className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
@@ -393,7 +434,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
       <Sheet
         open={Boolean(selectedStaff)}
         onClose={() => setSelectedStaffId(null)}
-        title={selectedStaff?.name ?? 'Attendance'}
+        title={selectedStaff?.name ?? t('history.title')}
         description={
           selectedStaff
             ? `${selectedStaff.role.toLowerCase()} · ${selectedMonth}`
@@ -406,7 +447,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
               {STATUS_ORDER.map((status) => (
                 <div key={status} className="rounded-xl border border-border bg-card px-3 py-3">
                   <p className="text-[11px] font-medium text-muted-foreground">
-                    {STATUS_LABEL[status]}
+                    {statusLabels[status]}
                   </p>
                   <p className="mt-1 font-mono text-xl font-bold text-foreground">
                     {selectedStaff.counts[status]}
@@ -414,7 +455,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
                 </div>
               ))}
               <div className="rounded-xl border border-dashed border-border bg-secondary/30 px-3 py-3">
-                <p className="text-[11px] font-medium text-muted-foreground">No record</p>
+                <p className="text-[11px] font-medium text-muted-foreground">{t('history.noRecord')}</p>
                 <p className="mt-1 font-mono text-xl font-bold text-muted-foreground">
                   {selectedStaff.missing}
                 </p>
@@ -434,11 +475,11 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Days logged
+                {t('history.daysLogged')}
               </p>
               {selectedStaff.records.length === 0 ? (
                 <p className="rounded-xl border border-border bg-secondary/30 px-3 py-6 text-center text-sm text-muted-foreground">
-                  Nothing logged in this window.
+                  {t('history.nothingLogged')}
                 </p>
               ) : (
                 <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border">
@@ -455,7 +496,7 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
                       <div className="flex shrink-0 flex-col items-end gap-1">
                         <StatusPill status={record.status} />
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {record.source === 'SYSTEM_LOGIN' ? 'Auto · login' : 'Manual'}
+                          {record.source === 'SYSTEM_LOGIN' ? t('history.autoLogin') : t('history.manual')}
                         </span>
                       </div>
                     </li>
@@ -466,12 +507,12 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
 
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
               <Badge variant="neutral" className="text-[10px]">
-                {selectedStaff.records.length} logged
+                {t('history.loggedCount', { count: selectedStaff.records.length })}
               </Badge>
               <span>·</span>
-              <span>{selectedStaff.present} days present</span>
+              <span>{t('history.daysPresent', { count: selectedStaff.present })}</span>
               <span>·</span>
-              <span>{selectedStaff.missing} working days unmarked</span>
+              <span>{t('history.workingDaysUnmarked', { count: selectedStaff.missing })}</span>
             </div>
           </div>
         )}
