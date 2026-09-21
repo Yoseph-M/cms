@@ -18,6 +18,7 @@ import { extractErrorMessage } from '../../utils/errorHandler';
 import { datedFilename, downloadBlob, timestampedFilename } from '../../utils/download';
 import { readFileAsText } from '../../utils/readFile';
 import { useToastStore } from '../../store/toastStore';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -63,6 +64,21 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const BUSINESS_KEYS = ['orders', 'payments', 'expenses', 'payroll'];
 const SYSTEM_KEYS = ['attendance', 'menu', 'staff', 'audit'];
 
+/** i18n key for a backend dataset key ('orders' → backup.ds.orders). */
+const datasetKey = (key: string): string => {
+  const KNOWN: Record<string, string> = {
+    orders: 'orders',
+    payments: 'payments',
+    expenses: 'expenses',
+    payroll: 'payroll',
+    attendance: 'attendance',
+    menu: 'menuItems',
+    staff: 'staff',
+    audit: 'auditLogs',
+  };
+  return `ds.${KNOWN[key] ?? 'other'}`;
+};
+
 export function describeSnapshot(snapshot: SnapshotPayload): { records: number; collections: number; generatedAt: string } {
   const counts = Object.values(snapshot.counts ?? {});
   const records = counts.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
@@ -79,16 +95,22 @@ const DatasetCard: React.FC<{
   dataset: DatasetSummary;
   exporting: boolean;
   onExport: (dataset: DatasetSummary) => void;
-}> = ({ dataset, exporting, onExport }) => (
+}> = ({ dataset, exporting, onExport }) => {
+  const { t } = useTranslation('owner');
+  const known = datasetKey(dataset.key).startsWith('ds.') && datasetKey(dataset.key) !== 'ds.other';
+  return (
   <Card className="flex flex-col hover:-translate-y-0.5">
     <CardContent className="flex flex-1 flex-col p-4">
       <h5 className="flex items-center gap-2 text-sm font-semibold">
         <FileDown className="h-4 w-4 text-primary" />
-        {dataset.label}
+        {known ? t(`backup.${datasetKey(dataset.key)}`) : dataset.label}
       </h5>
       <p className="mt-1.5 flex-1 text-xs text-muted-foreground">{dataset.description}</p>
       <p className="mt-2 text-[11px] font-medium text-muted-foreground">
-        {dataset.rows.toLocaleString()} {dataset.rows === 1 ? 'record' : 'records'}
+        {t(
+          dataset.rows === 1 ? 'backup.recordsWithCount_one' : 'backup.recordsWithCount_other',
+          { count: dataset.rows },
+        )}
       </p>
       <Button
         variant="outline"
@@ -96,14 +118,16 @@ const DatasetCard: React.FC<{
         onClick={() => void onExport(dataset)}
         disabled={exporting}
       >
-        {exporting ? 'Exporting…' : 'Export CSV'}
+        {exporting ? t('backup.exporting') : t('backup.exportCsv')}
       </Button>
     </CardContent>
   </Card>
-);
+  );
+};
 
 export const OwnerBackup: React.FC = () => {
   const { addToast } = useToastStore();
+  const { t } = useTranslation('owner');
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -134,7 +158,7 @@ export const OwnerBackup: React.FC = () => {
     staleTime: 5 * 60_000,
   });
 
-  const error = queryError ? extractErrorMessage(queryError, 'Failed to load export options.') : null;
+  const error = queryError ? extractErrorMessage(queryError, t('backup.loadError')) : null;
 
   const { data: resetPreview, isLoading: isResetPreviewLoading } = useQuery<ResetPreview>({
     queryKey: ['backupResetPreview'],
@@ -164,26 +188,29 @@ export const OwnerBackup: React.FC = () => {
       if (blob.size > MAX_UPLOAD_BYTES) {
         addToast({
           type: 'warning',
-          title: 'Backup downloaded',
-          message: `It is ${formatBytes(blob.size)}, larger than the ${formatBytes(MAX_UPLOAD_BYTES)} upload limit for restore. Keep it as an archive and use the database restore procedure in Runbook.md if you need to load it back.`,
+          title: t('backup.toast_download_title'),
+          message: t('backup.toast_download_tooBig', {
+            size: formatBytes(blob.size),
+            limit: formatBytes(MAX_UPLOAD_BYTES),
+          }),
         });
       } else {
         addToast({
           type: 'success',
-          title: 'Backup downloaded',
-          message: `${formatBytes(blob.size)} of system data. Check your downloads folder.`,
+          title: t('backup.toast_download_title'),
+          message: t('backup.toast_download_ok', { size: formatBytes(blob.size) }),
         });
       }
     } catch (err) {
       addToast({
         type: 'error',
-        title: 'Backup failed',
-        message: extractErrorMessage(err, 'Could not generate the backup. Try again.'),
+        title: t('backup.toast_failed_title'),
+        message: extractErrorMessage(err, t('backup.toast_failed_msg')),
       });
     } finally {
       setIsGenerating(false);
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const exportCsv = useCallback(
     async (dataset: DatasetSummary) => {
@@ -191,18 +218,22 @@ export const OwnerBackup: React.FC = () => {
       try {
         const res = await axiosClient.get(`/backup/datasets/${dataset.key}/csv`, { responseType: 'blob' });
         downloadBlob(res.data as Blob, datedFilename(`pos-${dataset.key}`, 'csv'));
-        addToast({ type: 'success', title: `${dataset.label} exported`, message: 'Saved as a CSV file.' });
+        addToast({
+          type: 'success',
+          title: t('backup.toast_export_title', { label: dataset.label }),
+          message: t('backup.toast_export_ok'),
+        });
       } catch (err) {
         addToast({
           type: 'error',
-          title: 'Export failed',
-          message: extractErrorMessage(err, `Could not export ${dataset.label}.`),
+          title: t('backup.toast_export_failed_title'),
+          message: extractErrorMessage(err, t('backup.toast_export_failed_msg', { label: dataset.label })),
         });
       } finally {
         setExportingKey(null);
       }
     },
-    [addToast],
+    [addToast, t],
   );
 
   /** Validate locally so the operator sees the problem before any upload. */
@@ -211,8 +242,11 @@ export const OwnerBackup: React.FC = () => {
       if (file.size > MAX_UPLOAD_BYTES) {
         addToast({
           type: 'error',
-          title: 'File too large',
-          message: `${formatBytes(file.size)} exceeds the ${formatBytes(MAX_UPLOAD_BYTES)} upload limit. Restore this file with the database procedure in Runbook.md instead.`,
+          title: t('backup.toast_tooLarge_title'),
+          message: t('backup.toast_tooLarge_msg', {
+            size: formatBytes(file.size),
+            limit: formatBytes(MAX_UPLOAD_BYTES),
+          }),
         });
         return;
       }
@@ -223,8 +257,8 @@ export const OwnerBackup: React.FC = () => {
       } catch {
         addToast({
           type: 'error',
-          title: 'Could not read that file',
-          message: 'The file could not be opened. Try copying it to this device again.',
+          title: t('backup.toast_read_title'),
+          message: t('backup.toast_read_msg'),
         });
         return;
       }
@@ -233,22 +267,22 @@ export const OwnerBackup: React.FC = () => {
       try {
         parsed = JSON.parse(text);
       } catch {
-        addToast({ type: 'error', title: 'Not a backup file', message: 'That file is not valid JSON.' });
+        addToast({ type: 'error', title: t('backup.toast_json_title'), message: t('backup.toast_json_msg') });
         return;
       }
 
       if (!parsed?.data || typeof parsed.data !== 'object') {
         addToast({
           type: 'error',
-          title: 'Not a POS backup',
-          message: 'The file has no "data" section. Pick a backup generated from this screen.',
+          title: t('backup.toast_shape_title'),
+          message: t('backup.toast_shape_msg'),
         });
         return;
       }
 
       setPendingRestore({ snapshot: parsed, name: file.name, size: file.size });
     },
-    [addToast],
+    [addToast, t],
   );
 
   const confirmRestore = useCallback(async () => {
@@ -259,23 +293,24 @@ export const OwnerBackup: React.FC = () => {
       const result = res.data as { inserted: number; skipped: number; failed: number };
       addToast({
         type: result.failed ? 'warning' : 'success',
-        title: 'Restore complete',
-        message: `${result.inserted} records added · ${result.skipped} already present${
-          result.failed ? ` · ${result.failed} could not be added` : ''
-        }.`,
+        title: t('backup.toast_restore_ok_title'),
+        message: `${t('backup.toast_restore_ok', {
+          inserted: result.inserted,
+          skipped: result.skipped,
+        })}${result.failed ? ` · ${t('backup.toast_restore_partial', { count: result.failed })}` : ''}`,
       });
       setPendingRestore(null);
       void refetch();
     } catch (err) {
       addToast({
         type: 'error',
-        title: 'Restore failed',
-        message: extractErrorMessage(err, 'The backup could not be applied. Nothing was changed.'),
+        title: t('backup.toast_restore_failed_title'),
+        message: extractErrorMessage(err, t('backup.toast_restore_failed_msg')),
       });
     } finally {
       setIsRestoring(false);
     }
-  }, [pendingRestore, addToast, refetch]);
+  }, [pendingRestore, addToast, refetch, t]);
 
   const performReset = useCallback(async () => {
     if (resetConfirm.trim().toUpperCase() !== 'RESET') return;
@@ -285,10 +320,8 @@ export const OwnerBackup: React.FC = () => {
       const result = res.data as { deleted: number };
       addToast({
         type: 'success',
-        title: 'System data reset',
-        message: `${result.deleted.toLocaleString()} operational ${
-          result.deleted === 1 ? 'record' : 'records'
-        } removed. Staff accounts, menu, and settings were kept.`,
+        title: t('backup.toast_reset_ok_title'),
+        message: t('backup.toast_reset_ok', { total: result.deleted.toLocaleString() }),
       });
       setResetOpen(false);
       setResetConfirm('');
@@ -297,23 +330,21 @@ export const OwnerBackup: React.FC = () => {
     } catch (err) {
       addToast({
         type: 'error',
-        title: 'Reset failed',
-        message: extractErrorMessage(err, 'Could not reset the system data. Nothing was deleted.'),
+        title: t('backup.toast_reset_failed_title'),
+        message: extractErrorMessage(err, t('backup.toast_reset_failed_msg')),
       });
     } finally {
       setIsResetting(false);
     }
-  }, [resetConfirm, addToast, refetch, queryClient]);
+  }, [resetConfirm, addToast, refetch, queryClient, t]);
 
   const pendingSummary = pendingRestore ? describeSnapshot(pendingRestore.snapshot) : null;
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-bold">Backup &amp; Restore</h3>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          Manage data exports, system snapshots, and database restoration.
-        </p>
+        <h3 className="text-lg font-bold">{t('backup.title')}</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground">{t('backup.subtitle')}</p>
       </div>
 
       {/*
@@ -333,17 +364,17 @@ export const OwnerBackup: React.FC = () => {
           <div className="min-h-[7.5rem] border-b border-primary/20 bg-primary/[0.07] px-4 py-4">
             <h4 className="flex items-center gap-2 text-base font-bold text-primary">
               <Database className="h-5 w-5 shrink-0" />
-              Create System Backup
+              {t('backup.createTitle')}
             </h4>
             <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
-              Generates a full JSON snapshot of system data excluding passwords, authentication tokens, and files.
+              {t('backup.createDesc')}
             </p>
           </div>
           <CardContent className="flex flex-1 flex-col p-4">
             <p className="text-xs text-muted-foreground">
               {totalRows > 0
-                ? `${totalRows.toLocaleString()} records currently stored.`
-                : 'A copy you can keep off this machine.'}
+                ? t('backup.recordsStored', { count: totalRows })
+                : t('backup.createFallback')}
             </p>
             <Button onClick={generateBackup} disabled={isGenerating} className="mt-auto w-full">
               {isGenerating ? (
@@ -351,7 +382,7 @@ export const OwnerBackup: React.FC = () => {
               ) : (
                 <FileJson className="h-4 w-4" />
               )}
-              {isGenerating ? 'Preparing backup…' : 'Generate & Download JSON Backup'}
+              {isGenerating ? t('backup.preparing') : t('backup.generateBtn')}
             </Button>
           </CardContent>
         </Card>
@@ -361,10 +392,10 @@ export const OwnerBackup: React.FC = () => {
           <div className="min-h-[7.5rem] border-b border-amber-200 bg-amber-100/60 px-4 py-4 dark:border-amber-500/30 dark:bg-amber-500/15">
             <h4 className="flex items-center gap-2 text-base font-bold text-amber-700 dark:text-amber-300">
               <Upload className="h-5 w-5 shrink-0" />
-              Restore System
+              {t('backup.restoreTitle')}
             </h4>
             <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
-              Upload a previously generated JSON backup to restore system data safely.
+              {t('backup.restoreDesc')}
             </p>
           </div>
           <CardContent className="flex flex-1 flex-col p-4">
@@ -382,8 +413,7 @@ export const OwnerBackup: React.FC = () => {
             />
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              Records already in this database are left untouched — a restore only adds what is missing, and never
-              deletes anything.
+              {t('backup.restoreNote')}
             </p>
             <Button
               variant="outline"
@@ -392,7 +422,7 @@ export const OwnerBackup: React.FC = () => {
               disabled={isRestoring}
             >
               <Upload className="h-4 w-4" />
-              Upload Backup File
+              {t('backup.uploadBtn')}
             </Button>
           </CardContent>
         </Card>
@@ -402,17 +432,16 @@ export const OwnerBackup: React.FC = () => {
           <div className="min-h-[7.5rem] border-b border-destructive/20 bg-destructive/[0.06] px-4 py-4">
             <h4 className="flex items-center gap-2 text-base font-bold text-destructive">
               <Trash2 className="h-5 w-5 shrink-0" />
-              Reset System Data
+              {t('backup.resetTitle')}
             </h4>
             <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
-              Format the operational books — orders, payments, expenses, payroll, attendance and end-of-day closes.
-              Staff accounts, the menu, settings and the audit trail are kept. This cannot be undone.
+              {t('backup.resetDesc')}
             </p>
           </div>
           <CardContent className="flex flex-1 flex-col p-4">
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              You are shown every record it would delete, and must confirm, before anything is removed.
+              {t('backup.resetNote')}
             </p>
             <Button
               variant="outline"
@@ -423,7 +452,7 @@ export const OwnerBackup: React.FC = () => {
               }}
             >
               <RotateCcw className="h-4 w-4" />
-              Reset system data
+              {t('backup.resetBtn')}
             </Button>
           </CardContent>
         </Card>
@@ -434,15 +463,22 @@ export const OwnerBackup: React.FC = () => {
         <div>
           <h4 className="flex items-center gap-2 text-lg font-bold">
             <Download className="h-5 w-5" />
-            CSV Data Exports
+            {t('backup.csvTitle')}
           </h4>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Download individual datasets as CSV files for reporting or external analysis.
+            {t('backup.csvDesc')}
           </p>
         </div>
 
+        {/*
+         * Fixed four-across rows rather than a viewport breakpoint: this panel
+         * lives inside the admin shell, so `lg:` refused to fire on smaller
+         * laptops and the four cards stacked. Business records and system
+         * records each stay on one row, dropping to two-up only under 768px.
+         */}
+
         {isLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-4">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="h-40 animate-pulse rounded-2xl bg-secondary/40" />
             ))}
@@ -453,7 +489,7 @@ export const OwnerBackup: React.FC = () => {
               <AlertCircle className="mx-auto mb-3 h-8 w-8 text-destructive" />
               <p className="text-destructive">{error}</p>
               <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>
-                Retry
+                {t('backup.retry')}
               </Button>
             </CardContent>
           </Card>
@@ -461,9 +497,9 @@ export const OwnerBackup: React.FC = () => {
           <div className="space-y-5">
             <div className="space-y-2.5">
               <h5 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Business records
+                {t('backup.businessRecords')}
               </h5>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-4">
                 {businessDatasets.map((dataset) => (
                   <DatasetCard
                     key={dataset.key}
@@ -476,9 +512,9 @@ export const OwnerBackup: React.FC = () => {
             </div>
             <div className="space-y-2.5">
               <h5 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                System records
+                {t('backup.systemRecords')}
               </h5>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-4">
                 {systemDatasets.map((dataset) => (
                   <DatasetCard
                     key={dataset.key}
@@ -500,20 +536,20 @@ export const OwnerBackup: React.FC = () => {
         }}
         onConfirm={confirmRestore}
         loading={isRestoring}
-        title="Restore this backup?"
-        confirmText="Restore data"
+        title={t('backup.restoreConfirmTitle')}
+        confirmText={t('backup.restoreConfirmBtn')}
         description={
           pendingSummary ? (
             <div className="space-y-2">
               <p className="break-all font-mono text-xs text-foreground">{pendingRestore?.name}</p>
               <p>
-                {pendingSummary.records.toLocaleString()} records across {pendingSummary.collections} collections,
-                generated {pendingSummary.generatedAt}.
+                {t('backup.restoreSummary', {
+                  records: pendingSummary.records.toLocaleString(),
+                  collections: pendingSummary.collections,
+                  generatedAt: pendingSummary.generatedAt,
+                })}
               </p>
-              <p>
-                Existing records are kept as they are; only records missing from this database are added. Newly
-                added staff accounts arrive without passwords and will need a password reset before they can sign in.
-              </p>
+              <p>{t('backup.restoreKeepExisting')}</p>
             </div>
           ) : null
         }
@@ -536,16 +572,15 @@ export const OwnerBackup: React.FC = () => {
                 <AlertTriangle className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <h3 className="text-base font-semibold text-foreground">Reset all system data?</h3>
+                <h3 className="text-base font-semibold text-foreground">{t('backup.resetConfirmTitle')}</h3>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                  Every operational record is permanently deleted. Download a backup first if you might need this
-                  data again — a reset cannot be undone from this screen.
+                  {t('backup.resetConfirmDesc')}
                 </p>
               </div>
             </div>
 
             <div className="mt-5 rounded-lg border border-destructive/30 bg-destructive/[0.04] p-3">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-destructive">Will be deleted</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-destructive">{t('backup.willBeDeleted')}</p>
               {isResetPreviewLoading ? (
                 <div className="mt-2 space-y-1.5">
                   {Array.from({ length: 4 }).map((_, i) => (
@@ -565,13 +600,15 @@ export const OwnerBackup: React.FC = () => {
                 </ul>
               )}
               <p className="mt-2 text-[11px] font-medium text-muted-foreground">
-                {resetPreview ? `${resetPreview.rows.toLocaleString()} total records` : 'Calculating…'}
+                {resetPreview
+                  ? t('backup.totalRecords', { count: resetPreview.rows })
+                  : t('backup.calculating')}
               </p>
             </div>
 
             {resetPreview?.keeps?.length ? (
               <div className="mt-3 rounded-lg border border-border bg-secondary/30 p-3">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Kept</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{t('backup.kept')}</p>
                 <ul className="mt-2 flex flex-wrap gap-1.5">
                   {resetPreview.keeps.map((item) => (
                     <li
@@ -587,7 +624,7 @@ export const OwnerBackup: React.FC = () => {
 
             <div className="mt-5">
               <label htmlFor="reset-confirm" className="mb-1.5 block text-sm font-medium text-foreground">
-                Type <span className="font-mono font-bold text-destructive">RESET</span> to confirm
+                {t('backup.typeReset', { reset: 'RESET' })}
               </label>
               <Input
                 id="reset-confirm"
@@ -601,14 +638,14 @@ export const OwnerBackup: React.FC = () => {
 
             <div className="mt-6 flex justify-end gap-3">
               <Button variant="outline" onClick={() => setResetOpen(false)} disabled={isResetting}>
-                Cancel
+                {t('backup.cancel')}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => void performReset()}
                 disabled={isResetting || resetConfirm.trim().toUpperCase() !== 'RESET'}
               >
-                {isResetting ? 'Resetting…' : 'Reset system data'}
+                {isResetting ? t('backup.resetting') : t('backup.resetBtn')}
               </Button>
             </div>
           </div>
