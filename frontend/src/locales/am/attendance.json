@@ -1,0 +1,56 @@
+{
+  "title": "የስራ ክትትል",
+  "subtitleOwner": "የሁሉም ሠራተኞች መገኘት",
+  "subtitleManager": "የቡድን መገኘት እና የሹፍታ መዝገብ",
+  "status": {
+    "present": "ተገኝቷል",
+    "absent": "ስለለውም",
+    "halfDay": "ግማሽ ቀን",
+    "leave": "ፈቃድ",
+    "holiday": "በዓል"
+  },
+  "view": {
+    "grid": "ፍርግርግ",
+    "history": "መዝገብ"
+  },
+  "markAllPresent": "ሁሉንም ተገኝቷል ምልክት አድርግ",
+  "marking": "በመምለክ ላይ...",
+  "summary": {
+    "title": "የመገኘት ማጠቃለያ",
+    "rate": "የመገኘት መጠን",
+    "loggedRatio": "{{recorded}}/{{possible}} ተመዝግቧል"
+  },
+  "staffColumn": "ሠራተኛ",
+  "onlyToday": "ዛሬ ብቻ ነው መመዝገብ ወይም ማስተካከል የሚቻለው",
+  "logAttendance": "መገኘት መዝግብ",
+  "clockInNote": "መመዝገብ ለዛሬ ብቻ ይፈቀዳል — ያለፉና ወደፊት ያሉ ቀናት ተዘግተዋል። ያለፉትን ወራት ለማየት ወደ መዝገብ ይቀየሩና እነዚህን ተራራቂዎች ይጠቀሙ።",
+  "noteLabel": "ማስታወሻ",
+  "noteOverrideRequired": "* (ለማሻሻል ያስፈልጋል)",
+  "notePlaceholder": "አማራጭ ምክንያት...",
+  "save": "አስቀምጥ",
+  "saving": "በማስቀመጥ ላይ...",
+  "toasts": {
+    "saved": "መገኘት ተመዝግቧል",
+    "saveFailed": "ማስቀመጥ አልተሳካም",
+    "noteRequired": "ማስታወሻ ያስፈልጋል",
+    "noteRequiredMsg": "ነባር መዝገብን ለመቀየር ምክንያት ያስፈልጋል።",
+    "markedAllPresent": "ሁሉም ተገኝቷል ተብሎ ተምልክቷል",
+    "markedAllPresentMsg": "ለ{{date}} {{total}} ሠራተኞች ውስጥ {{done}} ተገኝቷል ተብለው ተምልክተዋል። እያንዳንዱ ፍርግርግ ሊስተካከል ይችላል።"
+  },
+  "history": {
+    "title": "የመገኘት መዝገብ",
+    "filterByMonth": "መገኘትን በወር አጣራ",
+    "useArrowsAbove": "ወሩን ለመቀየር ከላይ ያሉትን ተራራቂዎች ተጠቀም",
+    "daysPresent": "{{count}} ቀናት ተገኝተዋል",
+    "noRecord": "መዝገብ የለም",
+    "noStaff": "የሚታይ ሠራተኛ የለም።",
+    "retry": "እንደገና ሞክር",
+    "rowAria": "የ{{name}} የመገኘት ዝርዝር",
+    "daysLogged": "የተመዘገቡ ቀናት",
+    "nothingLogged": "በዚህ ጊዜ ውስጥ ምንም አልተመዘገበም።",
+    "autoLogin": "በራስ-ሰር · መግቢያ",
+    "manual": "በእጅ",
+    "loggedCount": "{{count}} ተመዝግቧል",
+    "workingDaysUnmarked": "{{count}} የሥራ ቀናት አልተለኩም"
+  }
+}
