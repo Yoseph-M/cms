@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { Select } from '../ui/Select';
 import { DropdownSelect } from '../ui/DropdownSelect';
 import { Sheet } from '../ui/Sheet';
 import { AlertDialog } from '../ui/AlertDialog';
@@ -493,23 +492,22 @@ export const ExpensesTracker: React.FC = () => {
       >
         <div className="space-y-5">
           <div>
-            <label htmlFor="expense-category" className="text-sm font-medium text-foreground block mb-1.5">
+            <span className="text-sm font-medium text-foreground block mb-1.5">
               {t('expenses.form.category', { defaultValue: 'Category' })} <span className="text-destructive">*</span>
-            </label>
-            <Select
-              id="expense-category"
+            </span>
+            <DropdownSelect
+              ariaLabel={t('expenses.form.category', { defaultValue: 'Category' })}
+              className="w-full justify-between"
+              contentClassName="w-56"
               value={form.category}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, category: e.target.value as ExpenseCategory }))
+              onChange={(next) =>
+                setForm((f) => ({ ...f, category: next as ExpenseCategory }))
               }
-            >
-              {(editing?.category === 'PAYROLL'
+              options={(editing?.category === 'PAYROLL'
                 ? [...MANUAL_CATEGORIES, 'PAYROLL' as ExpenseCategory]
                 : MANUAL_CATEGORIES
-              ).map((c) => (
-                <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
-              ))}
-            </Select>
+              ).map((c) => ({ value: c, label: CATEGORY_LABELS[c] }))}
+            />
             <p className="mt-1.5 text-xs text-muted-foreground">
               {t('expenses.payrollAutoNote')}
             </p>
