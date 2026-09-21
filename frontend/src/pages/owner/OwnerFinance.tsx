@@ -15,6 +15,7 @@ import { formatCurrency, formatCurrencyCompact } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
 import { useSocketStore } from '../../store/socketStore';
+import { useTranslation } from 'react-i18next';
 
 function useWidget<T>(endpoint: string, deps: Record<string, string> = {}) {
   // React Query backs every finance widget so results are cached across page
@@ -40,12 +41,12 @@ const fmtDate = (d: Date) => d.toISOString().split('T')[0];
 /* ── Peak-hours heatmap range presets ── */
 type PeakRangePreset = 'today' | '7d' | '30d' | '90d' | 'page';
 
-const PEAK_RANGE_OPTIONS: Array<{ value: PeakRangePreset; label: string }> = [
-  { value: 'today', label: 'Today' },
-  { value: '7d', label: 'Last 7 days' },
-  { value: '30d', label: 'Last 30 days' },
-  { value: '90d', label: 'Last 90 days' },
-  { value: 'page', label: 'Selected range' },
+const PEAK_RANGE_OPTIONS: Array<{ value: PeakRangePreset; key: string }> = [
+  { value: 'today', key: 'today' },
+  { value: '7d', key: 'last7Days' },
+  { value: '30d', key: 'last30Days' },
+  { value: '90d', key: 'last90Days' },
+  { value: 'page', key: 'selectedRange' },
 ];
 
 /** Days back from today for each preset (today = 0). */
@@ -59,15 +60,20 @@ const PEAK_PRESET_OFFSET: Record<Exclude<PeakRangePreset, 'page'>, number> = {
 export const OwnerFinance: React.FC = () => {
   const [range, setRange] = useState<DateRange>(() => computeRange('30d'));
   const { setPageTitle, setShowDateRange } = useHeaderStore();
+  const { t } = useTranslation('owner');
 
   // Reflect the current section in the global header.
   useEffect(() => {
-    setPageTitle({ title: 'Finance', subtitle: 'Analytics & revenue intelligence' });
+    setPageTitle({
+      title: t('finance.title', { defaultValue: 'Finance' }),
+      subtitle: t('finance.subtitle', { defaultValue: 'Analytics & revenue intelligence' }),
+    });
     setShowDateRange(false);
     return () => {
       setPageTitle({ title: 'Overview', subtitle: '' });
       setShowDateRange(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setPageTitle, setShowDateRange]);
 
   // Send full ISO boundary strings so the backend query is anchored to the
@@ -89,18 +95,38 @@ export const OwnerFinance: React.FC = () => {
   const [peakPreset, setPeakPreset] = useState<PeakRangePreset>('7d');
 
   const rangeDeps = useMemo(() => ({ from, to }), [from, to]);
-  const daily = useWidget<{
-    totalRevenue: number;
-    mtdRevenue: number;
-    orderCount: number;
-    avgTicket: number;
-    deltas?: {
-      revenueVsPriorDay?: number | null;
-      mtdVsPriorMonth?: number | null;
-      ordersVsPriorDay?: number | null;
-      aovVsPriorDay?: number | null;
+
+  /**
+   * Headline revenue follows the page's date filter: the paid total for the
+   * selected window. (It used to read month-to-date from `/sales/daily`, so
+   * dragging the range left the number frozen at this month's revenue.)
+   */
+  const rangeTotal = useWidget<{ totalRevenue: number; orderCount: number }>(
+    '/analytics/sales/total',
+    rangeDeps
+  );
+
+  // The immediately preceding window of the same length, so the KPI can show a
+  // like-for-like delta instead of comparing to a fixed month.
+  const priorRangeDeps = useMemo(() => {
+    const start = new Date(from).getTime();
+    const span = new Date(to).getTime() - start;
+    return {
+      from: new Date(start - span - 1).toISOString(),
+      to: new Date(start - 1).toISOString(),
     };
-  }>('/analytics/sales/daily');
+  }, [from, to]);
+  const priorTotal = useWidget<{ totalRevenue: number; orderCount: number }>(
+    '/analytics/sales/total',
+    priorRangeDeps
+  );
+
+  const revenueDelta = useMemo(() => {
+    const current = rangeTotal.data?.totalRevenue ?? 0;
+    const prior = priorTotal.data?.totalRevenue ?? 0;
+    if (prior === 0) return null;
+    return Math.round(((current - prior) / prior) * 1000) / 10;
+  }, [rangeTotal.data, priorTotal.data]);
 
   const trend = useWidget<{ date: string; revenue: number; orderCount: number }[]>(
     '/analytics/sales/trend',
@@ -164,7 +190,8 @@ export const OwnerFinance: React.FC = () => {
     if (!socket) return;
     const handler = () => {
       // Silently refetch – skip loading spinners so the UX stays smooth
-      daily.refetch();
+      rangeTotal.refetch();
+      priorTotal.refetch();
       trend.refetch();
       pnl.refetch();
       topItm.refetch();
@@ -263,7 +290,7 @@ export const OwnerFinance: React.FC = () => {
 
       <Grid numItems={1} numItemsSm={2} className="gap-4">
         {[
-          { label: 'Overall Revenue', value: daily.data ? formatCurrency(daily.data.mtdRevenue ?? 0) : '—', delta: daily.data?.deltas?.mtdVsPriorMonth, icon: TrendingUp },
+          { label: t('finance.overallRevenue', { defaultValue: 'Overall Revenue' }), value: rangeTotal.data ? formatCurrency(rangeTotal.data.totalRevenue) : '—', delta: revenueDelta, icon: TrendingUp },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
@@ -271,7 +298,7 @@ export const OwnerFinance: React.FC = () => {
               <KpiMetricCard
                 label={kpi.label}
                 value={kpi.value}
-                loading={daily.loading}
+                loading={rangeTotal.loading}
                 delta={<GrowthBadge value={kpi.delta} />}
                 icon={
                   <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -286,7 +313,7 @@ export const OwnerFinance: React.FC = () => {
 
       {/* Profit & Loss */}
       <TremorWidget
-        title="Revenue vs Costs"
+        title={t('finance.revenueVsCosts', { defaultValue: 'Revenue vs Costs' })}
         loading={pnl.loading}
         error={pnl.error}
         onRetry={pnl.refetch}
@@ -296,10 +323,10 @@ export const OwnerFinance: React.FC = () => {
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-3 max-[419px]:grid-cols-1">
               {[
-                { label: 'Revenue', value: pnl.data.revenue, tone: 'text-foreground' },
-                { label: 'Expenses', value: pnl.data.expenses, tone: 'text-destructive' },
+                { label: t('finance.revenue', { defaultValue: 'Revenue' }), value: pnl.data.revenue, tone: 'text-foreground' },
+                { label: t('finance.expenses', { defaultValue: 'Expenses' }), value: pnl.data.expenses, tone: 'text-destructive' },
                 {
-                  label: 'Net',
+                  label: t('finance.net', { defaultValue: 'Net' }),
                   value: pnl.data.netProfit,
                   tone: pnl.data.netProfit >= 0 ? 'text-[hsl(var(--success))]' : 'text-destructive',
                 },
@@ -313,8 +340,8 @@ export const OwnerFinance: React.FC = () => {
             <BarChart
               labels={['Period']}
               series={[
-                { label: 'Revenue', values: [pnl.data.revenue] },
-                { label: 'Expenses', values: [pnl.data.expenses] },
+                { label: t('finance.revenue', { defaultValue: 'Revenue' }), values: [pnl.data.revenue] },
+                { label: t('finance.expenses', { defaultValue: 'Expenses' }), values: [pnl.data.expenses] },
               ]}
               height={160}
               yTickFormat={moneyTickFormat}
@@ -327,31 +354,31 @@ export const OwnerFinance: React.FC = () => {
 
       {/* Revenue Trend */}
       <TremorWidget
-        title="Revenue Trend"
+        title={t('finance.revenueTrend', { defaultValue: 'Revenue Trend' })}
         loading={trend.loading}
         error={trend.error}
         onRetry={trend.refetch}
         empty={!trend.data?.length}
-        emptyMsg="No revenue in this date range."
+        emptyMsg={t('finance.noRevenueInRange', { defaultValue: 'No revenue in this date range.' })}
         headerExtra={
           <Flex alignItems="center" className="gap-2">
             <ChartToggle
               options={[
-                { value: 'line', label: 'Line' },
-                { value: 'bar', label: 'Bar' },
+                { value: 'line', label: t('finance.line', { defaultValue: 'Line' }) },
+                { value: 'bar', label: t('finance.bar', { defaultValue: 'Bar' }) },
               ]}
               value={trendChart}
               onChange={(v) => setTrendChart(v as 'line' | 'bar')}
             />
             <DropdownSelect
-              ariaLabel="Compare against"
+              ariaLabel={t('finance.compareAgainst', { defaultValue: 'Compare against' })}
               size="sm"
               icon={TrendingUp}
               className="h-8"
               value={trendOverlay}
               onChange={(v) => setTrendOverlay(v as typeof trendOverlay)}
               options={[
-                { value: 'none', label: 'No overlay' },
+                { value: 'none', label: t('finance.noOverlay', { defaultValue: 'No overlay' }) },
                 { value: 'wow', label: 'WoW' },
                 { value: 'mom', label: 'MoM' },
                 { value: 'yoy', label: 'YoY' },
@@ -383,7 +410,7 @@ export const OwnerFinance: React.FC = () => {
       </TremorWidget>
 
       <TremorWidget
-        title="Top Items"
+        title={t('finance.topItems', { defaultValue: 'Top Items' })}
         loading={topItm.loading}
         error={topItm.error}
         onRetry={topItm.refetch}
@@ -391,8 +418,8 @@ export const OwnerFinance: React.FC = () => {
         headerExtra={
           <ChartToggle
             options={[
-              { value: 'qty', label: 'Qty' },
-              { value: 'revenue', label: 'Revenue' },
+              { value: 'qty', label: t('finance.qty', { defaultValue: 'Qty' }) },
+              { value: 'revenue', label: t('finance.revenue', { defaultValue: 'Revenue' }) },
             ]}
             value={topItemsMode}
             onChange={(v) => setTopItemsMode(v as 'revenue' | 'qty')}
@@ -401,7 +428,7 @@ export const OwnerFinance: React.FC = () => {
       >
         <BarChart
           labels={topChartData.labels}
-          series={[{ label: topItemsMode, values: topChartData.values }]}
+          series={[{ label: topItemsMode === 'revenue' ? t('finance.revenue', { defaultValue: 'Revenue' }) : t('finance.qty', { defaultValue: 'Qty' }), values: topChartData.values }]}
           height={180}
           yTickFormat={topTickFormat}
           tooltipFormat={topTooltipFormat}
@@ -411,14 +438,14 @@ export const OwnerFinance: React.FC = () => {
 
       <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4">
         <TremorWidget
-          title="Staff Leaderboard"
+          title={t('finance.staffLeaderboard', { defaultValue: 'Staff Leaderboard' })}
           loading={staffP.loading}
           error={staffP.error}
           onRetry={staffP.refetch}
           empty={!staffP.data?.length}
           headerExtra={
             <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Revenue
+              {t('finance.revenue', { defaultValue: 'Revenue' })}
             </Text>
           }
         >
@@ -439,22 +466,22 @@ export const OwnerFinance: React.FC = () => {
         </TremorWidget>
 
         <TremorWidget
-          title="Cancellation Analysis"
+          title={t('finance.cancellationAnalysis', { defaultValue: 'Cancellation Analysis' })}
           loading={cancels.loading}
           error={cancels.error}
           onRetry={cancels.refetch}
           empty={!cancels.data?.length}
-          emptyMsg="No cancellations in this period."
+          emptyMsg={t('finance.noCancellations', { defaultValue: 'No cancellations in this period.' })}
           headerExtra={
             <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Count
+              {t('finance.count', { defaultValue: 'Count' })}
             </Text>
           }
         >
           <BarList
             data={(cancels.data || []).map((d, i) => ({
               key: String(i),
-              name: d.reason || 'No reason given',
+              name: d.reason || t('finance.noReasonGiven', { defaultValue: 'No reason given' }),
               value: d.count || 0,
             }))}
             color="red"
@@ -464,22 +491,25 @@ export const OwnerFinance: React.FC = () => {
       </div>
 
       <TremorWidget
-        title="Peak Hours Heatmap"
+        title={t('finance.peakHours', { defaultValue: 'Peak Hours Heatmap' })}
         loading={peak.loading}
         error={peak.error}
         onRetry={peak.refetch}
         empty={!peak.data || (Array.isArray(peak.data) && peak.data.length === 0)}
-        emptyTitle="No peak-hour data yet"
-        emptyMsg="Orders placed during the selected window will populate this heatmap."
+        emptyTitle={t('finance.peakEmptyTitle', { defaultValue: 'No peak-hour data yet' })}
+        emptyMsg={t('finance.peakEmptyMsg', { defaultValue: 'Orders placed during the selected window will populate this heatmap.' })}
         headerExtra={
           <DropdownSelect
-            ariaLabel="Peak hours time range"
+            ariaLabel={t('finance.peakRange', { defaultValue: 'Peak hours time range' })}
             size="sm"
             icon={Clock}
             className="h-8"
             value={peakPreset}
             onChange={(v) => setPeakPreset(v as PeakRangePreset)}
-            options={PEAK_RANGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            options={PEAK_RANGE_OPTIONS.map((o) => ({
+              value: o.value,
+              label: t(`finance.${o.key}`, { defaultValue: o.key }),
+            }))}
             contentClassName="w-52"
           />
         }
@@ -489,7 +519,7 @@ export const OwnerFinance: React.FC = () => {
 
       <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4">
         <TremorWidget
-          title="Revenue by Category"
+          title={t('finance.revenueByCategory', { defaultValue: 'Revenue by Category' })}
           loading={catSpl.loading}
           error={catSpl.error}
           onRetry={catSpl.refetch}
@@ -505,7 +535,7 @@ export const OwnerFinance: React.FC = () => {
         </TremorWidget>
 
         <TremorWidget
-          title="Payment Method Split"
+          title={t('finance.paymentMethodSplit', { defaultValue: 'Payment Method Split' })}
           loading={payMth.loading}
           error={payMth.error}
           onRetry={payMth.refetch}
