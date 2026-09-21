@@ -26,6 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '../ui/Dropdown';
+import { DropdownSelect } from '../ui/DropdownSelect';
 import { cn } from '../../lib/utils';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -463,32 +464,22 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
             </span>
           </div>
 
-          {/* Waiter selector */}
-          <label htmlFor="order-waiter" className="text-xs text-muted-foreground mb-1 block">
+          {/* Waiter selector — house dropdown; the trigger keeps the
+              destructive border while no waiter is chosen. */}
+          <label className="text-xs text-muted-foreground mb-1 block">
             <UserRound className="inline w-3 h-3 mr-1" />
             {t('ordering.waiterLabel')}
           </label>
-          <div className="relative mb-3">
-            <select
-              id="order-waiter"
+          <div className={`mb-3 ${selectedWaiterId ? '' : '[&>button]:border-destructive/60'}`}>
+            <DropdownSelect
+              ariaLabel={t('ordering.waiterLabel')}
+              className="w-full justify-between h-9 text-xs"
+              contentClassName="w-56 max-h-72 overflow-y-auto"
               value={selectedWaiterId}
-              onChange={(e) => setSelectedWaiterId(e.target.value)}
-              className={`w-full h-9 pl-3 pr-8 rounded-md border text-sm appearance-none bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50 ${
-                selectedWaiterId
-                  ? 'border-border text-foreground'
-                  : 'border-destructive/60 text-muted-foreground'
-              }`}
-            >
-              <option value="">— Select a waiter —</option>
-              {waiters.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </span>
+              onChange={setSelectedWaiterId}
+              placeholder="— Select a waiter —"
+              options={waiters.map((w) => ({ value: w.id, label: w.name }))}
+            />
           </div>
 
           <label htmlFor="order-table" className="text-xs text-muted-foreground mb-1 block">
