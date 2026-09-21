@@ -48,6 +48,7 @@ import {
   ChevronRight,
   ArrowLeft,
   ArrowRight,
+  RefreshCw,
 } from 'lucide-react';
 
 const CashierOrderingPanel = lazy(() =>
@@ -314,6 +315,14 @@ export const CashierTicketsPage: React.FC = () => {
   /* ── Printer failures ── */
   const [printerFailures, setPrinterFailures] = useState<PrinterFailureEvent[]>([]);
 
+  /* ── Kitchen reprints ──
+   * A reprint is fire-and-forget: the API queues the job and answers 201, so a
+   * printer that rejects it can only be detected from the socket events. Track
+   * which tickets the cashier re-sent so a failure can say so, and keep the
+   * failed ones on screen until the ticket actually reaches paper. */
+  const reprintAttempts = useRef<Map<string, number>>(new Map());
+  const [reprintFailures, setReprintFailures] = useState<Record<string, string>>({});
+
   /* ── Card refs ── */
   const cardRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
@@ -375,6 +384,23 @@ export const CashierTicketsPage: React.FC = () => {
     [orders, selectedOrderId],
   );
 
+  /**
+   * Failed kitchen prints still waiting to reach paper, labelled with the ticket
+   * they belong to so the cashier can act without hunting the queue.
+   */
+  const reprintFailureList = useMemo(
+    () =>
+      Object.entries(reprintFailures).map(([id, reason]) => {
+        const order = orders.find((o) => o.id === id);
+        return {
+          id,
+          reason,
+          label: order?.tableNumber ? `Table ${order.tableNumber}` : 'Takeout',
+        };
+      }),
+    [reprintFailures, orders],
+  );
+
   /* Open-order count per table, for the new-order table picker. */
   const openOrdersByTable = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -421,6 +447,9 @@ export const CashierTicketsPage: React.FC = () => {
   // never flashes the loading skeleton over an already-rendered queue.
   const fetchOrdersRef = useRef(fetchOrders);
   fetchOrdersRef.current = fetchOrders;
+  // Read inside socket handlers, which must not re-subscribe on every render.
+  const ordersRef = useRef<Order[]>([]);
+  ordersRef.current = orders;
   useEffect(() => {
     const id = setInterval(() => void fetchOrdersRef.current(true), 30_000);
     return () => clearInterval(id);
@@ -454,23 +483,69 @@ export const CashierTicketsPage: React.FC = () => {
     const onUpdate = (o: Order) => setOrders((p) => p.map((x) => (x.id === o.id ? o : x)));
     const onCancel = (o: Order) => setOrders((p) => p.map((x) => (x.id === o.id ? o : x)));
     const onPrinterFail = (p: PrinterFailureEvent) => setPrinterFailures((prev) => [...prev, p]);
+
+    /**
+     * A failed kitchen job must be visible to whoever is standing at the desk —
+     * the card badge alone is easy to miss when the ticket has scrolled away.
+     * Reported as a toast immediately and kept inline until it prints.
+     */
+    const onPrintJobFailed = (payload?: { jobId?: string; orderId?: string; station?: string; error?: string }) => {
+      void fetchOrdersRef.current(true);
+      // Agent acknowledgements carry only the job id; the queue knows which
+      // ticket that job belongs to, so the failure can still name its table.
+      const orderId =
+        payload?.orderId ??
+        (payload?.jobId
+          ? ordersRef.current.find((o) => o.latestPrintJob?.id === payload.jobId)?.id
+          : undefined);
+      if (!orderId) return;
+      const order = ordersRef.current.find((o) => o.id === orderId);
+      const label = order?.tableNumber ? `Table ${order.tableNumber}` : 'The takeout ticket';
+      const attempts = reprintAttempts.current.get(orderId) ?? 0;
+      setReprintFailures((prev) => ({
+        ...prev,
+        [orderId]: payload?.error || 'The printer did not accept the ticket.',
+      }));
+      // NOTE: the payload's `error` is kept for context; the copy the cashier
+      // reads stays in plain language rather than raw driver text.
+      addToast({
+        type: 'error',
+        title: attempts > 0 ? 'Reprint failed again' : 'Kitchen ticket failed',
+        message: `${label} did not reach the printer${attempts > 1 ? ' again' : ''}. Check the printer is switched on and loaded, then reprint.`,
+      });
+    };
+
     // A kitchen ticket changing state (queued → printed/failed) should refresh
     // the badges on the cards, so the cashier sees what reached paper.
+    const onPrintJobUpdated = (payload?: { jobId?: string; orderId?: string; status?: string; error?: string }) => {
+      void fetchOrdersRef.current(true);
+      // Agents acknowledge failures through the same event — route those to the
+      // reporter so an agent-driven failure is announced too.
+      if (payload?.status === 'FAILED') onPrintJobFailed(payload);
+      if (payload?.status === 'PRINTED' && payload.orderId) {
+        setReprintFailures((prev) => {
+          if (!(payload.orderId! in prev)) return prev;
+          const next = { ...prev };
+          delete next[payload.orderId!];
+          return next;
+        });
+      }
+    };
     const onPrintJobChange = () => void fetchOrdersRef.current(true);
     socket.on('order:new', onNew);
     socket.on('order:updated', onUpdate);
     socket.on('order:cancelled', onCancel);
     socket.on('printer:failed', onPrinterFail);
-    socket.on('printJob:updated', onPrintJobChange);
-    socket.on('printJob:failed', onPrintJobChange);
+    socket.on('printJob:updated', onPrintJobUpdated);
+    socket.on('printJob:failed', onPrintJobFailed);
     socket.on('printJob:queued', onPrintJobChange);
     return () => {
       socket.off('order:new', onNew);
       socket.off('order:updated', onUpdate);
       socket.off('order:cancelled', onCancel);
       socket.off('printer:failed', onPrinterFail);
-      socket.off('printJob:updated', onPrintJobChange);
-      socket.off('printJob:failed', onPrintJobChange);
+      socket.off('printJob:updated', onPrintJobUpdated);
+      socket.off('printJob:failed', onPrintJobFailed);
       socket.off('printJob:queued', onPrintJobChange);
     };
   }, [socket, addToast]);
@@ -656,6 +731,15 @@ export const CashierTicketsPage: React.FC = () => {
   const handleReprint = async (orderId: string) => {
     try {
       await axiosClient.post(`/print-jobs/reprint/${orderId}`, {});
+      // Remember the request: the reprint endpoint only queues the job, so a
+      // failure arrives later over the socket and must be attributed to it.
+      reprintAttempts.current.set(orderId, (reprintAttempts.current.get(orderId) ?? 0) + 1);
+      setReprintFailures((prev) => {
+        if (!(orderId in prev)) return prev;
+        const next = { ...prev };
+        delete next[orderId];
+        return next;
+      });
       addToast({
         type: 'success',
         title: 'Reprint sent',
@@ -871,6 +955,52 @@ export const CashierTicketsPage: React.FC = () => {
             searchActive={search.trim().length > 0}
             onReprint={handleReprint}
           />
+          {reprintFailureList.length > 0 && (
+            <div
+              role="alert"
+              className="shrink-0 border-t border-destructive/30 bg-destructive/10 px-4 py-2.5 sm:px-5"
+            >
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-destructive">
+                    {t('tickets.reprintFailedTitle', { defaultValue: 'Kitchen print failed' })}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-destructive/80">
+                    {t('tickets.reprintFailedBody', {
+                      defaultValue: 'These tickets never reached paper. Check the printer is on and loaded, then send them again.',
+                    })}
+                  </p>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {reprintFailureList.map(({ id, label, reason }) => (
+                      <li key={id}>
+                        <button
+                          type="button"
+                          // The printer's own message stays on hover: the copy
+                          // above is what the cashier acts on, the raw text is
+                          // for whoever fixes the hardware.
+                          title={reason}
+                          onClick={() => void handleReprint(id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-white px-2.5 py-1 text-[11px] font-bold text-destructive transition-colors hover:bg-destructive/10"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          {t('tickets.reprintAgain', { label, defaultValue: 'Reprint {{label}}' })}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReprintFailures({})}
+                  aria-label="Dismiss"
+                  className="shrink-0 p-1 rounded-md text-destructive/80 hover:bg-destructive/10 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
           {sortedQueue.length > QUEUE_PAGE_SIZE && (
             <div className="flex items-center justify-between gap-3 px-4 py-2 border-t border-slate-200 bg-white/60 shrink-0">
               <p className="text-[11px] text-slate-500 font-medium">
