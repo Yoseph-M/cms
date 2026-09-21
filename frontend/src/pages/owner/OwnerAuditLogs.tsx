@@ -203,6 +203,13 @@ export const OwnerAuditLogs: React.FC = () => {
     setSelected(null);
   }, [search, action, entity, order]);
 
+  // Type-to-search: with no button the query follows the draft once it settles,
+  // so a keystroke doesn't hit the server for every character.
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchDraft.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchDraft]);
+
   useEffect(() => {
     if (firstPage?.facets) setFacets(firstPage.facets);
   }, [firstPage]);
@@ -221,12 +228,6 @@ export const OwnerAuditLogs: React.FC = () => {
       setIsFetchingMore(false);
     }
   }, [cursor, isFetchingMore, buildQuery]);
-
-  const applySearch = useCallback(() => {
-    setSearch(searchDraft.trim());
-    setAppendedRows([]);
-    setAppendCursor(null);
-  }, [searchDraft]);
 
   const Row = useCallback(
     ({ index, style }: ListChildComponentProps) => {
@@ -280,65 +281,54 @@ export const OwnerAuditLogs: React.FC = () => {
 
       <Card>
         <CardContent className="p-0">
-          <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
-            <div className="flex flex-1 gap-2">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  id="audit-search"
-                  value={searchDraft}
-                  onChange={(e) => setSearchDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') applySearch();
-                  }}
-                  placeholder="Search logs by action or description…"
-                  aria-label="Search logs by action or description"
-                  className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-0"
-                />
-              </div>
-              <Button variant="secondary" onClick={applySearch} className="shrink-0">
-                Search
-              </Button>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <DropdownSelect
-                ariaLabel="Sort order"
-                size="sm"
-                icon={ArrowUpDown}
-                value={order}
-                onChange={(v) => setOrder(v === 'oldest' ? 'oldest' : 'newest')}
-                options={[
-                  { value: 'newest', label: 'Newest First' },
-                  { value: 'oldest', label: 'Oldest First' },
-                ]}
-                contentClassName="w-44"
-              />
-              <DropdownSelect
-                ariaLabel="Filter by action"
-                size="sm"
-                icon={Filter}
-                value={action}
-                onChange={setAction}
-                options={[
-                  { value: '', label: 'All Actions' },
-                  ...facets.actions.map((name) => ({ value: name, label: name })),
-                ]}
-                contentClassName="w-56 max-h-72 overflow-y-auto"
-              />
-              <DropdownSelect
-                ariaLabel="Filter by entity"
-                size="sm"
-                icon={Tag}
-                value={entity}
-                onChange={setEntity}
-                options={[
-                  { value: '', label: 'All Entities' },
-                  ...facets.entities.map((name) => ({ value: name, label: name })),
-                ]}
-                contentClassName="w-52 max-h-72 overflow-y-auto"
+          <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
+            <div className="relative min-w-[220px] flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                id="audit-search"
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                placeholder="Search logs by action or description…"
+                aria-label="Search logs by action or description"
+                className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-0"
               />
             </div>
+            <DropdownSelect
+              ariaLabel="Sort order"
+              size="sm"
+              icon={ArrowUpDown}
+              value={order}
+              onChange={(v) => setOrder(v === 'oldest' ? 'oldest' : 'newest')}
+              options={[
+                { value: 'newest', label: 'Newest First' },
+                { value: 'oldest', label: 'Oldest First' },
+              ]}
+              contentClassName="w-44"
+            />
+            <DropdownSelect
+              ariaLabel="Filter by action"
+              size="sm"
+              icon={Filter}
+              value={action}
+              onChange={setAction}
+              options={[
+                { value: '', label: 'All Actions' },
+                ...facets.actions.map((name) => ({ value: name, label: name })),
+              ]}
+              contentClassName="w-56 max-h-72 overflow-y-auto"
+            />
+            <DropdownSelect
+              ariaLabel="Filter by entity"
+              size="sm"
+              icon={Tag}
+              value={entity}
+              onChange={setEntity}
+              options={[
+                { value: '', label: 'All Entities' },
+                ...facets.entities.map((name) => ({ value: name, label: name })),
+              ]}
+              contentClassName="w-52 max-h-72 overflow-y-auto"
+            />
           </div>
 
           {isLoading ? (
