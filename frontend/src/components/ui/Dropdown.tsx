@@ -17,9 +17,12 @@ const DropdownMenuTrigger = React.forwardRef<
     className={cn(
       "group inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg h-9 px-3 text-sm font-medium transition-all",
       "bg-secondary/50 border border-input text-foreground",
-      "hover:border-primary/40 hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      // No focus or open ring — opening a filter used to paint a blue halo
+      // around the trigger, which read as a validation outline. The open state
+      // is carried by the border/background alone.
+      "hover:border-primary/40 hover:bg-background focus-visible:outline-none focus-visible:ring-0",
       "disabled:pointer-events-none disabled:opacity-50",
-      "data-[state=open]:border-primary/60 data-[state=open]:bg-background data-[state=open]:shadow-[0_0_0_4px_hsl(217_91%_60%/0.14)]",
+      "data-[state=open]:border-primary/60 data-[state=open]:bg-background",
       className
     )}
     asChild={asChild}
