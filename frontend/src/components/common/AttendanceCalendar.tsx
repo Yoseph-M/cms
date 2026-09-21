@@ -7,13 +7,13 @@ import { useHeaderStore } from '../../store/headerStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
 import { useSystemSettingQuery, useUsersQuery } from '../../hooks/useCachedQueries';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle, BarChart3, Info, Grid3X3, History } from 'lucide-react';
 import { AttendanceHistory } from './AttendanceHistory';
+import { useTranslation } from 'react-i18next';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
 
@@ -32,13 +32,20 @@ interface StaffMember {
   role: string;
 }
 
-const STATUS_CONFIG: Record<AttendanceStatus, { label: string; short: string; color: string; bg: string }> = {
-  PRESENT:  { label: 'Present',  short: 'P',  color: 'text-[hsl(var(--success))]',   bg: 'bg-[hsl(var(--success))]/20 border-[hsl(var(--success))]/40 hover:bg-[hsl(var(--success))]/30' },
-  ABSENT:   { label: 'Absent',   short: 'A',  color: 'text-destructive',             bg: 'bg-destructive/20 border-destructive/40 hover:bg-destructive/30' },
-  HALF_DAY: { label: 'Half Day', short: 'HD', color: 'text-[hsl(var(--warning))]',   bg: 'bg-[hsl(var(--warning))]/20 border-[hsl(var(--warning))]/40 hover:bg-[hsl(var(--warning))]/30' },
-  LEAVE:    { label: 'Leave',    short: 'L',  color: 'text-primary',                 bg: 'bg-primary/20 border-primary/40 hover:bg-primary/30' },
-  HOLIDAY:  { label: 'Holiday',  short: 'HO', color: 'text-accent',                  bg: 'bg-accent/20 border-accent/40 hover:bg-accent/30' },
+/** Colour/abbreviation metadata; the readable label is translated at render. */
+const STATUS_CONFIG: Record<AttendanceStatus, { labelKey: string; short: string; color: string; bg: string }> = {
+  PRESENT:  { labelKey: 'status.present',  short: 'P',  color: 'text-[hsl(var(--success))]',   bg: 'bg-[hsl(var(--success))]/20 border-[hsl(var(--success))]/40 hover:bg-[hsl(var(--success))]/30' },
+  ABSENT:   { labelKey: 'status.absent',   short: 'A',  color: 'text-destructive',             bg: 'bg-destructive/20 border-destructive/40 hover:bg-destructive/30' },
+  HALF_DAY: { labelKey: 'status.halfDay', short: 'HD', color: 'text-[hsl(var(--warning))]',   bg: 'bg-[hsl(var(--warning))]/20 border-[hsl(var(--warning))]/40 hover:bg-[hsl(var(--warning))]/30' },
+  LEAVE:    { labelKey: 'status.leave',    short: 'L',  color: 'text-primary',                 bg: 'bg-primary/20 border-primary/40 hover:bg-primary/30' },
+  HOLIDAY:  { labelKey: 'status.holiday',  short: 'HO', color: 'text-accent',                  bg: 'bg-accent/20 border-accent/40 hover:bg-accent/30' },
 };
+
+/** Amharic long month names (January–December) for the calendar header. */
+const LONG_MONTHS_AM = [
+  'ጃንዋሪ', 'ፌብሩዋሪ', 'ማርች', 'ኤፕሪል', 'ሜይ', 'ጁን',
+  'ጁላይ', 'ኦገስት', 'ሴፕቴምበር', 'ኦክቶበር', 'ኖቬምበር', 'ዲሴምበር',
+];
 
 interface AttendanceCalendarProps {
   isOwner?: boolean; // Owners see all staff + require notes for edits; managers see scoped roster
@@ -47,18 +54,21 @@ interface AttendanceCalendarProps {
 export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner = false }) => {
   const { addToast } = useToastStore();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
+  const { t, i18n } = useTranslation('attendance');
+  const isAmharic = i18n.language?.startsWith('am');
 
   // Reflect the current section in the global header.
   useEffect(() => {
     setPageTitle({
-      title: 'Attendance',
-      subtitle: isOwner ? 'All staff attendance' : 'Team attendance and shift log',
+      title: t('title'),
+      subtitle: isOwner ? t('subtitleOwner') : t('subtitleManager'),
     });
     setShowDateRange(false);
     return () => {
       setPageTitle({ title: 'Overview', subtitle: '' });
       setShowDateRange(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setPageTitle, setShowDateRange, isOwner]);
 
   const today = new Date();
@@ -88,6 +98,11 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const dayNumbers = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  /** Localised long month name — Amharic month transliterations in the Amharic UI. */
+  const longMonthName = isAmharic
+    ? LONG_MONTHS_AM[month - 1]
+    : new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
 
   const queryClient = useQueryClient();
   const usersQuery = useUsersQuery();
@@ -139,7 +154,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
   const handleSave = async () => {
     if (!popover) return;
     if (isOwner && popover.existing && !popNote.trim()) {
-      addToast({ type: 'error', title: 'Note required', message: 'A reason is required when overriding an existing entry.' });
+      addToast({ type: 'error', title: t('toasts.noteRequired'), message: t('toasts.noteRequiredMsg') });
       return;
     }
     setIsSaving(true);
@@ -158,10 +173,10 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
         });
         queryClient.setQueryData<AttendanceRecord[]>(['attendance', month, year], (prev) => [...(prev ?? []), res.data]);
       }
-      addToast({ type: 'success', title: 'Attendance saved' });
+      addToast({ type: 'success', title: t('toasts.saved') });
       setPopover(null);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Failed to save', message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: t('toasts.saveFailed'), message: extractErrorMessage(err) });
     } finally {
       setIsSaving(false);
     }
@@ -171,7 +186,6 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
     ? staff.filter(s => s.name.toLowerCase().includes(staffFilter.toLowerCase()))
     : staff;
 
-  const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
 
   const selectedDateStr = `${year}-${String(month).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
 
@@ -228,8 +242,8 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
       });
       addToast({
         type: 'success',
-        title: 'Marked all present',
-        message: `${successCount}/${filteredStaff.length} staff marked Present for ${date}. Individual cells remain overridable.`,
+        title: t('toasts.markedAllPresent'),
+        message: t('toasts.markedAllPresentMsg', { done: successCount, total: filteredStaff.length, date }),
       });
     } finally {
       setMarkingAll(false);
@@ -266,7 +280,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="font-bold text-base w-36 text-center">{monthName} {year}</span>
+          <span className="font-bold text-base w-36 text-center">{longMonthName} {year}</span>
           <button
             onClick={() => { if (month === 12) { setMonth(1); setYear(y => y+1); setSelectedDay(1); } else setMonth(m => m+1); }}
             className="p-1.5 rounded-lg border border-border hover:bg-secondary transition-colors"
@@ -283,7 +297,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                 view === 'grid' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              <Grid3X3 className="w-3.5 h-3.5" /> Grid
+              <Grid3X3 className="w-3.5 h-3.5" /> {t('view.grid')}
             </button>
             <button
               onClick={() => setView('history')}
@@ -292,7 +306,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                 view === 'history' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              <History className="w-3.5 h-3.5" /> History
+              <History className="w-3.5 h-3.5" /> {t('view.history')}
             </button>
           </div>
           {!isReadOnlyOwner && (
@@ -303,7 +317,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                 disabled={markingAll || staff.length === 0 || (isOwner && !ownerCanEdit) || selectedDateStr !== todayLocal}
               >
                 <CheckSquare className="w-3.5 h-3.5 mr-1.5" />
-                {markingAll ? 'Marking...' : 'Mark all Present'}
+                {markingAll ? t('marking') : t('markAllPresent')}
               </Button>
             </div>
           )}
@@ -342,26 +356,26 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-primary" />
-                {monthName} {year} — Attendance Summary
+                {longMonthName} {year} — {t('summary.title')}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][]).map(([key, cfg]) => (
                   <div key={key} className={`rounded-lg border p-3 ${cfg.bg}`}>
-                    <div className={`text-[11px] font-semibold ${cfg.color}`}>{cfg.label}</div>
+                    <div className={`text-[11px] font-semibold ${cfg.color}`}>{t(cfg.labelKey)}</div>
                     <div className={`text-2xl font-bold font-mono mt-1 ${cfg.color}`}>
                       {analyticsSummary.counts[key]}
                     </div>
                   </div>
                 ))}
                 <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-                  <div className="text-[11px] font-semibold text-primary">Attendance Rate</div>
+                  <div className="text-[11px] font-semibold text-primary">{t('summary.rate')}</div>
                   <div className="text-2xl font-bold font-mono mt-1 text-primary">
                     {analyticsSummary.attendanceRate}%
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
-                    {analyticsSummary.totalRecorded}/{analyticsSummary.totalPossible} logged
+                    {t('summary.loggedRatio', { recorded: analyticsSummary.totalRecorded, possible: analyticsSummary.totalPossible })}
                   </div>
                 </div>
               </div>
@@ -383,7 +397,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                 {(Object.entries(STATUS_CONFIG) as [AttendanceStatus, typeof STATUS_CONFIG[AttendanceStatus]][]).map(([key, cfg]) => (
                   <div key={key} className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
                     <div className="w-5 text-center bg-background/50 rounded">{cfg.short}</div>
-                    {cfg.label}
+                    {t(cfg.labelKey)}
                   </div>
                 ))}
               </motion.div>
@@ -396,7 +410,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
             <thead>
               <tr className="bg-secondary/50">
                 <th className="text-left px-4 py-2.5 font-semibold text-muted-foreground sticky left-0 bg-background z-20 min-w-[160px] border-r border-b border-border shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                  Staff
+                  {t('staffColumn')}
                 </th>
                 {dayNumbers.map(d => {
                   const date = new Date(year, month - 1, d);
@@ -451,7 +465,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                         <button
                           onClick={() => canEdit && openPopover(s.id, d)}
                           disabled={!canEdit}
-                          title={!canEdit ? 'Only today can be logged or edited' : cfg?.label || 'Log attendance'}
+                          title={!canEdit ? t('onlyToday') : (cfg ? t(cfg.labelKey) : t('logAttendance'))}
                           className={`w-8 h-7 rounded-md border text-[10px] font-bold transition-all ${
                             isSelected ? 'ring-1 ring-primary/50 ring-offset-1' : ''
                           } ${
@@ -469,8 +483,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
           </table>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Clocking in is limited to today — past and future days stay locked. Switch to History and use
-          these arrows to browse previous months.
+          {t('clockInNote')}
         </p>
         </>
       )}
@@ -509,27 +522,27 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                         popStatus === key ? `${cfg.bg} ${cfg.color} ring-2 ring-offset-1 ring-primary` : 'border-border text-muted-foreground hover:border-primary/30'
                       }`}
                     >
-                      {cfg.label}
+                      {t(cfg.labelKey)}
                     </button>
                   ))}
                 </div>
 
                 <div className="mb-4">
                   <label className="text-xs font-medium text-foreground block mb-1.5">
-                    Note {isOwner && popover.existing && <span className="text-destructive">* (required for override)</span>}
+                    {t('noteLabel')} {isOwner && popover.existing && <span className="text-destructive">{t('noteOverrideRequired')}</span>}
                   </label>
                   <Input
                     id="att-note"
                     value={popNote}
                     onChange={e => setPopNote(e.target.value)}
-                    placeholder="Optional reason..."
+                    placeholder={t('notePlaceholder')}
                     className="text-xs"
                   />
                 </div>
 
                 <Button onClick={handleSave} disabled={isSaving} className="w-full">
                   <CheckSquare className="w-3.5 h-3.5 mr-2" />
-                  {isSaving ? 'Saving...' : 'Save'}
+                  {isSaving ? t('saving') : t('save')}
                 </Button>
               </div>
             </motion.div>
