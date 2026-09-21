@@ -630,14 +630,14 @@ export const ManagerStaff: React.FC = () => {
                   placeholder="+251 9XX XXX XXX"
                 />
               </div>
-              <div className="sm:col-span-2">
-                <span className="text-sm font-medium text-foreground block mb-1.5">
+              <div className="sm:col-span-2 bg-secondary/30 rounded-lg p-4 border border-border/50">
+                <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
                   Role <span className="text-destructive">*</span>
-                </span>
+                </label>
                 <DropdownSelect
                   ariaLabel="Role"
                   className="w-full justify-between"
-                  contentClassName="w-48"
+                  contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                   value={form.role}
                   onChange={(next) => setForm((f) => ({ ...f, role: next }))}
                   options={MANAGEABLE_ROLES.map((r) => ({ value: r, label: r }))}
