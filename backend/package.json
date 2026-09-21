@@ -9,7 +9,7 @@
     "prisma:generate": "prisma generate",
     "prisma:db-push": "prisma db push",
     "verify-indexes": "tsx scripts/verify-indexes.ts",
-    "test": "jest --detectOpenHandles --forceExit",
+    "test": "jest --runInBand --detectOpenHandles --forceExit",
     "migrate": "tsx scripts/migrate-drop-password.ts",
     "migrate:money-major-units": "tsx scripts/migrate-money-major-units.ts",
     "migrate:money-integers": "tsx scripts/migrate-money-integers.ts",
