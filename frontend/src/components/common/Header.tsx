@@ -170,14 +170,14 @@ export const Header: React.FC = () => {
                     type="date"
                     value={dateRange.from}
                     onChange={(e) => setDateRange({ from: e.target.value, to: dateRange.to })}
-                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-sm text-foreground outline-none focus:border-primary"
+                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-sm text-foreground outline-none"
                   />
                   <span className="text-muted-foreground text-xs">to</span>
                   <input
                     type="date"
                     value={dateRange.to}
                     onChange={(e) => setDateRange({ from: dateRange.from, to: e.target.value })}
-                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-sm text-foreground outline-none focus:border-primary"
+                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-sm text-foreground outline-none"
                   />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
