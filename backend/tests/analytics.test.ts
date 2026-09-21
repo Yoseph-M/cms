@@ -69,6 +69,63 @@ describe('Analytics endpoints', () => {
     expect(Array.isArray(res.body)).toBe(true);
   });
 
+  it('GET /analytics/items-by-hour ranks the busiest item first inside each hour', async () => {
+    const owner = await seedTestUser({ role: 'OWNER' as any, email: 'items-hour-owner@pos.com' });
+    const p = getPrisma();
+
+    // Both orders land in the same business hour (created now), with Coffee the
+    // clear winner so the ordering contract is observable.
+    await p.order.create({
+      data: {
+        clientOrderId: 'ord-ih-1',
+        tableNumber: '4',
+        waiterId: owner.id,
+        items: [
+          { menuItemId: owner.id, name: 'Coffee', unitPrice: 500, quantity: 3, notes: '' },
+          { menuItemId: owner.id, name: 'Tea', unitPrice: 400, quantity: 1, notes: '' },
+        ],
+        totalAmount: 1900,
+        status: OrderStatus.PAID,
+        settlementStatus: 'SETTLED',
+      },
+    });
+    await p.order.create({
+      data: {
+        clientOrderId: 'ord-ih-2',
+        tableNumber: '5',
+        waiterId: owner.id,
+        items: [{ menuItemId: owner.id, name: 'Coffee', unitPrice: 500, quantity: 2, notes: '' }],
+        totalAmount: 1000,
+        status: OrderStatus.PAID,
+        settlementStatus: 'SETTLED',
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/analytics/items-by-hour')
+      .set('Authorization', `Bearer ${owner.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+
+    const coffee = res.body.find((r: { name: string }) => r.name === 'Coffee');
+    const tea = res.body.find((r: { name: string }) => r.name === 'Tea');
+    // Quantities sum across orders in the same hour (3 + 2 for Coffee).
+    expect(coffee.qty).toBe(5);
+    expect(tea.qty).toBe(1);
+    expect(coffee.hour).toBe(tea.hour);
+
+    // Canonical shape for the "best seller each hour" panel: hour ascending,
+    // busiest item first within the hour.
+    const hours = res.body.map((r: { hour: number }) => r.hour);
+    expect([...hours].sort((a, b) => a - b)).toEqual(hours);
+    const rowsInHour = res.body.filter((r: { hour: number }) => r.hour === coffee.hour);
+    expect(rowsInHour[0].name).toBe('Coffee');
+    for (let i = 1; i < rowsInHour.length; i += 1) {
+      expect(rowsInHour[i - 1].qty).toBeGreaterThanOrEqual(rowsInHour[i].qty);
+    }
+  });
+
   it('GET /analytics/payment-methods returns method split', async () => {
     const owner = await seedTestUser({ role: 'OWNER' as any, email: 'paymeth-owner@pos.com' });
     const p = getPrisma();
