@@ -470,7 +470,7 @@ export const OwnerPayroll: React.FC = () => {
             <DropdownSelect
               ariaLabel="Staff Member"
               className="w-full justify-between mb-4"
-              contentClassName="w-[22rem] max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
+              contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
               value={userId}
               onChange={setUserId}
               placeholder="Select Staff"
@@ -490,28 +490,28 @@ export const OwnerPayroll: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="bg-secondary/30 rounded-lg p-4 border border-border/50 flex gap-3">
             <div className="flex-1">
-              <span className="text-sm font-medium text-foreground block mb-1.5">
+              <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
                 Period Month
-              </span>
+              </label>
               <DropdownSelect
                 ariaLabel="Period Month"
                 className="w-full justify-between"
-                contentClassName="w-40"
+                contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                 value={String(periodMonth)}
                 onChange={(v) => setPeriodMonth(Number(v))}
                 options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
               />
             </div>
             <div className="w-28">
-              <span className="text-sm font-medium text-foreground block mb-1.5">
+              <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
                 Year
-              </span>
+              </label>
               <DropdownSelect
                 ariaLabel="Year"
                 className="w-full justify-between"
-                contentClassName="w-28"
+                contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                 value={String(periodYear)}
                 onChange={(v) => setPeriodYear(Number(v))}
                 options={YEARS.map((y) => ({ value: String(y), label: String(y) }))}
