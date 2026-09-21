@@ -26,8 +26,10 @@ These were used for specific schema migrations and should NOT be run again:
 
 - **`migrate-drop-password.ts`** - SUPERSEDED / DO NOT RUN
   - Would UNSET `passwordHash` on every user, which breaks website sign-in
-  - PINs now live in `pinCodeHash` alongside the password (bcrypt, no `pinSalt`),
-    so the app and the site credentials coexist — set PINs from the staff card
+  - PINs now live in `pinCodeHash` alongside the password (SHA-256 hex, no
+    `pinSalt`), so the app and the site credentials coexist — set PINs from
+    the staff card. The SHA-256 format matches the hashes already in the
+    database, so PINs set from the site work in the mobile app.
   
 - **`migrate-restore-password.ts`** - Restored password authentication (Phase 2)
   - Status: COMPLETED  
