@@ -1,0 +1,46 @@
+{
+  "steps": {
+    "identity": "Step 1 of 2 — Identity",
+    "credentials": "Step 2 of 2 — Credentials"
+  },
+  "count": {
+    "total": "{{count}} staff, including you"
+  },
+  "banner": {
+    "single": "{{name}} has no mobile PIN yet.",
+    "many": "{{total}} staff members have no mobile PIN yet.",
+    "hint": "Use the key on their row to set one."
+  },
+  "tooltip": {
+    "setPin": "Set mobile PIN",
+    "setPinFor": "Set mobile PIN for {{name}}"
+  },
+  "warning": {
+    "app": "This person has no mobile PIN — without one they cannot sign in on the app. Set a PIN before saving.",
+    "site": "This person has no website password — without one they cannot sign in on the site. Set a password before saving."
+  },
+  "pin": {
+    "label": "PIN",
+    "mobileTag": "(mobile app)",
+    "placeholder": "Enter a PIN",
+    "helper": {
+      "create": "Enter a 4-digit PIN — the code they type to sign in on the mobile app.",
+      "editKeep": "Enter a new PIN, or leave it blank to keep the current one.",
+      "editNoPin": "No PIN yet — enter one so they can sign in on the app."
+    }
+  },
+  "password": {
+    "label": "Password",
+    "siteTag": "(website)",
+    "helper": {
+      "create": "Used for their first website login.",
+      "editKeep": "Leave blank to keep the current password.",
+      "editMissing": "No password yet — set one for website sign-in."
+    }
+  },
+  "actions": {
+    "review": "Review & Save",
+    "next": "Next: Credentials",
+    "save": "Save Changes"
+  }
+}
