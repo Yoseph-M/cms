@@ -125,7 +125,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response) {
       passwordHash: passHash,
       // The mobile-app PIN is optional: a cashier never needs one, and an app
       // user can be given theirs from the staff card later.
-      pinCodeHash: typeof pinCode === 'string' && pinCode ? await hashPin(pinCode) : null,
+      pinCodeHash: typeof pinCode === 'string' && pinCode ? hashPin(pinCode) : null,
       salaryAmount: salaryAmount || 0, // Already in cents from frontend
     },
     select: {
@@ -171,7 +171,7 @@ export async function updateUser(req: AuthenticatedRequest, res: Response) {
 
   const data: Record<string, unknown> = { ...profileChanges };
   // A PIN typed on the staff card replaces the stored hash; blank keeps it.
-  if (typeof pinCode === 'string' && pinCode) data.pinCodeHash = await hashPin(pinCode);
+  if (typeof pinCode === 'string' && pinCode) data.pinCodeHash = hashPin(pinCode);
   if (typeof profileChanges.name === 'string') data.name = formatPersonName(profileChanges.name);
   // salaryAmount is already in cents from the frontend
   if (profileChanges.salaryAmount !== undefined) data.salaryAmount = profileChanges.salaryAmount;
