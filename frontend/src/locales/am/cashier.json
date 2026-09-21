@@ -11,7 +11,10 @@
     "newOrderCta": "አዲስ ትዕዛዝ",
     "serviceDesk": "የአገልግሎት ዴስክ",
     "title": "ቲኬቶች",
-    "showingRange": "ከጠቅላላ {{total}} ውስጥ {{from}}–{{to}} በማሳየት ላይ"
+    "showingRange": "ከጠቅላላ {{total}} ውስጥ {{from}}–{{to}} በማሳየት ላይ",
+    "reprintFailedTitle": "የኩሽና ህትመት አልተሳካም",
+    "reprintFailedBody": "እነዚህ ቲኬቶች ወረቀት ላይ አልደረሱም። አታሚው በርቶና ወረቀት እንዳለው አረጋግጠው እንደገና ይላኩ።",
+    "reprintAgain": "{{label}} እንደገና አትም"
   },
   "orderList": {
     "readyToCollect": "ለመውሰድ ዝግጁ",
