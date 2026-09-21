@@ -54,13 +54,13 @@ const OwnerLayoutInner: React.FC = () => {
 
   const MANAGER_TOOLS_NAV = managerConsolidated
     ? [
-        {
-          to: '/owner/manager-end-of-day',
-          label: t('nav.endOfDay', { defaultValue: 'End of Day' }),
-          icon: ClipboardCheck,
-          group: 'manager',
-        },
-      ]
+      {
+        to: '/owner/manager-end-of-day',
+        label: t('nav.endOfDay', { defaultValue: 'End of Day' }),
+        icon: ClipboardCheck,
+        group: 'manager',
+      },
+    ]
     : [];
 
   const OWNER_NAV = [
@@ -79,10 +79,10 @@ const OwnerLayoutInner: React.FC = () => {
     ] : []),
   ] as const;
 
-  const SYSTEM_SETTINGS = { 
-    to: '/owner/settings', 
-    label: t('nav.systemSettings', { defaultValue: 'System Settings' }), 
-    icon: Settings 
+  const SYSTEM_SETTINGS = {
+    to: '/owner/settings',
+    label: t('nav.systemSettings', { defaultValue: 'System Settings' }),
+    icon: Settings
   };
 
   const GROUP_LABELS: Record<string, string> = {
@@ -148,8 +148,8 @@ const OwnerLayoutInner: React.FC = () => {
 
       {/* Mobile sidebar backdrop */}
       {mobileOpen && (
-        <div 
-          className="hidden max-[767px]:block fixed inset-0 z-40 bg-black/50 transition-opacity" 
+        <div
+          className="hidden max-[767px]:block fixed inset-0 z-40 bg-black/50 transition-opacity"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -166,9 +166,16 @@ const OwnerLayoutInner: React.FC = () => {
         <div
           className={cn(
             'h-[72px] sm:h-[88px] px-6 max-[767px]:px-5 flex items-center shrink-0',
-            sidebarCollapsed ? 'justify-center' : 'justify-end',
+            sidebarCollapsed ? 'justify-center' : 'justify-between',
           )}
         >
+          {!sidebarCollapsed && (
+            <div className="flex items-center flex-1 mr-auto max-[767px]:hidden overflow-hidden">
+              <span className="font-bold text-xl tracking-tight truncate text-foreground">
+                MELEኛ<span className="text-primary">POS</span>
+              </span>
+            </div>
+          )}
           <span className="hidden max-[767px]:block mr-auto text-sm font-semibold tracking-tight text-foreground">
             {t('common:chrome.navigation')}
           </span>
@@ -183,9 +190,16 @@ const OwnerLayoutInner: React.FC = () => {
             <button
               onClick={toggle}
               aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
+              className="group relative hover:bg-secondary text-muted-foreground transition-colors flex items-center justify-center w-9 h-9 shrink-0 rounded-xl overflow-hidden"
             >
-              <PanelLeftRounded className="w-5 h-5" />
+              {sidebarCollapsed ? (
+                <>
+                  <img src="/logo.png" alt="Logo" className="absolute inset-0 w-full h-full object-cover scale-110 transition-opacity duration-200 group-hover:opacity-0" />
+                  <PanelLeftRounded className="w-5 h-5 absolute opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                </>
+              ) : (
+                <PanelLeftRounded className="w-5 h-5" />
+              )}
             </button>
           </Tooltip>
         </div>
@@ -195,55 +209,55 @@ const OwnerLayoutInner: React.FC = () => {
             // An empty group (e.g. Manager Tools when the manager dashboard is
             // enabled) renders nothing at all — no header, no gap.
             items.length === 0 ? null : (
-            <div key={group}>
-              {!sidebarCollapsed && GROUP_LABELS[group] !== 'Insights' && (
-                <p className="px-4 mb-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                  {GROUP_LABELS[group]}
-                </p>
-              )}
+              <div key={group}>
+                {!sidebarCollapsed && GROUP_LABELS[group] !== 'Insights' && (
+                  <p className="px-4 mb-3 text-[11px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    {GROUP_LABELS[group]}
+                  </p>
+                )}
 
-              <div className="space-y-1.5">
-                {items.map((link) => {
-                  const Icon = link.icon;
-                  const navLink = (
-                    <NavLink
-                      to={link.to}
-                      onClick={() => setMobileOpen(false)}
-                      end={'end' in link ? link.end : false}                        className={({ isActive }) =>
-                        `group relative flex items-center ${sidebarCollapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
-                          ? 'text-[hsl(201_96%_40%)] bg-[hsl(201_96%_50%/0.12)]'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
-                        }`
-                      }
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <Icon
-                            className={`relative w-5 h-5 shrink-0 transition-colors ${isActive
-                              ? 'text-[hsl(201_96%_45%)]'
-                              : 'text-muted-foreground/70 group-hover:text-muted-foreground'
-                              }`}
-                            strokeWidth={2.5}
-                          />
-                          {!sidebarCollapsed && (
-                            <span className="relative truncate whitespace-nowrap">
-                              {link.label}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </NavLink>
-                  );
-                  return sidebarCollapsed ? (
-                    <Tooltip key={link.to} label={link.label} side="right" className="block w-full">
-                      {navLink}
-                    </Tooltip>
-                  ) : (
-                    <React.Fragment key={link.to}>{navLink}</React.Fragment>
-                  );
-                })}
+                <div className="space-y-1.5">
+                  {items.map((link) => {
+                    const Icon = link.icon;
+                    const navLink = (
+                      <NavLink
+                        to={link.to}
+                        onClick={() => setMobileOpen(false)}
+                        end={'end' in link ? link.end : false} className={({ isActive }) =>
+                          `group relative flex items-center ${sidebarCollapsed ? 'justify-center w-12 h-12 mx-auto' : 'gap-4 px-4 h-12'} rounded-2xl text-[15px] font-medium transition-colors ${isActive
+                            ? 'text-[hsl(201_96%_40%)] bg-[hsl(201_96%_50%/0.12)]'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
+                          }`
+                        }
+                      >
+                        {({ isActive }) => (
+                          <>
+                            <Icon
+                              className={`relative w-5 h-5 shrink-0 transition-colors ${isActive
+                                ? 'text-[hsl(201_96%_45%)]'
+                                : 'text-muted-foreground/70 group-hover:text-muted-foreground'
+                                }`}
+                              strokeWidth={2.5}
+                            />
+                            {!sidebarCollapsed && (
+                              <span className="relative truncate whitespace-nowrap">
+                                {link.label}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </NavLink>
+                    );
+                    return sidebarCollapsed ? (
+                      <Tooltip key={link.to} label={link.label} side="right" className="block w-full">
+                        {navLink}
+                      </Tooltip>
+                    ) : (
+                      <React.Fragment key={link.to}>{navLink}</React.Fragment>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
             )
           )}
         </nav>
