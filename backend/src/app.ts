@@ -165,61 +165,44 @@ app.use(errorHandler);
 
 export async function seedInitialData() {
   try {
-    const userCount = await prisma.user.count();
-    if (userCount === 0) {
-      logger.info('No users found in database. Seeding initial staff accounts...');
-
-      const defaultPasswordHash = await hashPassword('password123');
-
-      const owner = await prisma.user.create({
-        data: {
-          name: 'Alice Owner',
-          role: Role.OWNER,
-          username: 'owner',
-          phone: '+251911000001',
-          passwordHash: defaultPasswordHash,
-          salaryAmount: 45000,
-        },
-      });
-
-      const manager = await prisma.user.create({
-        data: {
-          name: 'Bob Manager',
-          role: Role.MANAGER,
-          username: 'manager',
-          phone: '+251911000002',
-          passwordHash: defaultPasswordHash,
-          salaryAmount: 30000,
-        },
-      });
-
-      const cashier = await prisma.user.create({
-        data: {
-          name: 'Charlie Cashier',
-          role: Role.CASHIER,
-          username: 'cashier',
-          phone: '+251911000003',
-          passwordHash: defaultPasswordHash,
-          salaryAmount: 18000,
-        },
-      });
-
-      const waiter = await prisma.user.create({
-        data: {
-          name: 'David Waiter',
-          role: Role.WAITER,
-          username: 'waiter',
-          phone: '+251911000004',
-          passwordHash: defaultPasswordHash,
-          salaryAmount: 12000,
-        },
-      });
-
-      logger.info({ owner: owner.username, manager: manager.username, cashier: cashier.username, waiter: waiter.username }, 'Seeded default staff accounts.');
+    // No staff accounts are seeded. A deployment ships with the people the
+    // owner actually creates — never with a login whose password is written in
+    // the source, which anyone could read and use.
+    //
+    // A brand-new database still needs a way in, so the first owner is created
+    // from the environment instead. Set BOOTSTRAP_OWNER_PASSWORD (plus
+    // BOOTSTRAP_OWNER_USERNAME / _NAME / _PHONE if you want to control them) on
+    // an empty database and start the server once; the account is created only
+    // while no owner exists, and nothing happens when the variable is unset.
+    const bootstrapPassword = process.env.BOOTSTRAP_OWNER_PASSWORD?.trim();
+    if (bootstrapPassword) {
+      const ownerCount = await prisma.user.count({ where: { role: Role.OWNER } });
+      if (ownerCount === 0) {
+        const bootstrapUsername = process.env.BOOTSTRAP_OWNER_USERNAME?.trim() || 'owner';
+        const existingUsername = await prisma.user.findUnique({ where: { username: bootstrapUsername } });
+        if (existingUsername) {
+          logger.warn(
+            { username: bootstrapUsername },
+            'BOOTSTRAP_OWNER_PASSWORD is set but that username is already taken — no owner created.'
+          );
+        } else {
+          const owner = await prisma.user.create({
+            data: {
+              name: process.env.BOOTSTRAP_OWNER_NAME?.trim() || 'Owner',
+              role: Role.OWNER,
+              username: bootstrapUsername,
+              phone: process.env.BOOTSTRAP_OWNER_PHONE?.trim() || '',
+              passwordHash: await hashPassword(bootstrapPassword),
+              salaryAmount: 0,
+            },
+          });
+          logger.info(
+            { username: owner.username },
+            'Created the initial owner from BOOTSTRAP_OWNER_* environment variables. Unset BOOTSTRAP_OWNER_PASSWORD now that you can sign in.'
+          );
+        }
+      }
     }
-
-    // Intentionally no password backfill here — never auto-set password123 on existing accounts.
-    // Demo users above are created with passwords only on a fresh empty database.
 
     const menuCount = await prisma.menuItem.count();
     if (menuCount === 0) {
