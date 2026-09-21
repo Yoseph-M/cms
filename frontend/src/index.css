@@ -201,9 +201,13 @@
     }
   }
 
-  /* Better default focus visibility — inputs are excluded so wrappers can style focus */
+  /* Focus paints nothing: the app-wide ring that used to appear whenever a
+     button, link, or [role=button] took focus read as a validation outline
+     rather than a focus cue. Controls that need emphasis on keyboard focus
+     style it themselves (e.g. .focus-brand-ring). Only the browser's default
+     outline is suppressed here. */
   :where(button, [role='button'], a):focus-visible {
-    @apply outline-none ring-2 ring-ring/70 ring-offset-2 ring-offset-background;
+    @apply outline-none;
   }
 
   /* Kill browser default styles that break pill inputs */
