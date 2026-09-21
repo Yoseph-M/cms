@@ -593,15 +593,14 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         }
       >
         <div className="space-y-5">
-                <div>
-                  <span className="text-sm font-medium block mb-1.5">Transport Type</span>
-                  {/* The house filter dropdown — the same control the menu
-                      library uses for its category/view filters — instead of a
-                      native select whose OS-drawn popup ignored the app theme. */}
+                <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
+                    Transport Type
+                  </label>
                   <DropdownSelect
                     ariaLabel="Transport Type"
                     className="w-full justify-between"
-                    contentClassName="w-72 max-w-[calc(100vw-3rem)]"
+                    contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                     value={form.transport}
                     onChange={(next) => setTransport(next as PrinterTransport)}
                     options={TRANSPORT_ORDER
@@ -616,11 +615,11 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                         icon: TRANSPORT_META[transport].icon,
                       }))}
                   />
-                  <p className="mt-1.5 text-xs text-muted-foreground">
+                </div>
+                <p className="text-xs text-muted-foreground">
                     Bluetooth and USB printers are set up from this terminal — scan once and the
                     station remembers the device.
-                  </p>
-                </div>
+                </p>
 
                 {/* Network or Bluetooth/USB specific options */}
                 <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-4">
