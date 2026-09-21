@@ -3,21 +3,30 @@ import { hashPin } from '../src/utils/security';
 
 const prisma = new PrismaClient();
 
+/**
+ * LEGACY — SUPERSEDED, DO NOT RUN.
+ *
+ * Kept only as a historical record of the original fallback-PIN migration.
+ * The current PIN scheme is the same unsalted SHA-256 this script wrote, so
+ * hashes it produced still verify. If you ever need to reset PINs in bulk,
+ * write a NEW script that hashes with the current hashPin() and sets
+ * pinCodeHash ONLY (there is no pinSalt field in the schema).
+ */
 async function runMigration() {
   console.log('Starting migration to drop passwordHash and backfill PINs...');
 
   try {
-    const { salt, hash } = hashPin('1234');
+    const hash = hashPin('1234');
 
-    // 1. Backfill missing pinSalt and pinCodeHash using raw MongoDB command
+    // 1. Backfill missing pinCodeHash using raw MongoDB command
     // This avoids Prisma crashing when parsing legacy BSON documents missing required schema fields.
-    console.log('Backfilling missing pinSalt and pinCodeHash fields with fallback PIN 1234...');
+    console.log('Backfilling missing pinCodeHash fields with fallback PIN 1234...');
     const backfillResult = await prisma.$runCommandRaw({
       update: 'users',
       updates: [
         {
-          q: { pinSalt: { $exists: false } },
-          u: { $set: { pinSalt: salt, pinCodeHash: hash } },
+          q: { pinCodeHash: { $exists: false } },
+          u: { $set: { pinCodeHash: hash } },
           multi: true,
         },
       ],
