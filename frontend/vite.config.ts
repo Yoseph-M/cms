@@ -22,5 +22,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/setupTests.ts'],
     globals: true,
+    // The suite runs many jsdom files in parallel; a heavy page (staff, menu
+    // catalog, printers) can take well over the 5s default purely from CPU
+    // contention, which failed tests that pass on their own.
+    testTimeout: 15000,
+    hookTimeout: 15000,
   },
 });
