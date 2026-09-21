@@ -542,7 +542,7 @@ export const GlobalSettlementHistory: React.FC = () => {
                       setDateFrom(e.target.value);
                       setDatePreset('custom');
                     }}
-                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none focus:border-primary"
+                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none"
                   />
                   <span className="text-muted-foreground text-xs">to</span>
                   <input
@@ -552,7 +552,7 @@ export const GlobalSettlementHistory: React.FC = () => {
                       setDateTo(e.target.value);
                       setDatePreset('custom');
                     }}
-                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none focus:border-primary"
+                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none"
                   />
                 </div>
               </div>
@@ -592,7 +592,7 @@ export const GlobalSettlementHistory: React.FC = () => {
                       setAmountPreset('custom');
                     }}
                     placeholder="Min"
-                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none focus:border-primary"
+                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none"
                   />
                   <span className="text-muted-foreground text-xs">–</span>
                   <input
@@ -606,7 +606,7 @@ export const GlobalSettlementHistory: React.FC = () => {
                       setAmountPreset('custom');
                     }}
                     placeholder="Max"
-                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none focus:border-primary"
+                    className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-xs text-foreground outline-none"
                   />
                 </div>
               </div>
