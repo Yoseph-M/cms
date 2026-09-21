@@ -84,7 +84,7 @@ describe('staff roster count', () => {
     });
 
     renderPage(<OwnerStaff />);
-    expect(await screen.findByText('3 staff, including you')).toBeInTheDocument();
+    expect(await screen.findByTestId('staff-count')).toHaveAttribute('aria-label', '3 staff, including you');
   });
 
   it('counts the staff below them plus the manager themself', async () => {
@@ -93,14 +93,14 @@ describe('staff roster count', () => {
     (useAuthStore as any).mockReturnValue({ user: { id: 'mgr-1', role: 'MANAGER' } });
 
     renderPage(<ManagerStaff />);
-    expect(await screen.findByText('3 staff, including you')).toBeInTheDocument();
+    expect(await screen.findByTestId('staff-count')).toHaveAttribute('aria-label', '3 staff, including you');
   });
 
   it('keeps the roster total when the table is filtered down', async () => {
     (useAuthStore as any).mockReturnValue({ user: { id: 'mgr-1', role: 'MANAGER' } });
 
     renderPage(<ManagerStaff />);
-    await screen.findByText('3 staff, including you');
+    await screen.findByTestId('staff-count');
 
     fireEvent.change(screen.getByPlaceholderText('Search staff...'), {
       target: { value: 'Abebe' },
@@ -109,6 +109,6 @@ describe('staff roster count', () => {
     // Only Abebe remains listed, but the header still describes the roster.
     expect(screen.getByText('Abebe Kebede')).toBeInTheDocument();
     expect(screen.queryByText('Sara Tesfaye')).not.toBeInTheDocument();
-    expect(screen.getByText('3 staff, including you')).toBeInTheDocument();
+    expect(screen.getByTestId('staff-count')).toHaveAttribute('aria-label', '3 staff, including you');
   });
 });
