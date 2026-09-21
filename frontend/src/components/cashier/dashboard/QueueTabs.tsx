@@ -78,7 +78,7 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder={t('queue.searchPlaceholder', { defaultValue: 'Find a table, ticket, or server…' })}
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-primary focus:bg-white focus:ring-4 focus:ring-primary/10"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:bg-white"
             />
             {search && (
               <button
@@ -126,7 +126,7 @@ export const QueueTabs: React.FC<QueueTabsProps> = ({
               className={cn(
                 'inline-flex h-11 items-center gap-2 rounded-xl border bg-slate-50 px-3 text-sm font-semibold shadow-sm transition',
                 'border-slate-200 text-slate-900 hover:border-slate-300 hover:bg-white',
-                'focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
                 sortOpen && 'border-primary bg-white ring-4 ring-primary/10'
               )}
             >
