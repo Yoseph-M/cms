@@ -6,10 +6,10 @@ import { useSocketStore } from '../../store/socketStore';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Select } from '../../components/ui/Select';
+import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { Badge } from '../../components/ui/Badge';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Printer, Plus, Pencil, Trash2, Zap, X, AlertCircle, Bluetooth, Usb, ScanLine, Loader2, CheckCircle2, Wifi } from 'lucide-react';
+import { Printer, Plus, Pencil, Trash2, Zap, X, AlertCircle, Bluetooth, Usb, ScanLine, Loader2, CheckCircle2, Wifi, type LucideIcon } from 'lucide-react';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { Sheet } from '../../components/ui/Sheet';
 import { AlertDialog } from '../../components/ui/AlertDialog';
@@ -45,6 +45,20 @@ const EMPTY_FORM = {
   port: String(DEFAULT_NETWORK_PORT),
 };
 const EMPTY_PRINTERS: PrinterStation[] = [];
+
+/**
+ * Transports an operator can pick, in the order they are offered. Network is
+ * not offered for new terminals — a browser cannot scan a LAN, and the manual
+ * address form only invited typos — but a legacy station that already points at
+ * a network printer keeps it (see the dropdown below).
+ */
+const TRANSPORT_META: Record<PrinterTransport, { label: string; icon: LucideIcon }> = {
+  BLUETOOTH: { label: 'Bluetooth', icon: Bluetooth },
+  USB: { label: 'USB', icon: Usb },
+  NETWORK: { label: 'Network (Wi-Fi / LAN) — legacy', icon: Wifi },
+};
+
+const TRANSPORT_ORDER: PrinterTransport[] = ['BLUETOOTH', 'USB', 'NETWORK'];
 
 /**
  * Chrome reports nearly every Web Bluetooth failure as a `NotFoundError`, so the
@@ -106,7 +120,7 @@ async function bluetoothUnavailableReason(bt: any): Promise<string | null> {
   } catch {
     return null;
   }
-  return 'Either Bluetooth is switched off on this device, or this browser blocks Web Bluetooth. Check the device settings, or add a Network printer instead.';
+  return 'Either Bluetooth is switched off on this device, or this browser blocks Web Bluetooth. Check the device settings, then scan again.';
 }
 
 /**
@@ -182,6 +196,21 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       socket.off('printer:recovered', handleRecovered);
     };
   }, [socket, printers]);
+
+  const setTransport = useCallback((transport: PrinterTransport) => {
+    // Switching transport invalidates whatever device was scanned for the old
+    // one, so every address field is cleared back to its default.
+    setForm((f) => ({
+      ...f,
+      transport,
+      macAddress: '',
+      vendorId: '',
+      productId: '',
+      ip: '',
+      port: String(DEFAULT_NETWORK_PORT),
+    }));
+    setScannedName(null);
+  }, []);
 
   const openAdd = () => {
     setEditingPrinter(null);
@@ -565,22 +594,31 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       >
         <div className="space-y-5">
                 <div>
-                  <label htmlFor="pr-transport" className="text-sm font-medium block mb-1.5">Transport Type</label>
-                  <Select
-                    id="pr-transport"
+                  <span className="text-sm font-medium block mb-1.5">Transport Type</span>
+                  {/* The house filter dropdown — the same control the menu
+                      library uses for its category/view filters — instead of a
+                      native select whose OS-drawn popup ignored the app theme. */}
+                  <DropdownSelect
+                    ariaLabel="Transport Type"
+                    className="w-full justify-between"
+                    contentClassName="w-72 max-w-[calc(100vw-3rem)]"
                     value={form.transport}
-                    onChange={e => {
-                      setForm(f => ({ ...f, transport: e.target.value as PrinterTransport, macAddress: '', vendorId: '', productId: '', ip: '', port: String(DEFAULT_NETWORK_PORT) }));
-                      setScannedName(null);
-                    }}
-                  >
-                    <option value="BLUETOOTH">Bluetooth</option>
-                    <option value="USB">USB</option>
-                    <option value="NETWORK">Network (Wi-Fi / LAN)</option>
-                  </Select>
+                    onChange={(next) => setTransport(next as PrinterTransport)}
+                    options={TRANSPORT_ORDER
+                      // Legacy stations only: network printing is no longer
+                      // offered for new terminals, but an existing Wi-Fi/LAN
+                      // station must keep its transport so an unrelated edit
+                      // cannot silently rewrite it.
+                      .filter((transport) => transport !== 'NETWORK' || form.transport === 'NETWORK')
+                      .map((transport) => ({
+                        value: transport,
+                        label: TRANSPORT_META[transport].label,
+                        icon: TRANSPORT_META[transport].icon,
+                      }))}
+                  />
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    Network printers are the most reliable: the server prints to them directly, so no
-                    browser or print agent has to be running.
+                    Bluetooth and USB printers are set up from this terminal — scan once and the
+                    station remembers the device.
                   </p>
                 </div>
 
@@ -592,34 +630,6 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                     {form.transport === 'USB' && <Usb className="h-4 w-4 text-primary" />}
                     {form.transport === 'NETWORK' ? 'Network printer' : form.transport === 'BLUETOOTH' ? 'Bluetooth printer' : 'USB printer'}
                   </div>
-
-                  {form.transport === 'NETWORK' && (
-                    <div className="space-y-3">
-                      <div>
-                        <label htmlFor="pr-ip" className="text-sm font-medium block mb-1.5">
-                          Printer IP address <span className="text-destructive">*</span>
-                        </label>
-                        <Input
-                          id="pr-ip"
-                          value={form.ip}
-                          onChange={e => setForm(f => ({ ...f, ip: e.target.value }))}
-                          placeholder="192.168.1.50"
-                          className="font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="pr-port" className="text-sm font-medium block mb-1.5">Port</label>
-                        <Input
-                          id="pr-port"
-                          inputMode="numeric"
-                          value={form.port}
-                          onChange={e => setForm(f => ({ ...f, port: e.target.value.replace(/[^\d]/g, '') }))}
-                          placeholder={String(DEFAULT_NETWORK_PORT)}
-                          className="font-mono"
-                        />
-                      </div>
-                    </div>
-                  )}
 
                   {transportReady ? (
                     <div className="flex items-start gap-2 rounded-lg border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 p-3">
@@ -639,14 +649,15 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                     </div>
                   ) : form.transport === 'NETWORK' ? (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      No browser can scan your local network, so type the address printed on the
-                      printer's own settings page.
+                      This station still points at a network printer
+                      {form.ip ? ` (${form.ip}${form.port ? `:${form.port}` : ''})` : ''}. Switch it to
+                      Bluetooth or USB above to configure it from this terminal instead.
                     </p>
                   ) : (
                     <p className="mt-2 text-xs text-muted-foreground">
                       Scan to detect nearby {form.transport === 'BLUETOOTH' ? 'Bluetooth' : 'USB'} printers and pick one automatically.
                       {form.transport === 'BLUETOOTH' &&
-                        ' Browsers only see low-energy (BLE) printers — one paired in Windows or Android settings stays hidden, so use a Network printer for those.'}
+                        ' Browsers only see low-energy (BLE) printers — one paired in Windows or Android settings stays hidden.'}
                     </p>
                   )}
 
