@@ -8,12 +8,16 @@ import enAuth from './locales/en/auth.json';
 import enCashier from './locales/en/cashier.json';
 import enManager from './locales/en/manager.json';
 import enOwner from './locales/en/owner.json';
+import enStaff from './locales/en/staff.json';
+import enAttendance from './locales/en/attendance.json';
 
 import amCommon from './locales/am/common.json';
 import amAuth from './locales/am/auth.json';
 import amCashier from './locales/am/cashier.json';
 import amManager from './locales/am/manager.json';
 import amOwner from './locales/am/owner.json';
+import amStaff from './locales/am/staff.json';
+import amAttendance from './locales/am/attendance.json';
 
 const resources = {
   en: {
@@ -22,6 +26,8 @@ const resources = {
     cashier: enCashier,
     manager: enManager,
     owner: enOwner,
+    staff: enStaff,
+    attendance: enAttendance,
   },
   am: {
     common: amCommon,
@@ -29,6 +35,8 @@ const resources = {
     cashier: amCashier,
     manager: amManager,
     owner: amOwner,
+    staff: amStaff,
+    attendance: amAttendance,
   }
 };
 
@@ -39,7 +47,7 @@ i18n
     resources,
     fallbackLng: 'en',
     supportedLngs: ['en', 'am'],
-    ns: ['common', 'auth', 'cashier', 'manager', 'owner'],
+    ns: ['common', 'auth', 'cashier', 'manager', 'owner', 'staff', 'attendance'],
     defaultNS: 'common',
     interpolation: {
       escapeValue: false, // React is already safe from XSS
