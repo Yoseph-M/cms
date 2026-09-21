@@ -78,19 +78,19 @@ const SORT_OPTIONS = [
 
 type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 
-const menuFormBaseSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required.'),
-  nameAmharic: z.string().trim().max(200, 'Amharic name is too long.'),
+// Both names are shown in the form and both are mandatory: an item that is
+// missing either language is unusable to whichever language the operator is
+// running, so the form refuses to save a half-named item instead of silently
+// seeding one name from the other.
+const menuFormSchema = z.object({
+  name: z.string().trim().min(1, 'English name is required.'),
+  nameAmharic: z
+    .string()
+    .trim()
+    .min(1, 'Amharic name is required.')
+    .max(200, 'Amharic name is too long.'),
   category: z.enum(['FOOD', 'DRINK', 'DESSERT', 'OTHER'], { message: 'Category is required.' }),
   price: z.coerce.number().positive('Price must be a positive number.'),
-});
-
-// While the UI language is Amharic, ONLY the Amharic name field is shown in
-// the form — so the hidden English name becomes optional there. Its stored
-// value still round-trips untouched; brand-new items are seeded at save time.
-const menuFormAmharicSchema = menuFormBaseSchema.extend({
-  name: z.string().trim().optional(),
-  nameAmharic: z.string().trim().min(1, 'Amharic name is required.').max(200, 'Amharic name is too long.'),
 });
 
 const EMPTY_FORM = {
@@ -141,8 +141,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       (isAmharic ? item.nameAmharic : item.name) || '',
     [isAmharic]
   );
-  // In the Amharic UI the Amharic name is required in the add/edit form.
-  const menuFormSchema = isAmharic ? menuFormAmharicSchema : menuFormBaseSchema;
 
   // Reflect the current section in the global header.
   useEffect(() => {
@@ -344,13 +342,10 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     try {
       const parsed = menuFormSchema.parse(form);
       const payload = {
-        // The English field is hidden in the Amharic UI: its prefilled value
-        // round-trips for existing items, while a brand-new item (empty
-        // English name) is seeded with the Amharic text so the API's required
-        // `name` passes.
-        name: parsed.name?.trim() || parsed.nameAmharic,
-        // Empty string clears the stored Amharic name (sent as null).
-        nameAmharic: parsed.nameAmharic || null,
+        // Both names are validated as non-empty above, so they go through as
+        // entered — no seeding one from the other.
+        name: parsed.name,
+        nameAmharic: parsed.nameAmharic,
         category: parsed.category,
         price: parsed.price,
         imageUrl: form.imageUrl || null,
@@ -1138,13 +1133,13 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
           </div>
 
-          {/* Each UI language edits ONLY its own name field: the English UI
-              shows the English name, the Amharic UI shows the Amharic one.
-              The hidden language's stored value still round-trips on save. */}
-          {!isAmharic && (
+          {/* Both names, side by side, both required: the previous form showed
+              only the active UI language's name and let the other be blank, so
+              an item could be saved without a name in one language. */}
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="form-name" className="text-sm font-medium text-foreground block mb-1.5">
-                Name <span className="text-destructive">*</span>
+                Name (English) <span className="text-destructive">*</span>
               </label>
               <Input
                 id="form-name"
@@ -1156,9 +1151,6 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               />
               {formErrors.name && <p className="text-destructive text-xs mt-1">{formErrors.name}</p>}
             </div>
-          )}
-
-          {isAmharic && (
             <div>
               <label htmlFor="form-name-amharic" className="text-sm font-medium text-foreground block mb-1.5">
                 Name (Amharic) <span className="text-destructive">*</span>
@@ -1174,7 +1166,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               />
               {formErrors.nameAmharic && <p className="text-destructive text-xs mt-1">{formErrors.nameAmharic}</p>}
             </div>
-          )}
+          </div>
 
           <div>
             <label className="text-sm font-medium text-foreground block mb-1.5">
