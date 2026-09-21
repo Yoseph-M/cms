@@ -95,9 +95,16 @@ const CashierLayoutInner: React.FC = () => {
         <div
           className={cn(
             'h-[72px] sm:h-[88px] px-6 max-[767px]:px-5 flex items-center shrink-0',
-            sidebarCollapsed ? 'justify-center' : 'justify-end',
+            sidebarCollapsed ? 'justify-center' : 'justify-between',
           )}
         >
+          {!sidebarCollapsed && (
+            <div className="flex items-center flex-1 mr-auto max-[767px]:hidden overflow-hidden">
+              <span className="font-bold text-xl tracking-tight truncate text-foreground">
+                MELEኛ<span className="text-primary">POS</span>
+              </span>
+            </div>
+          )}
           <span className="hidden max-[767px]:block mr-auto text-sm font-semibold tracking-tight text-foreground">
             {t('common:chrome.navigation')}
           </span>
@@ -112,9 +119,16 @@ const CashierLayoutInner: React.FC = () => {
             <button
               onClick={toggle}
               aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
+              className="group relative hover:bg-secondary text-muted-foreground transition-colors flex items-center justify-center w-9 h-9 shrink-0 rounded-xl overflow-hidden"
             >
-              <PanelLeftRounded className="w-5 h-5" />
+              {sidebarCollapsed ? (
+                <>
+                  <img src="/logo.png" alt="Logo" className="absolute inset-0 w-full h-full object-cover scale-110 transition-opacity duration-200 group-hover:opacity-0" />
+                  <PanelLeftRounded className="w-5 h-5 absolute opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                </>
+              ) : (
+                <PanelLeftRounded className="w-5 h-5" />
+              )}
             </button>
           </Tooltip>
         </div>
