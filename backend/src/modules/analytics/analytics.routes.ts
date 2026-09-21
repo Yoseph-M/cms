@@ -16,6 +16,7 @@ router.get('/sales/trend', AnalyticsController.getTrendSales);
 router.get('/top-items', AnalyticsController.getTopItems);
 router.get('/category-split', AnalyticsController.getCategorySplit);
 router.get('/peak-hours', AnalyticsController.getPeakHours);
+router.get('/items-by-hour', AnalyticsController.getItemsByHour);
 router.get('/payment-methods', AnalyticsController.getPaymentMethods);
 router.get('/cancellations', AnalyticsController.getCancellations);
 router.get('/staff-performance', AnalyticsController.getStaffPerformance);
