@@ -61,6 +61,23 @@ docker exec mern_pos_mongo mongorestore \
   /data/backup/<timestamp>/pos_db
 ```
 
+### Create the first owner (empty database)
+
+No staff accounts are seeded — a deployment only ever contains the people the
+owner creates, and nothing ships with a password written in the source. A fresh
+database therefore has no way to sign in until you create its owner:
+
+```bash
+# In backend/.env, then restart the API once
+BOOTSTRAP_OWNER_PASSWORD=<a-strong-password>
+# optional: BOOTSTRAP_OWNER_USERNAME=owner  BOOTSTRAP_OWNER_NAME="…"  BOOTSTRAP_OWNER_PHONE="+251…"
+```
+
+The owner is created only when no owner exists yet. **Remove
+`BOOTSTRAP_OWNER_PASSWORD` once you have signed in** and change the password
+from the Profile page. Every other account (managers, cashiers, waiters,
+kitchen staff) is created from the Staff page.
+
 ### Run Prisma migrations
 
 ```bash
