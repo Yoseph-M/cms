@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowUpDown,
   ChartBar,
+  Clock,
   Search,
   UtensilsCrossed,
   Coffee,
@@ -29,6 +30,7 @@ import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
 import { useMenuQuery } from '../../hooks/useCachedQueries';
+import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { cn } from '../../lib/utils';
 
@@ -71,18 +73,18 @@ const CATEGORY_META: Record<CategoryKey, { icon: LucideIcon; label: string; badg
   OTHER: { icon: Sparkles, label: 'Other', badge: 'neutral' },
 };
 
-const RANGE_OPTIONS: Array<{ key: RangeKey; label: string; days: number }> = [
-  { key: '7d', label: 'Last 7 days', days: 6 },
-  { key: '30d', label: 'Last 30 days', days: 29 },
-  { key: '90d', label: 'Last 90 days', days: 89 },
-  { key: 'all', label: 'All time', days: 0 },
+const RANGE_OPTIONS: Array<{ key: RangeKey; labelKey: string; days: number }> = [
+  { key: '7d', labelKey: 'last7Days', days: 6 },
+  { key: '30d', labelKey: 'last30Days', days: 29 },
+  { key: '90d', labelKey: 'last90Days', days: 89 },
+  { key: 'all', labelKey: 'allTime', days: 0 },
 ];
 
-const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
-  { key: 'qty-desc', label: 'Most sold' },
-  { key: 'qty-asc', label: 'Least sold' },
-  { key: 'revenue-desc', label: 'Highest revenue' },
-  { key: 'name-asc', label: 'Name (A–Z)' },
+const SORT_OPTIONS: Array<{ key: SortKey; labelKey: string }> = [
+  { key: 'qty-desc', labelKey: 'mostSold' },
+  { key: 'qty-asc', labelKey: 'leastSold' },
+  { key: 'revenue-desc', labelKey: 'highestRevenue' },
+  { key: 'name-asc', labelKey: 'nameAZ' },
 ];
 
 const CATEGORIES: CategoryKey[] = ['ALL', 'FOOD', 'DRINK', 'DESSERT', 'OTHER'];
@@ -96,6 +98,23 @@ function rangeToParams(range: RangeKey): Record<string, string> {
   const to = new Date();
   to.setHours(23, 59, 59, 999);
   return { from: from.toISOString(), to: to.toISOString() };
+}
+
+/** "የበሬ ጥብስ (Beef Tibs)" reads best as "Beef Tibs" in a dense report. */
+function readableName(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return 'Unnamed item';
+  const m = s.match(/\(([^)]+)\)\s*$/);
+  return m ? m[1] : s;
+}
+
+/** "አማርኛ (English)" and "English" must both resolve to the same item key. */
+function normName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Menu category for an order-line name, matched against the live catalog. */
@@ -118,17 +137,19 @@ function categoryForName(
 
 export const MenuSalesStats: React.FC = () => {
   const { setPageTitle, setShowDateRange } = useHeaderStore();
+  const { t } = useTranslation('owner');
 
   useEffect(() => {
     setPageTitle({
-      title: 'Item Sales',
-      subtitle: 'Which items are selling, and how often',
+      title: t('nav.itemSales', { defaultValue: 'Item Sales' }),
+      subtitle: t('itemSales.subtitle', { defaultValue: 'Which items are selling, and how often' }),
     });
     setShowDateRange(false);
     return () => {
       setPageTitle({ title: 'Overview', subtitle: '' });
       setShowDateRange(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setPageTitle, setShowDateRange]);
 
   const [range, setRange] = useState<RangeKey>('30d');
@@ -162,6 +183,65 @@ export const MenuSalesStats: React.FC = () => {
   });
 
   const sales: SalesRow[] = Array.isArray(salesQuery.data) ? salesQuery.data : [];
+
+  // Units per item per hour — the same aggregation that feeds the peak-hours
+  // heatmap, read item-first so each row can name the hour it sells best in.
+  const hourlyQuery = useQuery<Array<{ hour: number; name: string; qty: number }>>({
+    queryKey: ['analytics', 'items-by-hour', 'sales-stats', range],
+    queryFn: async () => {
+      const qs = new URLSearchParams(rangeParams).toString();
+      const res = await axiosClient.get(`/analytics/items-by-hour${qs ? `?${qs}` : ''}`);
+      return res.data as Array<{ hour: number; name: string; qty: number }>;
+    },
+    staleTime: 90_000,
+  });
+
+  /**
+   * Best hour for each item. Order lines snapshot bilingual names
+   * ("የበሬ ጥብስ (Beef Tibs)") while the catalog row is a single language, so both
+   * halves of a snapshot are indexed and lookups are normalised.
+   */
+  const bestHourByName = useMemo(() => {
+    const map = new Map<string, { hour: number; qty: number }>();
+    const remember = (key: string, value: { hour: number; qty: number }) => {
+      if (!key) return;
+      const current = map.get(key);
+      if (!current || value.qty > current.qty) map.set(key, value);
+    };
+    for (const row of Array.isArray(hourlyQuery.data) ? hourlyQuery.data : []) {
+      const hour = Number(row?.hour);
+      const qty = Number(row?.qty) || 0;
+      const name = String(row?.name ?? '');
+      if (!name || !Number.isFinite(hour) || qty <= 0) continue;
+      remember(normName(name), { hour, qty });
+      const tail = name.match(/\(([^)]+)\)\s*$/);
+      if (tail) remember(normName(tail[1]), { hour, qty });
+    }
+    return map;
+  }, [hourlyQuery.data]);
+
+  const bestHourFor = (name: string) => bestHourByName.get(normName(name)) ?? null;
+
+  /**
+   * Best-selling item for every hour that saw sales, plus the busiest hour of
+   * the selected period. The API returns rows ordered by hour and, within an
+   * hour, by units sold — so the first row of each hour is its winner. This
+   * report lives on the item-sales page: it is an item-first view of the same
+   * data the table already reads.
+   */
+  const hourlyLeaders = useMemo(() => {
+    const winnerPerHour = new Map<number, { hour: number; name: string; qty: number }>();
+    for (const row of Array.isArray(hourlyQuery.data) ? hourlyQuery.data : []) {
+      const hour = Number(row?.hour);
+      const qty = Number(row?.qty) || 0;
+      const name = String(row?.name ?? '');
+      if (!name || !Number.isFinite(hour) || hour < 0 || hour > 23 || qty <= 0) continue;
+      if (!winnerPerHour.has(hour)) winnerPerHour.set(hour, { hour, name, qty });
+    }
+    const perHour = [...winnerPerHour.values()].sort((a, b) => a.hour - b.hour);
+    const busiest = [...perHour].sort((a, b) => b.qty - a.qty)[0] ?? null;
+    return { perHour, busiest };
+  }, [hourlyQuery.data]);
 
   const rows = useMemo(() => {
     const byName = new Map<string, { name: string; totalQty: number; totalRevenue: number; imageUrl?: string | null }>();
@@ -238,8 +318,12 @@ export const MenuSalesStats: React.FC = () => {
   );
 
   const maxQty = Math.max(1, ...rows.map((r) => r.totalQty));
-  const activeRangeLabel = RANGE_OPTIONS.find((r) => r.key === range)?.label ?? 'All time';
-  const activeSortLabel = SORT_OPTIONS.find((s) => s.key === sortBy)?.label ?? 'Most sold';
+  const activeRangeLabel = RANGE_OPTIONS.find((r) => r.key === range)
+    ? t(`itemSales.${RANGE_OPTIONS.find((r) => r.key === range)!.labelKey}`)
+    : t('itemSales.allTime');
+  const activeSortLabel = SORT_OPTIONS.find((s) => s.key === sortBy)
+    ? t(`itemSales.${SORT_OPTIONS.find((s) => s.key === sortBy)!.labelKey}`)
+    : t('itemSales.mostSold');
 
   const isLoading = salesQuery.isLoading || menuQuery.isLoading;
   const error = salesQuery.error
@@ -256,7 +340,7 @@ export const MenuSalesStats: React.FC = () => {
               <Receipt className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Units sold</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('itemSales.unitsSold')}</p>
               <p className="font-display text-xl font-bold tabular-nums text-foreground">{totals.units}</p>
             </div>
           </div>
@@ -267,7 +351,7 @@ export const MenuSalesStats: React.FC = () => {
               <ChartBar className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Item revenue</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('itemSales.itemRevenue')}</p>
               <p className="font-display text-xl font-bold tabular-nums text-foreground">{formatCurrency(totals.revenue)}</p>
             </div>
           </div>
@@ -278,7 +362,7 @@ export const MenuSalesStats: React.FC = () => {
               <UtensilsCrossed className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Items sold</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('itemSales.itemsSold')}</p>
               <p className="font-display text-xl font-bold tabular-nums text-foreground">
                 {totals.sold}
                 <span className="text-sm font-medium text-muted-foreground"> / {menuItems.length}</span>
@@ -297,18 +381,18 @@ export const MenuSalesStats: React.FC = () => {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search items…"
+              placeholder={t('itemSales.searchPlaceholder')}
               className="pl-9"
-              aria-label="Search sold items"
+              aria-label={t('itemSales.searchPlaceholder')}
             />
           </div>
 
           <DropdownMenu>
-            <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0 h-10">
+            <DropdownMenuTrigger aria-label={t('itemSales.filterCategory')} className="shrink-0 h-10">
               {React.createElement(CATEGORY_META[category].icon, {
                 className: 'w-4 h-4 text-muted-foreground',
               })}
-              <span>{CATEGORY_META[category].label}</span>
+              <span>{t(`itemSales.cat_${category.toLowerCase()}`)}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               {CATEGORIES.map((cat) => {
@@ -320,7 +404,7 @@ export const MenuSalesStats: React.FC = () => {
                     onSelect={() => setCategory(cat)}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
-                    <span>{CATEGORY_META[cat].label}</span>
+                    <span>{t(`itemSales.cat_${cat.toLowerCase()}`)}</span>
                   </DropdownMenuItem>
                 );
               })}
@@ -328,9 +412,9 @@ export const MenuSalesStats: React.FC = () => {
           </DropdownMenu>
 
           <DropdownMenu>
-            <DropdownMenuTrigger aria-label="Filter by period" className="shrink-0 h-10">
+            <DropdownMenuTrigger aria-label={t('itemSales.filterPeriod')} className="shrink-0 h-10">
               <span className="hidden sm:inline">{activeRangeLabel}</span>
-              <span className="sm:hidden">Period</span>
+              <span className="sm:hidden">{t('itemSales.period')}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               {RANGE_OPTIONS.map((opt) => (
@@ -339,14 +423,14 @@ export const MenuSalesStats: React.FC = () => {
                   selected={range === opt.key}
                   onSelect={() => setRange(opt.key)}
                 >
-                  {opt.label}
+                  {t(`itemSales.${opt.labelKey}`)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
 
           <DropdownMenu>
-            <DropdownMenuTrigger aria-label="Sort items" className="shrink-0 h-10">
+            <DropdownMenuTrigger aria-label={t('itemSales.sortItems')} className="shrink-0 h-10">
               <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
               <span className="hidden sm:inline">{activeSortLabel}</span>
             </DropdownMenuTrigger>
@@ -357,7 +441,7 @@ export const MenuSalesStats: React.FC = () => {
                   selected={sortBy === opt.key}
                   onSelect={() => setSortBy(opt.key)}
                 >
-                  {opt.label}
+                  {t(`itemSales.${opt.labelKey}`)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -365,20 +449,83 @@ export const MenuSalesStats: React.FC = () => {
         </div>
       </Card>
 
+      {/* Best Seller Each Hour — the hour-first read of the same sales data. */}
+      <Card>
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Clock className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-foreground">{t('itemSales.bestSellerEachHour')}</h2>
+                <p className="text-xs text-muted-foreground">
+                  {t('itemSales.bestSellerDesc')}
+                </p>
+              </div>
+            </div>
+            {hourlyLeaders.busiest && (
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {t('itemSales.peak')} {String(hourlyLeaders.busiest.hour).padStart(2, '0')}:00 ·{' '}
+                <span className="text-foreground">{readableName(hourlyLeaders.busiest.name)}</span> (
+                {hourlyLeaders.busiest.qty})
+              </span>
+            )}
+          </div>
+
+          {hourlyQuery.isLoading ? (
+            <div className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-9 animate-pulse rounded-lg bg-secondary/40" />
+              ))}
+            </div>
+          ) : hourlyLeaders.perHour.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              {t('itemSales.noHourlySales')}
+            </p>
+          ) : (
+            <ul className="mt-3 grid max-h-72 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
+              {hourlyLeaders.perHour.map((row) => {
+                const isPeak = hourlyLeaders.busiest?.hour === row.hour;
+                return (
+                  <li
+                    key={row.hour}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg border px-3 py-2 text-sm',
+                      isPeak ? 'border-primary/40 bg-primary/5' : 'border-border bg-secondary/20',
+                    )}
+                  >
+                    <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                      {String(row.hour).padStart(2, '0')}:00
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-foreground">
+                      {readableName(row.name)}
+                    </span>
+                    <span className="shrink-0 font-mono text-xs font-semibold tabular-nums text-foreground">
+                      {row.qty}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Table */}
       {isLoading ? (
-        <LoadingState message="Crunching sales…" />
+        <LoadingState message={t('itemSales.crunching')} />
       ) : error ? (
         <EmptyState
           icon={<ChartBar className="w-8 h-8 text-muted-foreground" />}
-          title="Couldn't load sales"
+          title={t('itemSales.loadFailedTitle')}
           message={error}
         />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<UtensilsCrossed className="w-8 h-8 text-muted-foreground" />}
-          title="No menu items"
-          message="Add items to the menu to start tracking how often they sell."
+          title={t('itemSales.noMenuItems')}
+          message={t('itemSales.noMenuItemsMsg')}
         />
       ) : (
         <Card>
@@ -387,10 +534,11 @@ export const MenuSalesStats: React.FC = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-secondary/40 text-left text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-3">Item</th>
-                    <th className="px-4 py-3 hidden sm:table-cell">Category</th>
-                    <th className="px-4 py-3 text-right">Times sold</th>
-                    <th className="px-4 py-3 text-right hidden md:table-cell">Revenue</th>
+                    <th className="px-4 py-3">{t('itemSales.col_item')}</th>
+                    <th className="px-4 py-3 hidden sm:table-cell">{t('itemSales.col_category')}</th>
+                    <th className="px-4 py-3 text-right">{t('itemSales.col_timesSold')}</th>
+                    <th className="px-4 py-3 hidden md:table-cell">{t('itemSales.col_busiestHour')}</th>
+                    <th className="px-4 py-3 text-right hidden md:table-cell">{t('itemSales.col_revenue')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -432,11 +580,28 @@ export const MenuSalesStats: React.FC = () => {
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <Badge variant={CATEGORY_META[row.category].badge} className="text-[10px]">
-                          {CATEGORY_META[row.category].label}
+                          {t(`itemSales.cat_${row.category.toLowerCase()}`)}
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums text-foreground">
                         {row.totalQty}
+                      </td>
+                      {/* Which hour this item sells best in — the "when" behind
+                          the peak-hours heatmap, read per item. */}
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        {(() => {
+                          const best = bestHourFor(row.name);
+                          if (!best) return <span className="text-muted-foreground">—</span>;
+                          return (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <Clock className="h-3.5 w-3.5" />
+                              <span className="font-mono font-semibold tabular-nums text-foreground">
+                                {String(best.hour).padStart(2, '0')}:00
+                              </span>
+                              <span className="tabular-nums">· {t('itemSales.soldCount', { count: best.qty })}</span>
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-right font-mono tabular-nums text-muted-foreground hidden md:table-cell">
                         {formatCurrency(row.totalRevenue)}
