@@ -60,12 +60,18 @@ export const DropdownSelect: React.FC<DropdownSelectProps> = ({
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={ariaLabel}
-        className={cn('shrink-0', size === 'md' ? 'h-11' : 'h-9 text-xs', className)}
+        className={cn(
+          'shrink-0',
+          size === 'md'
+            ? 'h-11 w-full flex justify-between bg-background shadow-sm hover:border-foreground/20 data-[state=open]:bg-background'
+            : 'h-9 text-xs',
+          className,
+        )}
       >
         {ActiveIcon ? <ActiveIcon className="w-4 h-4 text-muted-foreground" /> : null}
         <span className="truncate">{label}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className={cn('min-w-[11rem]', contentClassName)}>
+      <DropdownMenuContent align={align} className={cn('w-[var(--radix-dropdown-menu-trigger-width)] min-w-[11rem]', contentClassName)}>
         {options.map((option) => {
           const Icon = option.icon;
           return (
