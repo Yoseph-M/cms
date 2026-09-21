@@ -18,7 +18,10 @@
     "newOrderCta": "New order",
     "serviceDesk": "Service desk",
     "title": "Tickets",
-    "showingRange": "Showing {{from}}–{{to}} of {{total}}"
+    "showingRange": "Showing {{from}}–{{to}} of {{total}}",
+    "reprintFailedTitle": "Kitchen print failed",
+    "reprintFailedBody": "These tickets never reached paper. Check the printer is on and loaded, then send them again.",
+    "reprintAgain": "Reprint {{label}}"
   },
   "orderList": {
     "readyToCollect": "Ready to collect",
