@@ -466,20 +466,22 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
 
           {/* Waiter selector — house dropdown; the trigger keeps the
               destructive border while no waiter is chosen. */}
-          <label className="text-xs text-muted-foreground mb-1 block">
-            <UserRound className="inline w-3 h-3 mr-1" />
-            {t('ordering.waiterLabel')}
-          </label>
-          <div className={`mb-3 ${selectedWaiterId ? '' : '[&>button]:border-destructive/60'}`}>
-            <DropdownSelect
-              ariaLabel={t('ordering.waiterLabel')}
-              className="w-full justify-between h-9 text-xs"
-              contentClassName="w-56 max-h-72 overflow-y-auto"
-              value={selectedWaiterId}
-              onChange={setSelectedWaiterId}
-              placeholder="— Select a waiter —"
-              options={waiters.map((w) => ({ value: w.id, label: w.name }))}
-            />
+          <div className="bg-secondary/30 rounded-lg p-4 border border-border/50 mb-3">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
+              <UserRound className="inline w-3 h-3 mr-1" />
+              {t('ordering.waiterLabel')}
+            </label>
+            <div className={selectedWaiterId ? '' : '[&>button]:border-destructive/60'}>
+              <DropdownSelect
+                ariaLabel={t('ordering.waiterLabel')}
+                className="w-full justify-between"
+                contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
+                value={selectedWaiterId}
+                onChange={setSelectedWaiterId}
+                placeholder="— Select a waiter —"
+                options={waiters.map((w) => ({ value: w.id, label: w.name }))}
+              />
+            </div>
           </div>
 
           <label htmlFor="order-table" className="text-xs text-muted-foreground mb-1 block">
