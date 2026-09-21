@@ -324,7 +324,7 @@ export const CancellationReview: React.FC = () => {
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                   placeholder={t('cancellations.rejectPlaceholder')}
-                  className="w-full h-24 px-3 py-2 rounded-lg border bg-secondary/50 focus:bg-background focus:border-primary outline-none resize-none"
+                  className="w-full h-24 px-3 py-2 rounded-lg border bg-secondary/50 focus:bg-background outline-none resize-none"
                   autoFocus
                 />
               </div>
