@@ -10,7 +10,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       className={cn(
         "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm",
         // Focus paints no ring or border colour — see Input.tsx for the reason.
-        "focus:outline-none focus:ring-0",
+        "focus:outline-none focus:!ring-0",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
