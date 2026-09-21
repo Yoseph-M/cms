@@ -5,7 +5,13 @@ import {
 } from '@tremor/react';
 import { cn } from '../../lib/utils';
 
-export const DONUT_COLORS = ['#0EA5E9', '#14B8A6', '#F59E0B', '#F43F5E', '#8B5CF6', '#EC4899'];
+/**
+ * Warm palette shared by every pie/donut chart. Slice order is deliberate:
+ * orange → amber → red → deep orange → gold → rose, so neighbouring slices stay
+ * distinguishable while the whole ring reads as one warm family (the cool
+ * blue/teal/violet set it replaced clashed with the brand accents).
+ */
+export const DONUT_COLORS = ['#F97316', '#F59E0B', '#DC2626', '#EA580C', '#CA8A04', '#E11D48'];
 
 function toNumber(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
