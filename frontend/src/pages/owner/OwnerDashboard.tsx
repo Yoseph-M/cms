@@ -83,10 +83,11 @@ const CATEGORY_LABEL: Record<string, string> = {
   DRINK: 'Drink',
   DESSERT: 'Dessert',
 };
+// Category ring uses the same warm family as every other pie chart.
 const CATEGORY_COLOR: Record<string, string> = {
-  FOOD: 'hsl(217 91% 60%)',
-  DRINK: 'hsl(201 96% 45%)',
-  DESSERT: 'hsl(262 83% 62%)',
+  FOOD: 'hsl(24 95% 53%)',
+  DRINK: 'hsl(38 92% 50%)',
+  DESSERT: 'hsl(0 72% 51%)',
 };
 
 function pickIconForName(name: string): LucideIcon {
@@ -280,20 +281,20 @@ export const OwnerDashboard: React.FC = () => {
 
   const trendLabel = TREND_OPTIONS.find((o) => o.key === trendRange)?.label ?? 'This year';
 
-  /* Totals strip above the revenue trend — the series sums plus net and the
-     net margin, so the chart reads at a glance without hovering. */
+  /* Totals strip above the revenue trend: one tile per series, so the chart
+     reads at a glance without hovering. No net/margin tiles — the card is the
+     income-vs-expenses comparison, and net margin lives on Profit & Loss. */
   const incomeLabel = t('dashboard.series.income', { defaultValue: 'Income' });
   const expensesLabel = t('dashboard.series.expenses', { defaultValue: 'Expenses' });
   const trendTotals = useMemo(() => {
     const income = lineData.income.reduce((s, v) => s + v, 0);
     const expenses = lineData.expenses.reduce((s, v) => s + v, 0);
-    const net = income - expenses;
-    return { income, expenses, net, margin: income > 0 ? (net / income) * 100 : 0 };
+    return { income, expenses };
   }, [lineData]);
 
   /* ── Donut: category split ── */
   const donutSegments = useMemo(() => {
-    const FALLBACK_COLORS = ['#3b82f6', '#06b6d4', '#8b5cf6'];
+    const FALLBACK_COLORS = ['#F97316', '#F59E0B', '#DC2626'];
     return categories.map((c, i) => ({
       label: CATEGORY_LABEL[c.category] ?? c.category,
       value: c.revenue,
@@ -344,7 +345,6 @@ export const OwnerDashboard: React.FC = () => {
       const orderType = o.tableNumber ? `Dine-in · T${o.tableNumber}` : 'Takeaway';
       return {
         id: o.id,
-        shortId: (o.clientOrderId ?? o.id).slice(0, 4).padStart(4, '0'),
         type: orderType,
         attendant,
         time: o.createdAt,
@@ -403,7 +403,7 @@ export const OwnerDashboard: React.FC = () => {
                   key: 'expenses',
                   label: expensesLabel,
                   values: lineData.expenses,
-                  color: 'cyan',
+                  color: 'red',
                 },
               ]}
               yFormat={(v) => v.toLocaleString('en-US')}
@@ -417,15 +417,7 @@ export const OwnerDashboard: React.FC = () => {
                 {
                   label: expensesLabel,
                   value: formatCurrency(trendTotals.expenses),
-                  color: '#06b6d4',
-                },
-                {
-                  label: t('dashboard.series.net', { defaultValue: 'Net' }),
-                  value: formatCurrency(trendTotals.net),
-                },
-                {
-                  label: t('dashboard.series.margin', { defaultValue: 'Margin' }),
-                  value: `${trendTotals.margin.toFixed(1)}%`,
+                  color: '#ef4444',
                 },
               ]}
             />
