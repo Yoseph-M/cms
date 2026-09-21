@@ -1,6 +1,10 @@
 import i18n from './i18n';
 import type { User } from './types';
 
+// Seed the mirror so the very first render (before any switch settles) already
+// agrees with i18n's detected language.
+(globalThis as { __APP_LANG__?: string }).__APP_LANG__ = i18n.language;
+
 /**
  * Per-user UI language lifecycle.
  *
@@ -47,10 +51,19 @@ export const neutralLanguage = (): string => {
     : 'en';
 };
 
+/**
+ * Global mirror of the active UI language for non-React modules (date
+ * formatters, etc.) that cannot call the useTranslation hook.
+ */
+declare global {
+  var __APP_LANG__: string | undefined;
+}
+
 /** Switch i18n to the given language if it is not already active. */
 export const changeLanguageIfDifferent = async (lng: string): Promise<void> => {
   if (i18n.language === lng) return;
   await i18n.changeLanguage(lng);
+  (globalThis as { __APP_LANG__?: string }).__APP_LANG__ = lng;
 };
 
 /** Apply the signed-in user's preferred language (no-op when it matches). */
