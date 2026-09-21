@@ -9,7 +9,7 @@ import { usePayrollQuery, useUsersQuery } from '../../hooks/useCachedQueries';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Select } from '../../components/ui/Select';
+import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { Sheet } from '../../components/ui/Sheet';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -405,49 +405,46 @@ export const ManagerPayroll: React.FC = () => {
       >
         <div className="space-y-5">
           <div>
-            <label htmlFor="mgr-payroll-staff" className="text-sm font-medium text-foreground block mb-1.5">
+            <span className="text-sm font-medium text-foreground block mb-1.5">
               {t('payroll.form.staff', { defaultValue: 'Staff' })} <span className="text-destructive">*</span>
-            </label>
-            <Select
-              id="mgr-payroll-staff"
+            </span>
+            <DropdownSelect
+              ariaLabel={t('payroll.form.staff', { defaultValue: 'Staff' })}
+              className="w-full justify-between"
+              contentClassName="w-[22rem] max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
               value={userId}
-              onChange={(e) => handleStaffChange(e.target.value)}
-            >
-              <option value="">{t('payroll.form.selectStaff', { defaultValue: 'Select staff member' })}</option>
-              {staff.map((s) => (
-                <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
-              ))}
-            </Select>
+              onChange={handleStaffChange}
+              placeholder={t('payroll.form.selectStaff', { defaultValue: 'Select staff member' })}
+              options={staff.map((s) => ({ value: s.id, label: `${s.name} (${s.role})` }))}
+            />
           </div>
 
           <div className="flex gap-3">
             <div className="flex-1">
-              <label htmlFor="mgr-payroll-month" className="text-sm font-medium text-foreground block mb-1.5">
+              <span className="text-sm font-medium text-foreground block mb-1.5">
                 {t('payroll.form.month', { defaultValue: 'Period Month' })}
-              </label>
-              <Select
-                id="mgr-payroll-month"
+              </span>
+              <DropdownSelect
+                ariaLabel={t('payroll.form.month', { defaultValue: 'Period Month' })}
+                className="w-full justify-between"
+                contentClassName="w-40"
                 value={String(periodMonth)}
-                onChange={(e) => setPeriodMonth(Number(e.target.value))}
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={i + 1}>{m}</option>
-                ))}
-              </Select>
+                onChange={(v) => setPeriodMonth(Number(v))}
+                options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
+              />
             </div>
             <div className="w-28">
-              <label htmlFor="mgr-payroll-year" className="text-sm font-medium text-foreground block mb-1.5">
+              <span className="text-sm font-medium text-foreground block mb-1.5">
                 {t('payroll.form.year', { defaultValue: 'Year' })}
-              </label>
-              <Select
-                id="mgr-payroll-year"
+              </span>
+              <DropdownSelect
+                ariaLabel={t('payroll.form.year', { defaultValue: 'Year' })}
+                className="w-full justify-between"
+                contentClassName="w-28"
                 value={String(periodYear)}
-                onChange={(e) => setPeriodYear(Number(e.target.value))}
-              >
-                {YEARS.map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </Select>
+                onChange={(v) => setPeriodYear(Number(v))}
+                options={YEARS.map((y) => ({ value: String(y), label: String(y) }))}
+              />
             </div>
           </div>
 
