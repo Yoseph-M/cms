@@ -491,14 +491,14 @@ export const ExpensesTracker: React.FC = () => {
         }
       >
         <div className="space-y-5">
-          <div>
-            <span className="text-sm font-medium text-foreground block mb-1.5">
+          <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
+            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
               {t('expenses.form.category', { defaultValue: 'Category' })} <span className="text-destructive">*</span>
-            </span>
+            </label>
             <DropdownSelect
               ariaLabel={t('expenses.form.category', { defaultValue: 'Category' })}
               className="w-full justify-between"
-              contentClassName="w-56"
+              contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
               value={form.category}
               onChange={(next) =>
                 setForm((f) => ({ ...f, category: next as ExpenseCategory }))
@@ -508,10 +508,10 @@ export const ExpensesTracker: React.FC = () => {
                 : MANUAL_CATEGORIES
               ).map((c) => ({ value: c, label: CATEGORY_LABELS[c] }))}
             />
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {t('expenses.payrollAutoNote')}
-            </p>
           </div>
+          <p className="text-xs text-muted-foreground">
+            {t('expenses.payrollAutoNote')}
+          </p>
 
           <div>
             <label htmlFor="expense-amount" className="text-sm font-medium text-foreground block mb-1.5">
