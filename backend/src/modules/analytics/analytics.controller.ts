@@ -5,7 +5,10 @@ import { OrderStatus } from '@prisma/client';
 import { config } from '../../config';
 
 function pctDelta(current: number, prior: number): number | null {
-  if (prior === 0) return current > 0 ? 100 : null;
+  // No baseline means no meaningful comparison — a constant like +100% here
+  // reads as a hardcoded number on the KPI cards. The frontend hides the
+  // badge when this is null.
+  if (prior === 0) return null;
   return Math.round(((current - prior) / prior) * 1000) / 10;
 }
 
@@ -74,8 +77,13 @@ export async function getDailySales(req: AuthenticatedRequest, res: Response) {
   yesterdayEnd.setUTCDate(yesterdayEnd.getUTCDate() - 1);
 
   const mtdStart = new Date(Date.UTC(y, m, 1, -offsetHours, 0, 0, 0));
+  // Same-day-of-month mirror: a partial current month must be compared with
+  // the SAME span of the previous month — comparing day 20 against a full
+  // prior month fabricated a huge "growth" number from a fake baseline.
+  // Clamped to the prior month's length so Jan 31 mirrors Feb 28, not Mar 1.
+  const priorDaysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const priorMtdStart = new Date(Date.UTC(y, m - 1, 1, -offsetHours, 0, 0, 0));
-  const priorMtdEnd = new Date(Date.UTC(y, m, 0, 23 - offsetHours, 59, 59, 999));
+  const priorMtdEnd = new Date(Date.UTC(y, m - 1, Math.min(d, priorDaysInMonth), 23 - offsetHours, 59, 59, 999));
 
   const [today, yesterday, mtd, priorMtd] = await Promise.all([
     aggregateSales(todayStart, todayEnd),
@@ -117,6 +125,13 @@ export async function getDailySales(req: AuthenticatedRequest, res: Response) {
 }
 
 export async function getTotalSales(req: AuthenticatedRequest, res: Response) {
+  // Range-scoped when the caller passes a window (the Finance page's date
+  // filter), all-time otherwise (the dashboard's headline totals).
+  const { from, to } = req.query;
+  const createdAt: { gte?: Date; lte?: Date } = {};
+  if (from) createdAt.gte = new Date(from as string);
+  if (to) createdAt.lte = new Date(to as string);
+
   const result = await prisma.order.aggregate({
     _sum: {
       totalAmount: true,
@@ -126,6 +141,7 @@ export async function getTotalSales(req: AuthenticatedRequest, res: Response) {
     },
     where: {
       status: 'PAID',
+      ...(Object.keys(createdAt).length ? { createdAt } : {}),
     },
   });
 
@@ -446,6 +462,50 @@ export async function getPeakHours(req: AuthenticatedRequest, res: Response) {
   }));
 
   return res.json(normalized);
+}
+
+/**
+ * Which item sold most in each hour — the "what" behind the peak-hours
+ * heatmap. One row per (hour, item) with the units sold, ordered by hour and
+ * then by units, so a caller can take the first row of each hour for the
+ * busiest item or build the full item × hour matrix.
+ */
+export async function getItemsByHour(req: AuthenticatedRequest, res: Response) {
+  const { from, to } = req.query;
+  const match: Record<string, unknown> = { status: { $ne: 'CANCELLED' } };
+  Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
+
+  const pipeline = [
+    { $match: match },
+    { $unwind: '$items' },
+    {
+      $project: {
+        hour: { $hour: { date: '$createdAt', timezone: config.businessTimezone } },
+        name: '$items.name',
+        qty: { $ifNull: ['$items.quantity', 0] },
+      },
+    },
+    {
+      $group: {
+        _id: { hour: '$hour', name: '$name' },
+        qty: { $sum: '$qty' },
+      },
+    },
+    // Busiest item first within each hour (the API contract callers rely on).
+    { $sort: { '_id.hour': 1, qty: -1 } },
+    { $project: { _id: 0, hour: '$_id.hour', name: '$_id.name', qty: 1 } },
+  ];
+
+  const rawResult = await prisma.order.aggregateRaw({ pipeline: pipeline as never });
+  const rows = (Array.isArray(rawResult) ? rawResult : []) as Array<Record<string, unknown>>;
+
+  return res.json(
+    rows.map((row) => ({
+      hour: unwrapMongoNumber(row.hour),
+      name: String(row.name ?? ''),
+      qty: unwrapMongoNumber(row.qty),
+    })),
+  );
 }
 
 export async function getPaymentMethods(req: AuthenticatedRequest, res: Response) {
