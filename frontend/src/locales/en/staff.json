@@ -4,7 +4,8 @@
     "credentials": "Step 2 of 2 — Credentials"
   },
   "count": {
-    "total": "{{count}} staff, including you"
+    "total": "{{count}} staff, including you",
+    "label": "staff, including you"
   },
   "banner": {
     "single": "{{name}} has no mobile PIN yet.",
