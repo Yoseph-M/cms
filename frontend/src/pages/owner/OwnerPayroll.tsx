@@ -8,7 +8,7 @@ import { usePayrollQuery, useUsersQuery } from '../../hooks/useCachedQueries';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Select } from '../../components/ui/Select';
+import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { Sheet } from '../../components/ui/Sheet';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -467,10 +467,15 @@ export const OwnerPayroll: React.FC = () => {
           
           <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
             <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">Staff Member</label>
-            <Select value={userId} onChange={e => setUserId(e.target.value)} className="mb-4">
-              <option value="">Select Staff</option>
-              {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role})</option>)}
-            </Select>
+            <DropdownSelect
+              ariaLabel="Staff Member"
+              className="w-full justify-between mb-4"
+              contentClassName="w-[22rem] max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
+              value={userId}
+              onChange={setUserId}
+              placeholder="Select Staff"
+              options={staff.map(s => ({ value: s.id, label: `${s.name} (${s.role})` }))}
+            />
             <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">Base Salary</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold font-mono text-foreground text-base">ETB</span>
@@ -487,32 +492,30 @@ export const OwnerPayroll: React.FC = () => {
 
           <div className="flex gap-3">
             <div className="flex-1">
-              <label htmlFor="payroll-month" className="text-sm font-medium text-foreground block mb-1.5">
+              <span className="text-sm font-medium text-foreground block mb-1.5">
                 Period Month
-              </label>
-              <Select
-                id="payroll-month"
+              </span>
+              <DropdownSelect
+                ariaLabel="Period Month"
+                className="w-full justify-between"
+                contentClassName="w-40"
                 value={String(periodMonth)}
-                onChange={(e) => setPeriodMonth(Number(e.target.value))}
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={i + 1}>{m}</option>
-                ))}
-              </Select>
+                onChange={(v) => setPeriodMonth(Number(v))}
+                options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
+              />
             </div>
             <div className="w-28">
-              <label htmlFor="payroll-year" className="text-sm font-medium text-foreground block mb-1.5">
+              <span className="text-sm font-medium text-foreground block mb-1.5">
                 Year
-              </label>
-              <Select
-                id="payroll-year"
+              </span>
+              <DropdownSelect
+                ariaLabel="Year"
+                className="w-full justify-between"
+                contentClassName="w-28"
                 value={String(periodYear)}
-                onChange={(e) => setPeriodYear(Number(e.target.value))}
-              >
-                {YEARS.map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </Select>
+                onChange={(v) => setPeriodYear(Number(v))}
+                options={YEARS.map((y) => ({ value: String(y), label: String(y) }))}
+              />
             </div>
           </div>
 
