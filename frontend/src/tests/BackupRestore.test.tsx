@@ -3,6 +3,24 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import enOwner from '../locales/en/owner.json';
+
+vi.mock('react-i18next', () => {
+  const resolve = (obj: unknown, path: string): unknown =>
+    path.split('.').reduce<any>((acc, key) => (acc == null ? acc : acc[key]), obj);
+  return {
+    useTranslation: () => ({
+      t: (key: string, opts?: Record<string, unknown>) => {
+        const value = resolve(enOwner, key);
+        if (typeof value === 'string') {
+          return value.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(opts?.[k] ?? ''));
+        }
+        return opts?.defaultValue || key;
+      },
+      i18n: { language: 'en' },
+    }),
+  };
+});
 
 vi.mock('../api/axiosClient', () => ({
   axiosClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -83,8 +101,8 @@ describe('backup & restore tab', () => {
     expect(screen.getByText('CSV Data Exports')).toBeInTheDocument();
 
     expect(await screen.findByText('Sales Orders')).toBeInTheDocument();
-    expect(screen.getByText('128 records')).toBeInTheDocument();
-    expect(screen.getByText('68 records')).toBeInTheDocument();
+    expect(screen.getByText('128 records', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText('68 records', { exact: false })).toBeInTheDocument();
   });
 
   it('downloads a JSON snapshot', async () => {
