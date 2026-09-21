@@ -15,13 +15,36 @@ export async function comparePassword(password: string, hash: string): Promise<b
   return bcrypt.compare(password, hash);
 }
 
-// App PINs (short numeric credentials used by the mobile app)
-export async function hashPin(pin: string): Promise<string> {
-  return bcrypt.hash(pin, 10);
+// App PINs (4-digit numeric codes used by the mobile app).
+// Unsalted SHA-256 hex — the scheme the original accounts were created with,
+// which is what the mobile app verifies against. A PIN set from the staff
+// card therefore produces the same 64-hex format as the pre-existing rows.
+// The 4-digit space is only 10,000 values, so a slow salted hash would not
+// meaningfully resist offline brute force anyway; the endpoint lockout
+// (5 tries → 15 min) is what actually protects PINs.
+export function hashPin(pin: string): string {
+  return crypto.createHash('sha256').update(pin, 'utf8').digest('hex');
 }
 
-export async function comparePin(pin: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(pin, hash);
+export function comparePin(pin: string, storedHash: string): boolean {
+  if (!storedHash) return false;
+  // Rows written while the code briefly used bcrypt ($2b$…) — PINs set from
+  // the site in that window. Accept them so those credentials keep working,
+  // even though the app-facing format is SHA-256 above.
+  if (storedHash.startsWith('$2')) {
+    try {
+      return bcrypt.compareSync(pin, storedHash);
+    } catch {
+      return false;
+    }
+  }
+  try {
+    const computed = Buffer.from(hashPin(pin), 'hex');
+    const stored = Buffer.from(storedHash, 'hex');
+    return computed.length === stored.length && crypto.timingSafeEqual(computed, stored);
+  } catch {
+    return false;
+  }
 }
 
 // JWT Tokens
