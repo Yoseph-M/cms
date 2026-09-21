@@ -19,13 +19,16 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         className={cn(
           'group relative flex items-center rounded-lg',
           'bg-background border border-input transition-all duration-200 shadow-sm',
-          'hover:border-foreground/20 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary',
-          invalid && 'border-destructive focus-within:border-destructive focus-within:ring-destructive',
+          // No focus border or ring: clicking into a field used to paint a blue
+          // box around it, which read as a validation error. Focus is carried by
+          // the caret and the icon tint below; only an invalid field is outlined.
+          'hover:border-foreground/20',
+          invalid && 'border-destructive',
           className
         )}
       >
         {leftIcon && (
-          <div className="pl-3 pr-1 text-muted-foreground group-focus-within:text-primary transition-colors flex items-center">
+          <div className="pl-3 pr-1 text-muted-foreground transition-colors flex items-center">
             {leftIcon}
           </div>
         )}
