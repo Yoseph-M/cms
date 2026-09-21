@@ -51,6 +51,17 @@ const openScanPanel = async () => {
   await screen.findByText('Transport Type');
 };
 
+/**
+ * Transport Type is the house filter dropdown, not a native <select> — the
+ * test choice is a keypress to open the menu and a click on the option.
+ */
+const transportTrigger = () => screen.getByRole('button', { name: 'Transport Type' });
+
+const chooseTransport = async (label: string) => {
+  fireEvent.keyDown(transportTrigger(), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: label }));
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   delete (navigator as any).bluetooth;
@@ -83,18 +94,23 @@ describe('printer setup', () => {
   });
 
   it('saves a new printer without a station so the server assigns the routing key', async () => {
+    const requestDevice = vi.fn().mockResolvedValue({
+      vendorId: 0x04b8,
+      productId: 0x0e15,
+      productName: 'TM-T20',
+    });
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    Object.defineProperty(navigator, 'usb', { configurable: true, value: { requestDevice } });
+
     renderPage();
     await screen.findByText('Ticket printer');
 
     fireEvent.click(screen.getByRole('button', { name: /Add Printer/i }));
     await screen.findByText('Transport Type');
 
-    fireEvent.change(document.getElementById('pr-transport') as HTMLSelectElement, {
-      target: { value: 'NETWORK' },
-    });
-    fireEvent.change(document.getElementById('pr-ip') as HTMLInputElement, {
-      target: { value: '192.168.1.77' },
-    });
+    await chooseTransport('USB');
+    fireEvent.click(screen.getByRole('button', { name: /Scan for USB printers/i }));
+    await waitFor(() => expect(requestDevice).toHaveBeenCalled());
 
     // The slide-over's own submit button, not the page header one.
     const sheet = within(screen.getByRole('dialog'));
@@ -106,11 +122,11 @@ describe('printer setup', () => {
     expect(body.stations).toHaveLength(3);
     // Order is what decides the ticket printer, so nothing sends a station.
     expect(body.stations.every((s: Record<string, unknown>) => !('station' in s))).toBe(true);
-    expect(body.stations[2]).toMatchObject({ transport: 'NETWORK', ip: '192.168.1.77', port: 9100 });
+    expect(body.stations[2]).toMatchObject({ transport: 'USB', vendorId: '04b8', productId: '0e15' });
     expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Printer added' }));
   });
 
-  it('offers a real scan only where the browser can do it', async () => {
+  it('offers only the transports a browser can actually discover', async () => {
     renderPage();
     await screen.findByText('Ticket printer');
 
@@ -120,13 +136,16 @@ describe('printer setup', () => {
     // Bluetooth/USB are genuinely discoverable through the browser.
     expect(screen.getByRole('button', { name: /Scan for Bluetooth printers/i })).toBeInTheDocument();
 
-    // A network printer can't be discovered from a browser — no fake results.
-    fireEvent.change(document.getElementById('pr-transport') as HTMLSelectElement, {
-      target: { value: 'NETWORK' },
-    });
-    expect(screen.queryByRole('button', { name: /Scan for Network printers/i })).not.toBeInTheDocument();
+    // Network (Wi-Fi/LAN) was removed: a browser cannot scan a LAN, and the
+    // address form only invited typos. New stations are BT or USB only.
+    fireEvent.keyDown(transportTrigger(), { key: 'Enter' });
+    const options = await screen.findAllByRole('menuitem');
+    expect(options.map((o) => o.textContent?.trim())).toEqual(['Bluetooth', 'USB']);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'USB' }));
+    expect(screen.getByRole('button', { name: /Scan for USB printers/i })).toBeInTheDocument();
     expect(screen.queryByText(/Discovered Printers/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/No browser can scan your local network/i)).toBeInTheDocument();
+    expect(document.getElementById('pr-ip')).toBeNull();
   });
 
   it('stores the opaque Web Bluetooth device id exactly as the browser returned it', async () => {
