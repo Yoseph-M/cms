@@ -298,11 +298,14 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
                 setItems(newItems);
               }} />
             </div>
-            <div className="w-32">
+            <div className="w-32 bg-secondary/30 rounded-lg p-4 border border-border/50">
+              <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
+                Category
+              </label>
               <DropdownSelect
                 ariaLabel="Item category"
                 className="w-full justify-between"
-                contentClassName="w-36"
+                contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                 value={item.category}
                 onChange={(next) => {
                   const newItems = [...items];
@@ -372,12 +375,14 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
               <label className="text-sm font-medium mb-1 block">Name</label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Alex" />
             </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Role</label>
+            <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
+              <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
+                Role
+              </label>
               <DropdownSelect
                 ariaLabel="Role"
                 className="w-full justify-between"
-                contentClassName="w-36"
+                contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                 value={form.role}
                 onChange={(next) => setForm(f => ({ ...f, role: next }))}
                 options={[
