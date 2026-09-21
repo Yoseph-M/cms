@@ -7,7 +7,7 @@ import { useToastStore } from '../../store/toastStore';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { Select } from '../ui/Select';
+import { DropdownSelect } from '../ui/DropdownSelect';
 import { Switch } from '../ui/Switch';
 import { X, Store, Printer, Coffee, Users, Bell, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -299,15 +299,22 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
               }} />
             </div>
             <div className="w-32">
-              <Select value={item.category} onChange={e => {
-                const newItems = [...items];
-                newItems[idx].category = e.target.value;
-                setItems(newItems);
-              }}>
-                <option value="FOOD">Food</option>
-                <option value="BEVERAGE">Beverage</option>
-                <option value="DESSERT">Dessert</option>
-              </Select>
+              <DropdownSelect
+                ariaLabel="Item category"
+                className="w-full justify-between"
+                contentClassName="w-36"
+                value={item.category}
+                onChange={(next) => {
+                  const newItems = [...items];
+                  newItems[idx].category = next;
+                  setItems(newItems);
+                }}
+                options={[
+                  { value: 'FOOD', label: 'Food' },
+                  { value: 'BEVERAGE', label: 'Beverage' },
+                  { value: 'DESSERT', label: 'Dessert' },
+                ]}
+              />
             </div>
             <div className="w-24">
               <Input type="number" step="1" min="0" placeholder="Price" value={item.price} onChange={e => {
@@ -367,10 +374,17 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Role</label>
-              <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                <option value="MANAGER">Manager</option>
-                <option value="CASHIER">Cashier</option>
-              </Select>
+              <DropdownSelect
+                ariaLabel="Role"
+                className="w-full justify-between"
+                contentClassName="w-36"
+                value={form.role}
+                onChange={(next) => setForm(f => ({ ...f, role: next }))}
+                options={[
+                  { value: 'MANAGER', label: 'Manager' },
+                  { value: 'CASHIER', label: 'Cashier' },
+                ]}
+              />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Username</label>
