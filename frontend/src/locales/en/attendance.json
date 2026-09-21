@@ -1,0 +1,56 @@
+{
+  "title": "Attendance",
+  "subtitleOwner": "All staff attendance",
+  "subtitleManager": "Team attendance and shift log",
+  "status": {
+    "present": "Present",
+    "absent": "Absent",
+    "halfDay": "Half Day",
+    "leave": "Leave",
+    "holiday": "Holiday"
+  },
+  "view": {
+    "grid": "Grid",
+    "history": "History"
+  },
+  "markAllPresent": "Mark all Present",
+  "marking": "Marking...",
+  "summary": {
+    "title": "Attendance Summary",
+    "rate": "Attendance Rate",
+    "loggedRatio": "{{recorded}}/{{possible}} logged"
+  },
+  "staffColumn": "Staff",
+  "onlyToday": "Only today can be logged or edited",
+  "logAttendance": "Log attendance",
+  "clockInNote": "Clocking in is limited to today — past and future days stay locked. Switch to History and use these arrows to browse previous months.",
+  "noteLabel": "Note",
+  "noteOverrideRequired": "* (required for override)",
+  "notePlaceholder": "Optional reason...",
+  "save": "Save",
+  "saving": "Saving...",
+  "toasts": {
+    "saved": "Attendance saved",
+    "saveFailed": "Failed to save",
+    "noteRequired": "Note required",
+    "noteRequiredMsg": "A reason is required when overriding an existing entry.",
+    "markedAllPresent": "Marked all present",
+    "markedAllPresentMsg": "{{done}}/{{total}} staff marked Present for {{date}}. Individual cells remain overridable."
+  },
+  "history": {
+    "title": "Attendance history",
+    "filterByMonth": "Filter attendance by month",
+    "useArrowsAbove": "Use the arrows above to change the month",
+    "daysPresent": "{{count}} days present",
+    "noRecord": "No record",
+    "noStaff": "No staff to display.",
+    "retry": "Retry",
+    "rowAria": "{{name}} attendance details",
+    "daysLogged": "Days logged",
+    "nothingLogged": "Nothing logged in this window.",
+    "autoLogin": "Auto · login",
+    "manual": "Manual",
+    "loggedCount": "{{count}} logged",
+    "workingDaysUnmarked": "{{count}} working days unmarked"
+  }
+}
