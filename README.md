@@ -66,6 +66,8 @@ Both modes maintain data consistency, but replica set mode provides stronger ato
 | `NODE_ENV` | `production` enables Secure/None cookies over HTTPS | `development` |
 | `COOKIE_SAME_SITE` | Force cookie SameSite: `strict` \| `lax` \| `none` (overrides auto-detection) | auto: `none` cross-site, else `lax` |
 | `COOKIE_SECURE` | Force cookie Secure flag: `true` \| `false` (overrides protocol detection) | auto: HTTPS only |
+| `BOOTSTRAP_OWNER_PASSWORD` | Only read while the database has **no owner**: creates the first owner account on startup. Unset it once you can sign in. | — (no owner created) |
+| `BOOTSTRAP_OWNER_USERNAME` / `_NAME` / `_PHONE` | Optional identity for that first owner | `owner` / `Owner` / — |
 
 **How the refresh cookie flags are chosen (least permissive that works):**
 
