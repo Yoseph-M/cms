@@ -8,14 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Ca
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Select } from '../../components/ui/Select';
 import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { Avatar, AvatarFallback } from '../../components/ui/Avatar';
 import { Sheet } from '../../components/ui/Sheet';
 import { AlertDialog } from '../../components/ui/AlertDialog';
 import {
   Users, Plus, Search, Pencil, ShieldOff, ShieldCheck,
-  X, Eye, EyeOff, Trash2, KeyRound
+  X, Eye, EyeOff, Trash2, KeyRound, AlertTriangle
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -24,6 +23,7 @@ import { formatEthiopianPhone, isValidEthiopianPhone, ETHIOPIAN_COUNTRY_CODE } f
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { formatPersonName, nameInitials } from '../../utils/name';
 import { cn } from '../../lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface User {
   id: string;
@@ -35,14 +35,22 @@ interface User {
   isActive: boolean;
   /** Whether a mobile-app PIN is on file (the hash itself never leaves the server). */
   hasPin?: boolean;
+  /** Whether a website password is on file (cashier/manager sign in with one). */
+  hasPassword?: boolean;
 }
 
 /**
  * Credentials are role-aware. The mobile app asks for a PIN; the website asks
  * for a password. Waiters and kitchen staff only use the app, cashiers only the
- * site, and managers use both.
+ * site, and managers use both — but the card offers a PIN to EVERY role,
+ * including the cashier and the owner, so either can unlock a handheld
+ * terminal with a 4-digit code as well as their website password.
+ *
+ * Only the app-first roles *need* a PIN to sign in, which is what the amber
+ * warning and the "no PIN yet" nudge key off.
  */
-const PIN_ROLES = ['WAITER', 'COOKER', 'BARISTA', 'MANAGER'];
+const PIN_CAPABLE_ROLES = ['WAITER', 'COOKER', 'BARISTA', 'MANAGER', 'CASHIER', 'OWNER'];
+const PIN_SIGNIN_ROLES = ['WAITER', 'COOKER', 'BARISTA', 'MANAGER'];
 const PASSWORD_ROLES = ['CASHIER', 'MANAGER'];
 
 const ROLE_COLORS: Record<string, any> = {
@@ -56,11 +64,14 @@ const ROLE_COLORS: Record<string, any> = {
 
 const STAFF_ROLES = ['MANAGER', 'CASHIER', 'WAITER', 'COOKER', 'BARISTA'];
 
-const EMPTY_FORM = { name: '', role: 'CASHIER', username: '', phone: '', salaryAmount: '', credential: '', pin: '' };
+// `credentialsDone` drives the two-step card: Identity first, Credentials
+// last, so editing a phone number never shows the PIN/password fields.
+const EMPTY_FORM = { name: '', role: 'CASHIER', username: '', phone: '', salaryAmount: '', credential: '', pin: '', credentialsDone: false };
 
 export const OwnerStaff: React.FC = () => {
   const { addToast } = useToastStore();
   const { user: currentUser } = useAuthStore();
+  const { t } = useTranslation('staff');
 
   const queryClient = useQueryClient();
 
@@ -123,6 +134,10 @@ export const OwnerStaff: React.FC = () => {
     [users, roleFilter, statusFilter, search]
   );
 
+  // The owner's roster contains every account — theirs included — so the count
+  // is simply the roster size.
+  const totalStaff = users.length;
+
   const openAdd = () => {
     setEditingUser(null);
     setForm(EMPTY_FORM);
@@ -135,22 +150,43 @@ export const OwnerStaff: React.FC = () => {
     setEditingUser(user);
     // `credential`/`pin` are the optional replacement credentials when editing —
     // blank means "leave what is already stored alone".
-    setForm({ name: formatPersonName(user.name), role: user.role, username: user.username || '', phone: user.phone, salaryAmount: String(user.salaryAmount), credential: '', pin: '' });
+    setForm({ name: formatPersonName(user.name), role: user.role, username: user.username || '', phone: user.phone, salaryAmount: String(user.salaryAmount), credential: '', pin: '', credentialsDone: false });
     setShowCredential(false);
     setShowPin(false);
     setSlideOverOpen(true);
   };
 
-  const needsPin = PIN_ROLES.includes(form.role);
+  // The field is offered to every role; only app-first roles are required to
+  // have one, so the two questions are kept apart.
+  const needsPin = PIN_CAPABLE_ROLES.includes(form.role);
+  const pinRequired = PIN_SIGNIN_ROLES.includes(form.role);
   const needsPassword = PASSWORD_ROLES.includes(form.role);
 
+  /**
+   * Warn on the card when this change would leave the person unable to sign
+   * in: an app role with no mobile PIN, or a site role with no website
+   * password. On edit, blank means "keep what is stored" — the server's
+   * hasPin/hasPassword flags say whether something IS stored. On create
+   * nothing is stored yet, so the warning doubles as the required-field
+   * callout on the Credentials step.
+   */
+  const hasPinNow = editingUser ? Boolean(editingUser.hasPin) : false;
+  const hasPasswordNow = editingUser ? editingUser.hasPassword !== false : false;
+  const credentialWarning =
+    pinRequired && !hasPinNow && !form.pin
+      ? ('app' as const)
+      : needsPassword && !hasPasswordNow && !form.credential
+        ? ('site' as const)
+        : null;
+
   /** App-facing roles — the ones that need a PIN to sign in on the phone. */
-  const needsPinFor = (role: string) => PIN_ROLES.includes(role);
+  const needsPinFor = (role: string) => PIN_SIGNIN_ROLES.includes(role);
   const missingPin = users.filter((u) => needsPinFor(u.role) && !u.hasPin);
 
-  /** One-tap "set this person's PIN": open the card with the PIN field focused. */
+  /** One-tap "set this person's PIN": open straight on the Credentials step. */
   const openPinSet = (user: User) => {
     openEdit(user);
+    setForm((f) => ({ ...f, credentialsDone: true }));
     setPinFocus(true);
   };
 
@@ -178,17 +214,23 @@ export const OwnerStaff: React.FC = () => {
       addToast({ type: 'error', title: 'Invalid PIN', message: 'A PIN is exactly 4 digits.' });
       return;
     }
+    // Two-step card: the first Save is "review" — it validates the identity
+    // above, shows the Credentials step, and only the second Save commits.
+    if (!form.credentialsDone) {
+      setForm((f) => ({ ...f, credentialsDone: true }));
+      return;
+    }
     // A PIN is only demanded when the account is created; when editing, leaving
-    // it blank keeps the PIN that is already stored.
-    if (needsPin && !form.pin && !editingUser) {
+    // it blank keeps the PIN that is already stored. The role may change on the
+    // card, so the EDITED role decides whether a PIN/password must exist.
+    if (pinRequired && !form.pin && !editingUser) {
       addToast({ type: 'error', title: 'PIN required', message: 'This role signs in with a PIN in the mobile app.' });
       return;
     }
-    // The website password is required whenever the field is shown.
-    if (needsPassword && !form.credential) {
-      addToast({ type: 'error', title: 'Password required', message: 'This role signs in on the website.' });
-      return;
-    }
+    // A site role with no stored password cannot sign in — the amber warning
+    // above already pushed the user to set one; the save itself stays allowed
+    // (warn, don't block) since fixing identity details must never be blocked
+    // by an unrelated credential gap.
     setIsSaving(true);
     try {
       const payload: any = {
@@ -307,9 +349,9 @@ export const OwnerStaff: React.FC = () => {
           <KeyRound className="h-4 w-4 shrink-0" />
           <span>
             {missingPin.length === 1
-              ? `${missingPin[0].name} has no mobile PIN yet.`
-              : `${missingPin.length} staff members have no mobile PIN yet.`}{' '}
-            Use the key on their row to set one.
+              ? t('banner.single', { name: missingPin[0].name })
+              : t('banner.many', { total: missingPin.length })}{' '}
+            {t('banner.hint')}
           </span>
         </div>
       )}
@@ -326,9 +368,14 @@ export const OwnerStaff: React.FC = () => {
         <div className="rounded-xl border border-border overflow-hidden">
           {/* Card top bar — Add Staff on the left, filters on the right */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/30 px-4 py-3">
-            <Button id="add-staff-btn" onClick={openAdd} size="sm" className="shadow-sm">
-              <Plus className="w-4 h-4 mr-2" />Add Staff
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button id="add-staff-btn" onClick={openAdd} size="sm" className="shadow-sm">
+                <Plus className="w-4 h-4 mr-2" />Add Staff
+              </Button>
+              <Badge variant="neutral" className="text-xs font-semibold tabular-nums" aria-live="polite">
+                {t('count.total', { count: totalStaff })}
+              </Badge>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -438,33 +485,33 @@ export const OwnerStaff: React.FC = () => {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Tooltip label="Edit">
-                          <button onClick={() => openEdit(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                          <button onClick={() => openEdit(user)} aria-label={`Edit ${user.name}`} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         </Tooltip>
                         {needsPinFor(user.role) && !user.hasPin && (
-                          <Tooltip label="Set mobile PIN">
-                            <button onClick={() => openPinSet(user)} className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 dark:text-amber-400 transition-colors">
+                          <Tooltip label={t('tooltip.setPin')}>
+                            <button onClick={() => openPinSet(user)} aria-label={t('tooltip.setPinFor', { name: user.name })} className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 dark:text-amber-400 transition-colors">
                               <KeyRound className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
                         )}
                         {user.id !== currentUser?.id && (
                           <Tooltip label="Remove">
-                            <button onClick={() => setRemovingUser(user)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                            <button onClick={() => setRemovingUser(user)} aria-label={`Remove ${user.name}`} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
                         )}
                         {user.isActive ? (
                           <Tooltip label="Deactivate">
-                            <button onClick={() => toggleActiveStatus(user, false)} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                            <button onClick={() => toggleActiveStatus(user, false)} aria-label={`Deactivate ${user.name}`} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                               <ShieldOff className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
                         ) : (
                           <Tooltip label="Reactivate">
-                            <button onClick={() => toggleActiveStatus(user, true)} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
+                            <button onClick={() => toggleActiveStatus(user, true)} aria-label={`Reactivate ${user.name}`} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
                               <ShieldCheck className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
@@ -490,14 +537,39 @@ export const OwnerStaff: React.FC = () => {
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
             <Button onClick={handleSave} disabled={isSaving} className="flex-1">
-              {isSaving ? 'Saving...' : editingUser ? 'Save Changes' : 'Add Staff'}
+              {isSaving
+                ? 'Saving...'
+                : !form.credentialsDone
+                  ? editingUser
+                    ? t('actions.review')
+                    : t('actions.next')
+                  : editingUser
+                    ? t('actions.save')
+                    : 'Add Staff'}
             </Button>
           </div>
         }
       >
         <div className="space-y-6">
-          {/* Identity — short fields share a row so the form stays scannable. */}
+          {/* Two steps — Identity first, Credentials last — so a phone-number
+              edit never renders the PIN/password fields. */}
+          <div className="flex items-center gap-2" aria-hidden="true">
+            {[1, 2].map((step) => (
+              <span
+                key={step}
+                className={cn(
+                  'h-1.5 flex-1 rounded-full transition-colors',
+                  (form.credentialsDone ? 2 : 1) >= step ? 'bg-primary' : 'bg-secondary'
+                )}
+              />
+            ))}
+          </div>
+          <p className="text-xs font-medium text-muted-foreground" aria-live="polite">
+            {form.credentialsDone ? t('steps.credentials') : t('steps.identity')}
+          </p>
+          {!form.credentialsDone ? (
           <section className="space-y-4">
+            {/* Identity — short fields share a row so the form stays scannable. */}
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Identity</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -536,26 +608,47 @@ export const OwnerStaff: React.FC = () => {
                 />
               </div>
               <div className="sm:col-span-2">
-                <label htmlFor="sf-role" className="text-sm font-medium text-foreground block mb-1.5">
+                <span className="text-sm font-medium text-foreground block mb-1.5">
                   Role <span className="text-destructive">*</span>
-                </label>
-                <Select id="sf-role" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                  {STAFF_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                </Select>
+                </span>
+                <DropdownSelect
+                  ariaLabel="Role"
+                  className="w-full justify-between"
+                  contentClassName="w-48"
+                  value={form.role}
+                  onChange={(next) => setForm((f) => ({ ...f, role: next }))}
+                  // The owner's own account keeps its OWNER option, otherwise
+                  // the field would show the first role in the list instead of
+                  // the account's real role.
+                  options={(form.role === 'OWNER' ? ['OWNER', ...STAFF_ROLES] : STAFF_ROLES).map((r) => ({
+                    value: r,
+                    label: r,
+                  }))}
+                />
               </div>
             </div>
           </section>
-
-          {/* Credentials — what the role signs in with: a PIN for the app, a
-              password for the website, and both for a manager. */}
+          ) : (
           <section className="space-y-4 border-t border-border pt-5">
+            {/* Credentials — what the role signs in with: a PIN for the app, a
+                password for the website, and both for a manager. */}
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Credentials</h3>
+            {credentialWarning && (
+              <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  {credentialWarning === 'app'
+                    ? t('warning.app')
+                    : t('warning.site')}
+                </span>
+              </div>
+            )}
             <div className={cn('grid gap-4', needsPin && needsPassword && 'sm:grid-cols-2')}>
                   {needsPin && (
                     <div>
                       <label htmlFor="sf-pin" className="text-sm font-medium text-foreground block mb-1.5">
-                        PIN <span className="text-muted-foreground font-normal">(mobile app)</span>
-                        {!editingUser && <span className="text-destructive"> *</span>}
+                        {t('pin.label')} <span className="text-muted-foreground font-normal">{t('pin.mobileTag')}</span>
+                        {pinRequired && !editingUser && <span className="text-destructive"> *</span>}
                       </label>
                       <div className="relative">
                         <Input
@@ -566,8 +659,10 @@ export const OwnerStaff: React.FC = () => {
                           maxLength={4}
                           value={form.pin}
                           onChange={e => setForm(f => ({ ...f, pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
-                          placeholder="1234"
-                          className={cn('pr-10 tracking-[0.4em]', pinFocus && 'ring-2 ring-primary/40')}
+                          placeholder={t('pin.placeholder')}
+                          // No ring when the shortcut focuses this field — the
+                          // caret is the only focus cue, as elsewhere in the app.
+                          className={cn('pr-10', form.pin && 'tracking-[0.4em]')}
                         />
                         <button type="button" onClick={() => setShowPin(v => !v)}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
@@ -576,16 +671,16 @@ export const OwnerStaff: React.FC = () => {
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         {editingUser
-                          ? (editingUser.hasPin ? 'Leave blank to keep the current PIN.' : 'No PIN yet — set one for app sign-in.')
-                          : 'They sign in with this PIN in the app.'}
+                          ? (editingUser.hasPin ? t('pin.helper.editKeep') : t('pin.helper.editNoPin'))
+                          : t('pin.helper.create')}
                       </p>
                     </div>
                   )}
                   {needsPassword && (
                     <div>
                       <label htmlFor="sf-cred" className="text-sm font-medium text-foreground block mb-1.5">
-                        Password <span className="text-muted-foreground font-normal">(website)</span>
-                        <span className="text-destructive"> *</span>
+                        {t('password.label')} <span className="text-muted-foreground font-normal">{t('password.siteTag')}</span>
+                        {(!editingUser || !hasPasswordNow) && <span className="text-destructive"> *</span>}
                       </label>
                       <div className="relative">
                         <Input
@@ -603,12 +698,17 @@ export const OwnerStaff: React.FC = () => {
                         </button>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {editingUser ? 'Replaces the current password.' : 'Used for their first website login.'}
+                        {editingUser
+                          ? (hasPasswordNow
+                            ? t('password.helper.editKeep')
+                            : t('password.helper.editMissing'))
+                          : t('password.helper.create')}
                       </p>
                     </div>
                   )}
             </div>
           </section>
+          )}
         </div>
       </Sheet>
 
