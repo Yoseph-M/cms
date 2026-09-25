@@ -19,6 +19,7 @@ import {
   Menu,
   Sparkles,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { NotificationBell } from './NotificationBell';
 import { formatPersonName, nameInitials } from '../../utils/name';
 import { CommandPalette } from './CommandPalette';
@@ -27,6 +28,7 @@ import { cn } from '../../lib/utils';
 import { Tooltip } from '../ui/Tooltip';
 
 export const Header: React.FC = () => {
+  const { t } = useTranslation();
   const { user, logout } = useAuthStore();
   const { isConnected } = useSocketStore();
   const { isOnline, pendingCount, processSyncQueue, isSyncing } = useOfflineSyncStore();
@@ -89,7 +91,7 @@ export const Header: React.FC = () => {
         <button
           onClick={toggleMobile}
           className="hidden max-[767px]:block p-2 -ml-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors"
-          aria-label="Open sidebar"
+          aria-label={t('a11y.openSidebar')}
         >
           <Menu className="w-5 h-5" />
         </button>
@@ -116,13 +118,13 @@ export const Header: React.FC = () => {
               tone={isConnected ? 'success' : 'danger'}
               dot
               pulse={isConnected}
-              label={isConnected ? 'Live' : 'Reconnecting'}
+              label={isConnected ? t('header.live') : t('header.reconnecting')}
             />
             {!isOnline && (
               <StatusPill
                 tone="warning"
                 icon={<WifiOff className="w-3 h-3" />}
-                label="Offline"
+                label={t('header.offline')}
               />
             )}
             {pendingCount > 0 && (
@@ -132,7 +134,7 @@ export const Header: React.FC = () => {
                 className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-[hsl(var(--warning))] transition-colors hover:bg-warning/20 disabled:opacity-50"
               >
                 <RefreshCw className={cn('h-3 w-3', isSyncing && 'animate-spin')} />
-                <span className="tabular-nums">{pendingCount}</span> pending
+                <span className="tabular-nums">{pendingCount}</span> {t('header.pending')}
               </button>
             )}
           </div>
@@ -163,7 +165,7 @@ export const Header: React.FC = () => {
             {dateOpen && (
               <div className="absolute top-full left-0 mt-2 w-[18rem] rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl z-50">
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Date range
+                  {t('settlementsFilter.dateRange')}
                 </p>
                 <div className="flex items-center gap-2">
                   <input
@@ -172,7 +174,7 @@ export const Header: React.FC = () => {
                     onChange={(e) => setDateRange({ from: e.target.value, to: dateRange.to })}
                     className="h-9 flex-1 rounded-md border border-input bg-secondary/40 px-2 text-sm text-foreground outline-none"
                   />
-                  <span className="text-muted-foreground text-xs">to</span>
+                  <span className="text-muted-foreground text-xs">{t('settlementsFilter.to')}</span>
                   <input
                     type="date"
                     value={dateRange.to}
@@ -182,17 +184,17 @@ export const Header: React.FC = () => {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {[
-                    { label: 'Today', days: 0 },
-                    { label: 'Last 7 days', days: 6 },
-                    { label: 'Last 30 days', days: 29 },
-                    { label: 'Last 90 days', days: 89 },
+                    { labelKey: 'settlementsFilter.today', days: 0 },
+                    { labelKey: 'settlementsFilter.last7', days: 6 },
+                    { labelKey: 'settlementsFilter.last30', days: 29 },
+                    { labelKey: 'settlementsFilter.last90', days: 89 },
                   ].map((p) => {
                     const today = new Date();
                     const from = new Date(today);
                     from.setDate(today.getDate() - p.days);
                     return (
                       <button
-                        key={p.label}
+                        key={p.labelKey}
                         onClick={() =>
                           setDateRange({
                             from: from.toISOString().split('T')[0],
@@ -201,7 +203,7 @@ export const Header: React.FC = () => {
                         }
                         className="rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                       >
-                        {p.label}
+                        {t(p.labelKey)}
                       </button>
                     );
                   })}
@@ -231,11 +233,11 @@ export const Header: React.FC = () => {
         )}
 
         {/* Help shortcut */}
-        <Tooltip label="Help & shortcuts" side="bottom">
+        <Tooltip label={t('header.helpShortcuts')} side="bottom">
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('cafeflow:open-command-palette'))}
             className="hidden h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-flex"
-            aria-label="Help and shortcuts"
+            aria-label={t('header.helpShortcuts')}
           >
             <HelpCircle className="h-4 w-4" />
           </button>
@@ -249,7 +251,7 @@ export const Header: React.FC = () => {
             <button
               onClick={() => setMenuOpen((o) => !o)}
               className="flex items-center gap-2.5 rounded-full bg-transparent py-1 pl-1 pr-2.5 transition-colors hover:bg-secondary/60 focus:outline-none focus-visible:ring-0"
-              aria-label="Open profile menu"
+              aria-label={t('header.openProfileMenu')}
             >
               <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-xs font-bold text-primary">
                 {user.avatarUrl ? (
@@ -302,13 +304,13 @@ export const Header: React.FC = () => {
                   <MenuLink
                     to={`/${(user.role || 'owner').toLowerCase()}/profile`}
                     icon={<User className="h-4 w-4" />}
-                    label="Profile"
+                    label={t('header.profile')}
                     onClick={() => setMenuOpen(false)}
                   />
                   <MenuLink
                     to={`/${(user.role || 'owner').toLowerCase()}/settings`}
                     icon={<SettingsIcon className="h-4 w-4" />}
-                    label="Settings"
+                    label={t('header.settings')}
                     onClick={() => setMenuOpen(false)}
                   />
                   <div className="my-1 h-px bg-border" />
@@ -320,7 +322,7 @@ export const Header: React.FC = () => {
                     className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm text-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   >
                     <LogOut className="h-4 w-4" />
-                    Sign out
+                    {t('buttons.signOut')}
                   </button>
                 </div>
               </div>
