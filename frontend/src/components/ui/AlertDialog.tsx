@@ -2,6 +2,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, Info, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from './Button';
 import { cn } from '../../lib/utils';
 
@@ -40,11 +41,14 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
   onConfirm,
   title,
   description,
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
+  confirmText,
+  cancelText,
   tone = 'default',
   loading = false,
 }) => {
+  const { t } = useTranslation();
+  const resolvedConfirmText = confirmText ?? t('buttons.confirm');
+  const resolvedCancelText = cancelText ?? t('buttons.cancel');
   // Close on ESC
   React.useEffect(() => {
     if (!open) return;
@@ -105,14 +109,14 @@ export const AlertDialog: React.FC<AlertDialogProps> = ({
                 onClick={onClose}
                 disabled={loading}
               >
-                {cancelText}
+                {resolvedCancelText}
               </Button>
               <Button
                 variant={palette.button}
                 onClick={onConfirm}
                 disabled={loading}
               >
-                {loading ? 'Working…' : confirmText}
+                {loading ? t('buttons.working') : resolvedConfirmText}
               </Button>
             </div>
           </motion.div>
