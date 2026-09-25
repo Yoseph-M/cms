@@ -1,5 +1,6 @@
 import { extractErrorMessage } from '../../utils/errorHandler';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -12,6 +13,7 @@ import { Button } from '../ui/Button';
 import { LayoutGrid, Save } from 'lucide-react';
 
 export const TableCountSetting: React.FC = () => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const { socket } = useSocketStore();
@@ -48,8 +50,8 @@ export const TableCountSetting: React.FC = () => {
     if (isNaN(val) || val < 1 || val > 100) {
       addToast({
         type: 'error',
-        title: 'Invalid value',
-        message: 'Table count must be a number between 1 and 100.',
+        title: t('settings.tables.invalidTitle'),
+        message: t('settings.tables.invalidMsg'),
       });
       return;
     }
@@ -63,21 +65,21 @@ export const TableCountSetting: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['systemSetting', 'tableCount'] });
       addToast({
         type: 'success',
-        title: 'Table count updated',
-        message: `Cashier dashboard will now show ${val} tables.`,
+        title: t('settings.tables.updatedTitle'),
+        message: t('settings.tables.updatedMsg', { count: val }),
       });
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Update failed',
-        message: extractErrorMessage(err) || 'Could not update setting.',
+        title: t('settings.menuEdit.updateFailed'),
+        message: extractErrorMessage(err) || t('settings.menuEdit.updateFailedMsg'),
       });
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (settingQuery.isLoading) return <LoadingState message="Loading setting..." />;
+  if (settingQuery.isLoading) return <LoadingState message={t('loading')} />;
 
   const isDirty = localValue !== tableCount;
 
@@ -86,8 +88,8 @@ export const TableCountSetting: React.FC = () => {
       icon={LayoutGrid}
       iconClassName="text-primary"
       iconBgClassName="bg-primary/10"
-      title="Number of tables"
-      description="Configure how many tables are available in the Cashier table map (1–100)."
+      title={t('settings.tables.title')}
+      description={t('settings.tables.description')}
       divider
       control={
         <div className="flex items-center gap-2">
@@ -99,7 +101,7 @@ export const TableCountSetting: React.FC = () => {
               value={localValue}
               onChange={(e) => setLocalValue(e.target.value)}
               disabled={isSaving}
-              aria-label="Number of tables"
+              aria-label={t('settings.tables.title')}
             />
           </div>
           {isDirty && (
@@ -109,7 +111,7 @@ export const TableCountSetting: React.FC = () => {
               disabled={isSaving}
               leftIcon={<Save className="h-4 w-4" />}
             >
-              Save
+              {t('buttons.save')}
             </Button>
           )}
         </div>
