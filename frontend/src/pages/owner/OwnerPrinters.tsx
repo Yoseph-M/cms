@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
 import { useSocketStore } from '../../store/socketStore';
@@ -14,6 +15,8 @@ import { Tooltip } from '../../components/ui/Tooltip';
 import { Sheet } from '../../components/ui/Sheet';
 import { AlertDialog } from '../../components/ui/AlertDialog';
 import { usePrintersQuery } from '../../hooks/useCachedQueries';
+import { printTestSlip, type TestSlip } from '../../hooks/useHardwarePrinter';
+import i18nInstance from '../../i18n';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
 
@@ -52,10 +55,10 @@ const EMPTY_PRINTERS: PrinterStation[] = [];
  * address form only invited typos — but a legacy station that already points at
  * a network printer keeps it (see the dropdown below).
  */
-const TRANSPORT_META: Record<PrinterTransport, { label: string; icon: LucideIcon }> = {
-  BLUETOOTH: { label: 'Bluetooth', icon: Bluetooth },
-  USB: { label: 'USB', icon: Usb },
-  NETWORK: { label: 'Network (Wi-Fi / LAN) — legacy', icon: Wifi },
+const TRANSPORT_META: Record<PrinterTransport, { labelKey: string; icon: LucideIcon }> = {
+  BLUETOOTH: { labelKey: 'printers.transportBluetooth', icon: Bluetooth },
+  USB: { labelKey: 'printers.transportUsb', icon: Usb },
+  NETWORK: { labelKey: 'printers.transportNetwork', icon: Wifi },
 };
 
 const TRANSPORT_ORDER: PrinterTransport[] = ['BLUETOOTH', 'USB', 'NETWORK'];
@@ -68,42 +71,40 @@ const TRANSPORT_ORDER: PrinterTransport[] = ['BLUETOOTH', 'USB', 'NETWORK'];
  * operator what to do. Returns null for a deliberate cancel (nothing to report).
  */
 export function describeScanFailure(err: any): { title: string; message: string } | null {
+  const { t } = i18nInstance;
   const message = String(err?.message ?? '');
 
   // The chooser was dismissed, or the operator picked nothing.
   if (/no device selected|cancel/i.test(message)) return null;
 
   if (/user gesture/i.test(message)) {
-    return { title: 'Scan needs a click', message: 'Press Scan again from this panel.' };
+    return { title: t('printers.scanNeedsClick'), message: t('printers.scanNeedsClickMsg') };
   }
   if (/globally disabled/i.test(message)) {
     return {
-      title: 'Bluetooth is blocked in this browser',
+      title: t('printers.btBlockedTitle'),
       // Web Bluetooth has no permission prompt of its own: consent is granted by
       // picking a device, and a browser that refuses up front never opens that
       // chooser — so there is nothing here the operator could "allow".
-      message:
-        'This browser refuses Bluetooth before it can ask, so no permission prompt is coming. Open the app in a normal Chrome or Edge window (not an embedded or automated one) and scan again.',
+      message: t('printers.btBlockedMsg'),
     };
   }
   if (/enterprise policy|denied the browser permission/i.test(message)) {
     return {
-      title: 'Bluetooth permission blocked',
-      message:
-        'Allow Bluetooth for this site, then scan again. In Chrome: Settings → Privacy and security → Site settings → Bluetooth devices.',
+      title: t('printers.btPermissionTitle'),
+      message: t('printers.btPermissionMsg'),
     };
   }
   if (/adapter not available|low energy not available|not supported on this platform/i.test(message)) {
     return {
-      title: 'Bluetooth is off on this device',
-      message: 'Turn Bluetooth on in this computer or tablet, then scan again.',
+      title: t('printers.btOffTitle'),
+      message: t('printers.btOffMsg'),
     };
   }
 
   return {
-    title: 'Scan failed',
-    message:
-      message || 'Could not scan for printers. Check the printer is switched on and in range.',
+    title: t('printers.scanFailed'),
+    message: message || t('printers.scanFailedMsg'),
   };
 }
 
@@ -120,7 +121,7 @@ async function bluetoothUnavailableReason(bt: any): Promise<string | null> {
   } catch {
     return null;
   }
-  return 'Either Bluetooth is switched off on this device, or this browser blocks Web Bluetooth. Check the device settings, then scan again.';
+  return i18nInstance.t('printers.btUnavailable');
 }
 
 /**
@@ -132,6 +133,7 @@ async function bluetoothUnavailableReason(bt: any): Promise<string | null> {
  * a manager.
  */
 export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = true }) => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const { socket } = useSocketStore();
   const queryClient = useQueryClient();
@@ -142,7 +144,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
   const printers: PrinterStation[] = printersQuery.data ?? EMPTY_PRINTERS;
   const isLoading = printersQuery.isLoading;
   const error = printersQuery.error
-    ? extractErrorMessage(printersQuery.error, 'Failed to load printers.')
+    ? extractErrorMessage(printersQuery.error, t('printers.loadFailed'))
     : null;
 
   const [statuses, setStatuses] = useState<PrinterStatus>({});
@@ -251,26 +253,25 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         if (!bt?.requestDevice) {
           addToast({
             type: 'error',
-            title: 'Bluetooth scanning unavailable',
+            title: t('printers.btScanUnavailable'),
             // Embedded/in-app browsers and non-Chrome engines hide the API
             // entirely; there is no prompt to accept, so name the real fix.
-            message:
-              'This browser has no Web Bluetooth at all, so it cannot ask for permission. Open the app in Chrome or Edge over https:// or http://localhost.',
+            message: t('printers.btNoApiMsg'),
           });
           return;
         }
         if (!window.isSecureContext) {
           addToast({
             type: 'error',
-            title: 'Bluetooth scanning unavailable',
-            message: 'Web Bluetooth only works on a secure connection. Open the app over https:// or http://localhost.',
+            title: t('printers.btScanUnavailable'),
+            message: t('printers.btSecureMsg'),
           });
           return;
         }
         // Fail here with a reason instead of opening a chooser that cannot work.
         const unavailable = await bluetoothUnavailableReason(bt);
         if (unavailable) {
-          addToast({ type: 'error', title: 'Bluetooth not available', message: unavailable });
+          addToast({ type: 'error', title: t('printers.btNotAvailable'), message: unavailable });
           return;
         }
         const device = await bt.requestDevice({
@@ -288,16 +289,16 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         if (!deviceId) {
           addToast({
             type: 'error',
-            title: 'Bluetooth printer not identified',
-            message: 'The browser did not return an id for that printer. Scan again and pick it once more.',
+            title: t('printers.btNotIdentified'),
+            message: t('printers.btNotIdentifiedMsg'),
           });
           return;
         }
         setForm((f) => ({ ...f, macAddress: deviceId }));
-        setScannedName(device.name || 'Bluetooth printer');
+        setScannedName(device.name || t('printers.bluetoothPrinter'));
         addToast({
           type: 'success',
-          title: 'Bluetooth printer found',
+          title: t('printers.btFound'),
           message: device.name || deviceId,
         });
       } else if (form.transport === 'USB') {
@@ -305,8 +306,8 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         if (!usb?.requestDevice) {
           addToast({
             type: 'error',
-            title: 'USB scanning unavailable',
-            message: 'This browser cannot scan for USB printers. Use Chrome or Edge over a secure connection.',
+            title: t('printers.usbScanUnavailable'),
+            message: t('printers.usbScanUnavailableMsg'),
           });
           return;
         }
@@ -318,7 +319,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         setScannedName(device.productName || `USB ${vendorId}:${productId}`);
         addToast({
           type: 'success',
-          title: 'USB printer found',
+          title: t('printers.usbFound'),
           message: device.productName || `${vendorId}:${productId}`,
         });
       }
@@ -343,11 +344,11 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
     if (!transportReady) {
       addToast({
         type: 'error',
-        title: form.transport === 'NETWORK' ? 'Enter the printer address' : 'Scan for a printer first',
+        title: form.transport === 'NETWORK' ? t('printers.enterAddress') : t('printers.scanFirst'),
         message:
           form.transport === 'NETWORK'
-            ? 'Type the IP address of the network printer (for example 192.168.1.50).'
-            : `Use the scan button to detect a ${form.transport === 'BLUETOOTH' ? 'Bluetooth' : 'USB'} printer automatically.`,
+            ? t('printers.enterAddressMsg')
+            : t('printers.scanFirstMsg', { kind: form.transport === 'BLUETOOTH' ? t('printers.bluetoothWord') : 'USB' }),
       });
       return;
     }
@@ -368,7 +369,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       if (editingPrinter) {
         const stationId = editingPrinter.id || editingPrinter.station;
         await axiosClient.patch(`/settings/printers/${stationId}`, payload);
-        addToast({ type: 'success', title: 'Printer updated' });
+        addToast({ type: 'success', title: t('printers.updated') });
       } else {
         const all = printers.map((p) => ({
           transport: p.transport,
@@ -379,12 +380,12 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
           port: p.port ?? null,
         }));
         await axiosClient.post('/settings/printers', { stations: [...all, payload] });
-        addToast({ type: 'success', title: 'Printer added' });
+        addToast({ type: 'success', title: t('printers.added') });
       }
       invalidatePrinters();
       setSlideOverOpen(false);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Save failed', message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: t('printers.saveFailed'), message: extractErrorMessage(err) });
     } finally {
       setIsSaving(false);
     }
@@ -397,10 +398,10 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       const stationId = deleteTarget.id || deleteTarget.station;
       await axiosClient.delete(`/settings/printers/${stationId}`);
       invalidatePrinters();
-      addToast({ type: 'success', title: 'Printer removed' });
+      addToast({ type: 'success', title: t('printers.removed') });
       setDeleteTarget(null);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Delete failed', message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: t('printers.deleteFailed'), message: extractErrorMessage(err) });
     } finally {
       setIsDeleting(false);
     }
@@ -410,14 +411,37 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
     const stationId = printer.id || printer.station;
     setTestingId(stationId);
     try {
-      await axiosClient.post(`/settings/printers/${stationId}/test-print`);
-      addToast({ type: 'success', title: `Test print sent to ${printer.station}` });
+      const res = await axiosClient.post(`/settings/printers/${stationId}/test-print`);
+      const slip = res.data as Partial<TestSlip> | undefined;
+
+      if (slip?.payloadBase64 && (slip.transport === 'USB' || slip.transport === 'BLUETOOTH')) {
+        // USB and Bluetooth printers are attached to THIS browser, so the slip
+        // is printed from here, inside the same click that asked for it — that
+        // gesture is what lets the browser reach a printer it has not paired
+        // with yet. The server used to queue the job and report success, which
+        // is why the button looked like it worked while nothing came out.
+        await printTestSlip(slip as TestSlip);
+        addToast({
+          type: 'success',
+          title: t('printers.testSlipPrinted', { station: printer.station }),
+          message: t('printers.testSlipMsg'),
+        });
+      } else {
+        addToast({ type: 'success', title: t('printers.testSent', { station: printer.station }) });
+      }
       setStatuses(prev => ({ ...prev, [printer.station]: 'online' }));
     } catch (err: any) {
+      // printTestSlip rejects with a plain Error carrying the real reason
+      // (nothing selected, browser without Web Bluetooth); axios rejects with
+      // its own shape, which extractErrorMessage knows how to read.
+      const message =
+        err instanceof Error && !('response' in err) && err.message
+          ? err.message
+          : extractErrorMessage(err) || t('printers.unreachable');
       addToast({
         type: 'error',
-        title: `Test print failed: ${printer.station}`,
-        message: extractErrorMessage(err) || 'Could not reach the printer. Check that it is switched on.',
+        title: t('printers.testFailedTitle', { station: printer.station }),
+        message,
       });
       setStatuses(prev => ({ ...prev, [printer.station]: 'offline' }));
     } finally {
@@ -436,9 +460,9 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
 
   const getStatusLabel = (station: string) => {
     const st = statuses[station];
-    if (st === 'online') return <Badge variant="success" className="text-[10px]">Online</Badge>;
-    if (st === 'offline') return <Badge variant="error" className="text-[10px]">Offline</Badge>;
-    return <Badge variant="neutral" className="text-[10px]">Unknown</Badge>;
+    if (st === 'online') return <Badge variant="success" className="text-[10px]">{t('printers.onlineBadge')}</Badge>;
+    if (st === 'offline') return <Badge variant="error" className="text-[10px]">{t('printers.offlineBadge')}</Badge>;
+    return <Badge variant="neutral" className="text-[10px]">{t('printers.unknownBadge')}</Badge>;
   };
 
   return (
@@ -448,16 +472,16 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
           CTA, so the operator never sees two identical buttons. */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-bold">LAN Printers</h3>
+          <h3 className="text-lg font-bold">{t('printers.title')}</h3>
           <p className="text-sm text-muted-foreground mt-0.5">
             {canManage
-              ? 'The first printer on this list prints the kitchen tickets. Add more only if you want a spare.'
-              : 'The first printer prints the kitchen tickets. Ask a manager to add or change a printer.'}
+              ? t('printers.subtitleManage')
+              : t('printers.subtitleView')}
           </p>
         </div>
         {canManage && printers.length > 0 && (
           <Button id="add-printer-btn" onClick={openAdd}>
-            <Plus className="w-4 h-4 mr-2" />Add Printer
+            <Plus className="w-4 h-4 mr-2" />{t('printers.add')}
           </Button>
         )}
       </div>
@@ -472,21 +496,21 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         <div className="py-12 text-center">
           <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
           <p className="text-destructive">{error}</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => void printersQuery.refetch()}>Retry</Button>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void printersQuery.refetch()}>{t('buttons.retry')}</Button>
         </div>
       ) : printers.length === 0 ? (
         <EmptyState
-          title={canManage ? "Let's set up your first printer" : 'No printer set up yet'}
+          title={canManage ? t('printers.emptyManageTitle') : t('printers.emptyViewTitle')}
           message={
             canManage
-              ? 'Connect a printer here and kitchen tickets will print automatically. The first printer you add becomes your ticket printer.'
-              : 'No printer station is configured yet. Ask a manager to add one so tickets start printing.'
+              ? t('printers.emptyManageMsg')
+              : t('printers.emptyViewMsg')
           }
           icon={<Printer className="w-7 h-7" />}
           action={
             canManage
               ? {
-                  label: 'Add Printer',
+                  label: t('printers.add'),
                   onClick: openAdd,
                   icon: <Plus className="w-4 h-4 mr-1.5" />,
                 }
@@ -515,7 +539,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                         {getStatusIcon(printer.station)}
                         <div>
                           <p className="font-bold">
-                            {isTicketPrinter ? 'Ticket printer' : `Printer ${index + 1}`}
+                            {isTicketPrinter ? t('printers.ticketPrinter') : t('printers.printerN', { n: index + 1 })}
                           </p>
                           <p className="text-xs font-mono text-muted-foreground mt-0.5">
                             {printer.transport === 'BLUETOOTH'
@@ -531,7 +555,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
 
                     {isTicketPrinter && (
                       <p className="mb-4 text-xs text-muted-foreground">
-                        Kitchen tickets are sent here.
+                        {t('printers.kitchenSentHere')}
                       </p>
                     )}
 
@@ -545,11 +569,11 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                         className="flex-1"
                       >
                         <Zap className={`w-3.5 h-3.5 mr-1.5 ${isTesting ? 'animate-bounce' : ''}`} />
-                        {isTesting ? 'Sending...' : 'Test Print'}
+                        {isTesting ? t('wizard.sending') : t('printers.testPrint')}
                       </Button>
                       {canManage && (
                         <>
-                          <Tooltip label="Edit printer">
+                          <Tooltip label={t('printers.editPrinter')}>
                             <button
                               onClick={() => openEdit(printer)}
                               className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
@@ -557,7 +581,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
-                          <Tooltip label="Delete printer">
+                          <Tooltip label={t('printers.deletePrinter')}>
                             <button
                               onClick={() => setDeleteTarget(printer)}
                               className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
@@ -581,13 +605,13 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       <Sheet
         open={slideOverOpen}
         onClose={() => setSlideOverOpen(false)}
-        title={editingPrinter ? 'Edit Printer' : 'Add Printer'}
+        title={editingPrinter ? t('printers.editTitle') : t('printers.add')}
         className="max-w-sm"
         footer={
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
+            <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">{t('buttons.cancel')}</Button>
             <Button onClick={handleSave} disabled={isSaving} className="flex-1">
-              {isSaving ? 'Saving...' : (editingPrinter ? 'Update' : 'Add Printer')}
+              {isSaving ? t('payroll.saving') : (editingPrinter ? t('printers.update') : t('printers.add'))}
             </Button>
           </div>
         }
@@ -595,10 +619,10 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         <div className="space-y-5">
                 <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
                   <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
-                    Transport Type
+                    {t('printers.transportType')}
                   </label>
                   <DropdownSelect
-                    ariaLabel="Transport Type"
+                    ariaLabel={t('printers.transportType')}
                     className="w-full justify-between"
                     contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                     value={form.transport}
@@ -611,14 +635,13 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                       .filter((transport) => transport !== 'NETWORK' || form.transport === 'NETWORK')
                       .map((transport) => ({
                         value: transport,
-                        label: TRANSPORT_META[transport].label,
+                        label: t(TRANSPORT_META[transport].labelKey),
                         icon: TRANSPORT_META[transport].icon,
                       }))}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                    Bluetooth and USB printers are set up from this terminal — scan once and the
-                    station remembers the device.
+                    {t('printers.setupHere')}
                 </p>
 
                 {/* Network or Bluetooth/USB specific options */}
@@ -627,7 +650,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                     {form.transport === 'NETWORK' && <Wifi className="h-4 w-4 text-primary" />}
                     {form.transport === 'BLUETOOTH' && <Bluetooth className="h-4 w-4 text-primary" />}
                     {form.transport === 'USB' && <Usb className="h-4 w-4 text-primary" />}
-                    {form.transport === 'NETWORK' ? 'Network printer' : form.transport === 'BLUETOOTH' ? 'Bluetooth printer' : 'USB printer'}
+                    {form.transport === 'NETWORK' ? t('printers.networkPrinter') : form.transport === 'BLUETOOTH' ? t('printers.bluetoothPrinter') : t('printers.usbPrinter')}
                   </div>
 
                   {transportReady ? (
@@ -635,7 +658,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-foreground">
-                          {scannedName ?? 'Network printer'}
+                          {scannedName ?? t('printers.networkPrinter')}
                         </p>
                         <p className="truncate font-mono text-xs text-muted-foreground">
                           {form.transport === 'BLUETOOTH'
@@ -648,15 +671,12 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                     </div>
                   ) : form.transport === 'NETWORK' ? (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      This station still points at a network printer
-                      {form.ip ? ` (${form.ip}${form.port ? `:${form.port}` : ''})` : ''}. Switch it to
-                      Bluetooth or USB above to configure it from this terminal instead.
+                      {t('printers.legacyNetworkNote', { address: form.ip ? ` (${form.ip}${form.port ? `:${form.port}` : ''})` : '' })}
                     </p>
                   ) : (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Scan to detect nearby {form.transport === 'BLUETOOTH' ? 'Bluetooth' : 'USB'} printers and pick one automatically.
-                      {form.transport === 'BLUETOOTH' &&
-                        ' Browsers only see low-energy (BLE) printers — one paired in Windows or Android settings stays hidden.'}
+                      {t('printers.scanDetectMsg', { kind: form.transport === 'BLUETOOTH' ? t('printers.bluetoothWord') : 'USB' })}
+                      {form.transport === 'BLUETOOTH' && ` ${t('printers.bleOnlyMsg')}`}
                     </p>
                   )}
 
@@ -670,12 +690,12 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                       {scanning ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Scanning…
+                          {t('printers.scanning')}
                         </>
                       ) : (
                         <>
                           <ScanLine className="mr-2 h-4 w-4" />
-                          Scan for {form.transport === 'BLUETOOTH' ? 'Bluetooth' : 'USB'} printers
+                          {t('printers.scanFor', { kind: form.transport === 'BLUETOOTH' ? t('printers.bluetoothWord') : 'USB' })}
                         </>
                       )}
                     </Button>
@@ -691,24 +711,24 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
           if (!isDeleting) setDeleteTarget(null);
         }}
         onConfirm={handleDelete}
-        title="Remove this printer?"
+        title={t('printers.removeTitle')}
         description={
           deleteTarget ? (
             <>
               {deleteTargetId === (printers[0]?.id || printers[0]?.station)
-                ? 'This is your ticket printer — kitchen tickets will stop printing until you add another one. '
+                ? t('printers.removeTicketNote')
                 : ''}
-              The printer at{' '}
+              {t('printers.removeBody')}{' '}
               {deleteTarget.transport === 'BLUETOOTH'
                 ? deleteTarget.macAddress
                 : deleteTarget.transport === 'USB'
                   ? `${deleteTarget.vendorId}:${deleteTarget.productId}`
                   : `${deleteTarget.ip}${deleteTarget.port ? `:${deleteTarget.port}` : ''}`}{' '}
-              will be removed.
+              {t('printers.removeWillBeRemoved')}
             </>
           ) : null
         }
-        confirmText="Remove"
+        confirmText={t('printers.removeConfirm')}
         tone="destructive"
         loading={isDeleting}
       />
