@@ -16,6 +16,17 @@ function mongoDate(d: Date) {
   return { $date: d.toISOString() };
 }
 
+/**
+ * The status every money statistic in this module selects on.
+ *
+ * A ticket that is still SUBMITTED / IN_KITCHEN / SERVED has taken no money
+ * yet, and a CANCELLED ticket never will — counting either of them as revenue
+ * is what made the charts disagree with the settlements. Endpoints that
+ * describe something else on purpose (the cancellation breakdown, the count of
+ * tickets still on the floor) say so where they query.
+ */
+const PAID_MATCH = { status: 'PAID' } as const;
+
 function dateRangeMatch(field: string, from?: string, to?: string) {
   if (!from && !to) return {};
   const range: Record<string, unknown> = {};
@@ -215,7 +226,13 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
     ? 10
     : Math.min(200, Math.max(1, parsedLimit));
 
-  const match: Record<string, unknown> = { status: { $ne: 'CANCELLED' } };
+  /* PAID only — the same population every other revenue figure on the console
+     uses (`/analytics/sales/total`, `/analytics/sales/trend`, daily sales).
+     Counting every non-cancelled ticket here meant running and never-settled
+     tickets were booked as "revenue" on the best-sellers card, so a dish's card
+     figure could exceed the shop's own takings for the same window. Quantity
+     and revenue in this payload therefore describe money actually collected. */
+  const match: Record<string, unknown> = { status: 'PAID' };
   Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
   const pipeline = [
@@ -229,7 +246,14 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
         pipeline: [
           {
             $match: {
-              $expr: { $eq: [{ $toString: '$_id' }, '$$menuId'] },
+              // Order items persist `menuItemId` with @db.ObjectId, so it is a
+              // BSON ObjectId on the wire while `_id` was being stringified —
+              // the comparison never matched and the image came back null for
+              // every row. Stringify both sides so ObjectId and legacy string
+              // ids both resolve.
+              $expr: {
+                $eq: [{ $toString: '$_id' }, { $toString: '$$menuId' }],
+              },
             },
           },
           { $project: { _id: 0, imageUrl: 1 } },
@@ -244,9 +268,10 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
         totalRevenue: {
           $sum: { $multiply: ['$items.unitPrice', '$items.quantity'] },
         },
-        // Keep the first non-null imageUrl we encounter for this item name.
+        // Any non-null imageUrl for this item name. `$max` ignores null/missing
+        // rows, so one legacy order without a match can't blank the image.
         imageUrl: {
-          $first: {
+          $max: {
             $first: {
               $map: {
                 input: {
@@ -272,6 +297,17 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
         name: '$_id',
         totalQty: 1,
         totalRevenue: 1,
+        /* The price these units were actually sold at (the snapshot on each
+           order line). It is what makes the card's revenue checkable: units ×
+           this figure is the money shown, and a gap between it and the item's
+           current menu price means the price changed since the sale. */
+        avgUnitPrice: {
+          $cond: [
+            { $gt: ['$totalQty', 0] },
+            { $round: [{ $divide: ['$totalRevenue', '$totalQty'] }, 0] },
+            0,
+          ],
+        },
         imageUrl: 1,
       },
     },
@@ -284,7 +320,9 @@ export async function getTopItems(req: AuthenticatedRequest, res: Response) {
 export async function getStaffPerformance(req: AuthenticatedRequest, res: Response) {
   const { from, to, role } = req.query;
 
-  const match: Record<string, unknown> = { status: { $ne: 'CANCELLED' } };
+  // Paid tickets only: a waiter's "sales" are the tickets they settled, not
+  // every table they opened.
+  const match: Record<string, unknown> = { ...PAID_MATCH };
   Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
   const pipeline: Record<string, unknown>[] = [
@@ -368,7 +406,9 @@ export async function getTrendSales(req: AuthenticatedRequest, res: Response) {
 
 export async function getCategorySplit(req: AuthenticatedRequest, res: Response) {
   const { from, to } = req.query;
-  const match: Record<string, unknown> = { status: { $in: ['PAID', 'SERVED', 'IN_KITCHEN'] } };
+  // Paid tickets only — this slice is money by category, so a dish still in the
+  // kitchen is not in it.
+  const match: Record<string, unknown> = { ...PAID_MATCH };
   Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
   const pipeline = [
@@ -422,7 +462,8 @@ function unwrapMongoNumber(v: unknown): number {
 
 export async function getPeakHours(req: AuthenticatedRequest, res: Response) {
   const { from, to } = req.query;
-  const match: Record<string, unknown> = { status: { $ne: 'CANCELLED' } };
+  // Paid tickets only: the heatmap answers "when do we actually take money".
+  const match: Record<string, unknown> = { ...PAID_MATCH };
   Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
   const pipeline = [
@@ -472,7 +513,9 @@ export async function getPeakHours(req: AuthenticatedRequest, res: Response) {
  */
 export async function getItemsByHour(req: AuthenticatedRequest, res: Response) {
   const { from, to } = req.query;
-  const match: Record<string, unknown> = { status: { $ne: 'CANCELLED' } };
+  // Paid tickets only, so it ranks against the same set the peak-hours heatmap
+  // and the best sellers card use.
+  const match: Record<string, unknown> = { ...PAID_MATCH };
   Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
   const pipeline = [
@@ -515,9 +558,22 @@ export async function getPaymentMethods(req: AuthenticatedRequest, res: Response
   Object.assign(match, dateRangeMatch('createdAt', from as string | undefined, to as string | undefined));
 
   // VOID settlements (method NONE) audit cancellations, not revenue — exclude
-  // them so cancelled orders don't skew the payment-method split.
+  // them so cancelled orders don't skew the payment-method split. The orders
+  // join then keeps only money taken on tickets that are actually PAID: a part
+  // payment on a table still eating is not a settled ticket, and the split has
+  // to add up to the same revenue the rest of the page shows.
   const pipeline = [
     { $match: { ...match, method: { $ne: 'NONE' } } },
+    {
+      $lookup: {
+        from: 'orders',
+        localField: 'orderId',
+        foreignField: '_id',
+        as: 'order',
+      },
+    },
+    { $unwind: '$order' },
+    { $match: { 'order.status': 'PAID' } },
     {
       $group: {
         _id: '$method',
@@ -644,20 +700,16 @@ export async function getLoginHistory(req: AuthenticatedRequest, res: Response) 
 
 /**
  * GET /analytics/profit-loss?from&to
- * Revenue (paid non-cancelled orders) vs payroll + other expenses → net.
- */
-/**
- * GET /analytics/profit-loss?from&to
- * Revenue (settled non-cancelled orders) vs payroll + other expenses → net.
+ * Revenue (paid tickets) vs payroll + other expenses → net.
  */
 export async function getProfitLoss(req: AuthenticatedRequest, res: Response) {
   const from = (req.query.from as string) || undefined;
   const to = (req.query.to as string) || undefined;
 
-  const orderMatch: Record<string, unknown> = {
-    settlementStatus: 'SETTLED',
-    status: { $ne: 'CANCELLED' },
-  };
+  // Paid tickets only. It used to accept any settled non-cancelled ticket,
+  // which let the P&L revenue line disagree with the headline revenue above it
+  // on the same page.
+  const orderMatch: Record<string, unknown> = { ...PAID_MATCH };
   Object.assign(orderMatch, dateRangeMatch('createdAt', from, to));
 
   const orderPipeline = [
