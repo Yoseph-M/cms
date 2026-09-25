@@ -321,7 +321,7 @@ export const ExpensesTracker: React.FC = () => {
             <CardTitle className="text-base">{t('expenses.activityTitle')}</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
               {isLoading
-                ? 'Loading records…'
+                ? t('common:expenses.loadingRecords', { defaultValue: 'Loading records…' })
                 : `${tableExpenses.length} record${tableExpenses.length === 1 ? '' : 's'} shown`}
               {categoryFilter
                 ? ' · filtered by category'
@@ -378,9 +378,9 @@ export const ExpensesTracker: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <p className="font-medium text-foreground">{hasFilters ? 'No records match these filters.' : t('expenses.emptyTitle', { defaultValue: 'No expenses recorded yet.' })}</p>
-                  <p className="mt-1 text-sm">{hasFilters ? 'Clear or adjust the filters to see more records.' : 'Add the first one to begin tracking business spending.'}</p>
-                  {hasFilters ? <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>Clear filters</Button> : <Button size="sm" className="mt-4" onClick={openCreate}><Plus className="h-3.5 w-3.5" />Add expense</Button>}
+                  <p className="font-medium text-foreground">{hasFilters ? t('common:expenses.noMatches', { defaultValue: 'No records match these filters.' }) : t('expenses.emptyTitle', { defaultValue: 'No expenses recorded yet.' })}</p>
+                  <p className="mt-1 text-sm">{hasFilters ? t('common:expenses.noMatchesHint', { defaultValue: 'Clear or adjust the filters to see more records.' }) : t('common:expenses.noRecordsHint', { defaultValue: 'Add the first one to begin tracking business spending.' })}</p>
+                  {hasFilters ? <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>{t('expenses.clearFilters', { defaultValue: 'Clear filters' })}</Button> : <Button size="sm" className="mt-4" onClick={openCreate}><Plus className="h-3.5 w-3.5" />{t('expenses.addExpense', { defaultValue: 'Add expense' })}</Button>}
                 </>
               )}
             </div>
@@ -429,7 +429,7 @@ export const ExpensesTracker: React.FC = () => {
                                 : undefined
                             }
                           >
-                            {expense.payrollLabel ?? 'Monthly average'}
+                            {expense.payrollLabel ?? t('expenses.monthlyAverage')}
                           </span>
                         )}
                       </td>
@@ -445,7 +445,7 @@ export const ExpensesTracker: React.FC = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label="Edit expense"
+                              aria-label={t('expenses.editAria')}
                               onClick={() => openEdit(expense)}
                             >
                               <Pencil className="w-3.5 h-3.5" />
@@ -453,7 +453,7 @@ export const ExpensesTracker: React.FC = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label="Delete expense"
+                              aria-label={t('expenses.deleteAria')}
                               onClick={() => setDeleteTarget(expense)}
                             >
                               <Trash2 className="w-3.5 h-3.5 text-destructive" />
