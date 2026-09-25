@@ -21,6 +21,7 @@ import { dailyCloseApi } from '../../api/phase9Api';
 import { useHeaderStore } from '../../store/headerStore';
 import { useSocketStore } from '../../store/socketStore';
 import { useAuthStore } from '../../store/authStore';
+import { useTranslation } from 'react-i18next';
 import { useElapsedTime } from '../../components/cashier/dashboard/hooks/useElapsedTime';
 import { AnimatedCurrency, AnimatedNumber } from '../../components/ui/AnimatedNumber';
 import { cn } from '../../lib/utils';
@@ -59,6 +60,7 @@ const METHOD_LABEL: Record<string, string> = { CASH: 'Cash', CARD: 'Card', MOBIL
 export const CashierDashboard: React.FC = () => {
   const { socket } = useSocketStore();
   const { user } = useAuthStore();
+  const { t, i18n } = useTranslation('common');
   const queryClient = useQueryClient();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
 
@@ -183,14 +185,19 @@ export const CashierDashboard: React.FC = () => {
 
   const firstName = (user?.name || '').trim().split(' ')[0] || 'there';
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const greeting =
+    hour < 12
+      ? t('app.greetingMorning', { defaultValue: 'Good morning' })
+      : hour < 17
+        ? t('app.greetingAfternoon', { defaultValue: 'Good afternoon' })
+        : t('app.greetingEvening', { defaultValue: 'Good evening' });
 
   const closeStatus = closeQuery.data?.status ?? 'OPEN';
   const closeTone = {
-    PENDING_REVIEW: { label: 'Awaiting manager approval', tone: 'warning' as const },
-    CLOSED: { label: 'Day approved & closed', tone: 'success' as const },
-    REJECTED: { label: 'Request disapproved', tone: 'danger' as const },
-    OPEN: { label: 'Not requested yet', tone: 'neutral' as const },
+    PENDING_REVIEW: { label: t('cashier.close.awaitingApproval', { defaultValue: 'Awaiting manager approval' }), tone: 'warning' as const },
+    CLOSED: { label: t('cashier.close.approvedClosed', { defaultValue: 'Day approved & closed' }), tone: 'success' as const },
+    REJECTED: { label: t('cashier.close.disapproved', { defaultValue: 'Request disapproved' }), tone: 'danger' as const },
+    OPEN: { label: t('cashier.close.notRequested', { defaultValue: 'Not requested yet' }), tone: 'neutral' as const },
   }[closeStatus];
 
   const mixTotal = Object.values(stats.byMethod).reduce((a, b) => a + b, 0) || 1;
@@ -210,17 +217,17 @@ export const CashierDashboard: React.FC = () => {
           <div className="min-w-0">
             <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-[hsl(var(--primary))]">
               <Sparkles className="h-3.5 w-3.5" />
-              Service desk
+              {t('cashier.desk', { defaultValue: 'Service desk' })}
             </p>
             <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">
               {greeting}, {firstName}
             </h1>
             <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-              <span>{stats.ready} ready to collect</span>
+              <span>{t('cashier.readyToCollectCount', { count: stats.ready, defaultValue: '{{count}} ready to collect' })}</span>
               <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
-              <span>{stats.cooking} still in the kitchen</span>
+              <span>{t('cashier.inKitchenCount', { count: stats.cooking, defaultValue: '{{count}} still in the kitchen' })}</span>
               <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
-              <span>{stats.settledCount} payments taken today</span>
+              <span>{t('cashier.paymentsTakenCount', { count: stats.settledCount, defaultValue: '{{count}} payments taken today' })}</span>
             </p>
           </div>
 
@@ -231,10 +238,10 @@ export const CashierDashboard: React.FC = () => {
             </span>
             <div className="leading-tight">
               <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                Live service
+                {t('cashier.liveService', { defaultValue: 'Live service' })}
               </p>
               <p className="font-mono text-xs font-semibold text-foreground">
-                {new Date().toLocaleDateString('en-US', {
+                {new Date().toLocaleDateString(i18n.language, {
                   weekday: 'short',
                   month: 'short',
                   day: 'numeric',
@@ -249,22 +256,22 @@ export const CashierDashboard: React.FC = () => {
       {/* ── Big-number band: the three questions a cashier asks all shift ── */}
       <div className="grid grid-cols-3 gap-3 sm:gap-5">
         <ServiceTile
-          label="Ready to collect"
-          hint="Waiting at the counter"
+          label={t('cashier.tiles.ready', { defaultValue: 'Ready to collect' })}
+          hint={t('cashier.tiles.readyHint', { defaultValue: 'Waiting at the counter' })}
           icon={Zap}
           accent="emerald"
           value={<AnimatedNumber value={stats.ready} />}
         />
         <ServiceTile
-          label="In the kitchen"
-          hint="Still being prepared"
+          label={t('cashier.tiles.kitchen', { defaultValue: 'In the kitchen' })}
+          hint={t('cashier.tiles.kitchenHint', { defaultValue: 'Still being prepared' })}
           icon={ChefHat}
           accent="amber"
           value={<AnimatedNumber value={stats.cooking} />}
         />
         <ServiceTile
-          label="Collected today"
-          hint={`${stats.settledCount} ${stats.settledCount === 1 ? 'payment' : 'payments'} recorded`}
+          label={t('cashier.tiles.collected', { defaultValue: 'Collected today' })}
+          hint={t('cashier.tiles.collectedHint', { count: stats.settledCount, defaultValue: '{{count}} payments recorded' })}
           icon={CircleDollarSign}
           accent="orange"
           value={<AnimatedCurrency value={stats.collectedMinor} />}
@@ -281,30 +288,30 @@ export const CashierDashboard: React.FC = () => {
               </span>
               <div>
                 <h2 className="font-display text-[15px] font-semibold text-foreground">
-                  Ready to collect
+                  {t('cashier.tiles.ready', { defaultValue: 'Ready to collect' })}
                 </h2>
-                <p className="text-xs text-muted-foreground">Oldest first — take payment at the till</p>
+                <p className="text-xs text-muted-foreground">{t('cashier.oldestFirst', { defaultValue: 'Oldest first — take payment at the till' })}</p>
               </div>
             </div>
             <Link
               to="/cashier/tickets"
               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-input bg-card px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-secondary/60"
             >
-              All tickets
+              {t('cashier.allTickets', { defaultValue: 'All tickets' })}
               <ArrowRight className="h-4 w-4 text-muted-foreground" />
             </Link>
           </header>
 
           {isLoading ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">Loading tickets…</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t('loading')}</p>
           ) : stats.readyOrders.length === 0 ? (
             <div className="py-14 text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
                 <Sparkles className="h-5 w-5" />
               </div>
-              <p className="mt-3 text-sm font-semibold text-foreground">Nothing waiting on you</p>
+              <p className="mt-3 text-sm font-semibold text-foreground">{t('cashier.nothingWaiting', { defaultValue: 'Nothing waiting on you' })}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Tickets appear here the moment the kitchen serves them.
+                {t('cashier.nothingWaitingHint', { defaultValue: 'Tickets appear here the moment the kitchen serves them.' })}
               </p>
             </div>
           ) : (
@@ -320,13 +327,15 @@ export const CashierDashboard: React.FC = () => {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-foreground">
-                        {order.tableNumber ? `Table ${order.tableNumber}` : 'Takeout'}
+                        {order.tableNumber
+                          ? t('app.tableN', { number: order.tableNumber, defaultValue: 'Table {{number}}' })
+                          : t('app.takeout', { defaultValue: 'Takeout' })}
                         <span className="ml-2 font-mono text-[11px] font-medium text-muted-foreground">
                           #{order.clientOrderId.slice(0, 6).toUpperCase()}
                         </span>
                       </p>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {(order.items || []).reduce((n, i) => n + i.quantity, 0)} items ·{' '}
+                        {t('cashier.itemsCount', { count: (order.items || []).reduce((n, i) => n + i.quantity, 0), defaultValue: '{{count}} items' })} ·{' '}
                         {order.waiter?.name ?? order.cashier?.name ?? '—'}
                       </p>
                     </div>
@@ -347,7 +356,7 @@ export const CashierDashboard: React.FC = () => {
           <section className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
             <div className="flex items-baseline justify-between">
               <h2 className="font-display text-[15px] font-semibold text-foreground">
-                Payments today
+                {t('cashier.paymentsToday', { defaultValue: 'Payments today' })}
               </h2>
               <span className="font-mono text-sm font-bold tabular-nums text-foreground">
                 {formatCurrency(stats.collectedMinor)}
@@ -357,7 +366,7 @@ export const CashierDashboard: React.FC = () => {
             {stats.settledCount === 0 ? (
               <div className="py-8 text-center text-xs text-muted-foreground">
                 <CreditCard className="mx-auto mb-2 h-6 w-6 opacity-40" />
-                No payments recorded yet today.
+                {t('cashier.noPaymentsYet', { defaultValue: 'No payments recorded yet today.' })}
               </div>
             ) : (
               <>
@@ -384,7 +393,7 @@ export const CashierDashboard: React.FC = () => {
                           className="h-2 w-2 rounded-full"
                           style={{ background: METHOD_COLOR[m] }}
                         />
-                        {METHOD_LABEL[m]}
+                      {methodLabel(t, m)}
                       </span>
                       <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
                         {formatCurrency(stats.byMethod[m] ?? 0)}
@@ -404,19 +413,19 @@ export const CashierDashboard: React.FC = () => {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  End of Day
+                  {t('cashier.endOfDay', { defaultValue: 'End of Day' })}
                 </p>
                 <p className="mt-1 text-sm font-semibold text-foreground">{closeTone.label}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {closeStatus === 'PENDING_REVIEW'
                     ? closeQuery.data?.requestedBy?.name
-                      ? `Sent by ${closeQuery.data.requestedBy.name}`
-                      : 'Waiting on your manager'
+                      ? t('cashier.close.sentBy', { name: closeQuery.data.requestedBy.name, defaultValue: 'Sent by {{name}}' })
+                      : t('cashier.close.waitingOnManager', { defaultValue: 'Waiting on your manager' })
                     : closeStatus === 'CLOSED'
-                      ? `${closeQuery.data?.closedBy?.name ?? 'A manager'} approved the close`
+                      ? t('cashier.close.approvedBy', { name: closeQuery.data?.closedBy?.name ?? t('cashier.close.aManager', { defaultValue: 'A manager' }), defaultValue: "{{name}} approved the close" })
                       : closeStatus === 'REJECTED'
-                        ? closeQuery.data?.reviewNotes || 'Fix the flagged issue and re-send'
-                        : 'Send the close request when service ends'}
+                        ? closeQuery.data?.reviewNotes || t('cashier.close.fixAndResend', { defaultValue: 'Fix the flagged issue and re-send' })
+                        : t('cashier.close.sendWhenServiceEnds', { defaultValue: 'Send the close request when service ends' })}
                 </p>
               </div>
               <span
@@ -448,14 +457,14 @@ export const CashierDashboard: React.FC = () => {
             </span>
             <div>
               <h2 className="font-display text-[15px] font-semibold text-foreground">
-                Floor activity
+                {t('cashier.floorActivity', { defaultValue: 'Floor activity' })}
               </h2>
-              <p className="text-xs text-muted-foreground">The latest tickets across the room</p>
+              <p className="text-xs text-muted-foreground">{t('cashier.floorActivityHint', { defaultValue: 'The latest tickets across the room' })}</p>
             </div>
           </div>
         </header>
         {stats.recent.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">No tickets yet today.</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">{t('cashier.noTicketsToday', { defaultValue: 'No tickets yet today.' })}</p>
         ) : (
           <ul className="divide-y divide-border/40">
             {stats.recent.map((o) => (
@@ -464,7 +473,9 @@ export const CashierDashboard: React.FC = () => {
                   #{o.clientOrderId.slice(0, 6).toUpperCase()}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                  {o.tableNumber ? `Table ${o.tableNumber}` : 'Takeout'}
+                  {o.tableNumber
+                    ? t('app.tableN', { number: o.tableNumber, defaultValue: 'Table {{number}}' })
+                    : t('app.takeout', { defaultValue: 'Takeout' })}
                   <span className="ml-2 text-xs text-muted-foreground">
                     {o.waiter?.name ?? o.cashier?.name ?? '—'}
                   </span>
@@ -483,7 +494,7 @@ export const CashierDashboard: React.FC = () => {
       </section>
 
       {(isLoading || settlementsQuery.isLoading) && (
-        <p className="text-center text-[11px] text-muted-foreground">Refreshing…</p>
+        <p className="text-center text-[11px] text-muted-foreground">{t('app.refreshing', { defaultValue: 'Refreshing…' })}</p>
       )}
     </div>
   );
@@ -550,6 +561,13 @@ const ServiceTile: React.FC<{
   );
 };
 
+/** Payment-method names come from the dictionary so an Amharic UI reads ብቅ በካሽ, በካርድ, በሞባይል. */
+const METHOD_KEY: Record<string, string> = { CASH: 'cashier.method.cash', CARD: 'cashier.method.card', MOBILE: 'cashier.method.mobile' };
+const methodLabel = (t: (k: string, o?: Record<string, unknown>) => string, method: string): string =>
+  t(METHOD_KEY[method] ?? 'cashier.method.cash', {
+    defaultValue: METHOD_LABEL[method] ?? method,
+  });
+
 const STATUS_STYLE: Record<string, string> = {
   SERVED: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/25',
   SUBMITTED: 'bg-sky-500/10 text-sky-700 border-sky-500/25',
@@ -558,23 +576,28 @@ const STATUS_STYLE: Record<string, string> = {
   CANCELLED: 'bg-rose-500/10 text-rose-700 border-rose-500/25',
 };
 const STATUS_LABEL: Record<string, string> = {
-  SERVED: 'Ready',
-  SUBMITTED: 'New',
-  IN_KITCHEN: 'Cooking',
-  PAID: 'Paid',
-  CANCELLED: 'Cancelled',
+  SERVED: 'statusReady',
+  SUBMITTED: 'statusNew',
+  IN_KITCHEN: 'statusCooking',
+  PAID: 'statusPaid',
+  CANCELLED: 'statusCancelled',
 };
 
-const StatusPill: React.FC<{ status: string }> = ({ status }) => (
-  <span
-    className={cn(
-      'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-      STATUS_STYLE[status] ?? 'border-border bg-secondary text-muted-foreground',
-    )}
-  >
-    {STATUS_LABEL[status] ?? status}
-  </span>
-);
+const StatusPill: React.FC<{ status: string }> = ({ status }) => {
+  const { t } = useTranslation('common');
+  return (
+    <span
+      className={cn(
+        'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+        STATUS_STYLE[status] ?? 'border-border bg-secondary text-muted-foreground',
+      )}
+    >
+      {STATUS_LABEL[status]
+        ? t(`app.${STATUS_LABEL[status]}`, { defaultValue: status })
+        : status}
+    </span>
+  );
+};
 
 const WaitChip: React.FC<{ createdAt: string }> = ({ createdAt }) => {
   const elapsed = useElapsedTime(createdAt);
