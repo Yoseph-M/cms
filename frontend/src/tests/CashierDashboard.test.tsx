@@ -27,14 +27,34 @@ vi.mock('../components/receipt/ReceiptModal', () => ({
   ReceiptModal: () => <div data-testid="receipt-modal">Receipt Modal</div>,
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: any) => options?.defaultValue || key,
-  }),
-  // The dashboard reaches the i18n bootstrap through the auth store, so the
-  // mock has to satisfy the plugin contract i18n.ts registers at import time.
-  initReactI18next: { type: '3rdParty', init: () => {} },
-}));
+import enCommon from '../locales/en/common.json';
+import enCashier from '../locales/en/cashier.json';
+
+// Resolve through the real English catalogue so the assertions below keep
+// checking the copy the user actually sees, not raw i18n keys.
+const CATALOGS: Record<string, unknown> = { common: enCommon, cashier: enCashier };
+vi.mock('react-i18next', () => {
+  const resolve = (obj: unknown, path: string): unknown =>
+    path.split('.').reduce<any>((acc, key) => (acc == null ? acc : acc[key]), obj);
+  return {
+    useTranslation: (ns?: string) => ({
+      t: (key: string, options?: Record<string, unknown>) => {
+        const order = [ns, 'common', ...Object.keys(CATALOGS)].filter(Boolean) as string[];
+        for (const name of order) {
+          const value = resolve(CATALOGS[name], key);
+          if (typeof value === 'string') {
+            return value.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(options?.[k] ?? ''));
+          }
+        }
+        return options?.defaultValue || key;
+      },
+      i18n: { language: 'en' },
+    }),
+    // The dashboard reaches the i18n bootstrap through the auth store, so the
+    // mock has to satisfy the plugin contract i18n.ts registers at import time.
+    initReactI18next: { type: '3rdParty', init: () => {} },
+  };
+});
 
 import { MemoryRouter } from 'react-router-dom';
 
