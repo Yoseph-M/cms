@@ -43,5 +43,110 @@
     "review": "ይመልከቱ እና ያስቀምጡ",
     "next": "ቀጥሎ፡ መግቢያ መረጃ",
     "save": "ለውጦችን ያስቀምጡ"
+  },
+  "table": {
+    "staff": "ሠራተኛ",
+    "role": "ሚና",
+    "contact": "የመገኛ",
+    "salary": "ደመወዝ",
+    "status": "ሁኔታ",
+    "actions": "ተግባራት"
+  },
+  "sections": {
+    "identity": "ማንነት",
+    "credentials": "መግቢያ መረጃ"
+  },
+  "search": {
+    "placeholder": "ሠራተኛ ይፈልጉ...",
+    "roleAria": "ሠራተኞችን በሚና አጣራ",
+    "statusAria": "ሠራተኞችን በሁኔታ አጣራ",
+    "allRoles": "ሁሉም ሚናዎች",
+    "active": "ንቁ",
+    "inactive": "ንቁ ያልሆነ",
+    "all": "ሁሉም"
+  },
+  "badges": {
+    "noPin": "ፒን የለም",
+    "noPinTooltip": "እስካሁን የሞባይል ፒን የለም — በመተግበሪያው ላይ መግባት አይችልም",
+    "active": "ንቁ",
+    "inactive": "ንቁ ያልሆነ"
+  },
+  "row": {
+    "edit": "አርትዕ",
+    "editAria": "{{name}}ን አርትዕ",
+    "remove": "አስወግድ",
+    "removeAria": "{{name}}ን አስወግድ",
+    "deactivate": "አቁም",
+    "deactivateAria": "{{name}}ን አቁም",
+    "reactivate": "እንደገና አስጀምር",
+    "reactivateAria": "{{name}}ን እንደገና አስጀምር",
+    "readOnly": "ተነባቢ ብቻ",
+    "managerLocked": "ሌላ አስተዳዳሪን ማስተካከል አይችሉም — ባለቤቱን ይጠይቁ።"
+  },
+  "empty": {
+    "noStaffTitle": "እስካሁን ሠራተኛ የለም",
+    "noStaffMsg": "የመጀመሪያውን የቡድን አባል ያክሉ — አስተዳዳሪዎች፣ ጥሬ ገንዘብ ሠራተኞች፣ አስተናጋጆች እና የወጥ ቤት ሠራተኞች።",
+    "noStaffMsgManager": "የመጀመሪያውን የቡድን አባል ያክሉ — ጥሬ ገንዘብ ሠራተኞች፣ አስተናጋጆች እና የወጥ ቤት ሠራተኞች።",
+    "noMatchTitle": "ከፍለጋዎ ጋር የሚዛመድ ሠራተኛ የለም",
+    "noMatchMsg": "ከላይ ካለው ፍለጋ ወይም ማጣሪያ ጋር የሚዛመድ ነገር የለም።",
+    "clearFilters": "ማጣሪያዎችን አጽዳ"
+  },
+  "form": {
+    "fullName": "ሙሉ ስም",
+    "username": "የተጠቃሚ ስም",
+    "phone": "ስልክ",
+    "role": "ሚና",
+    "namePlaceholder": "ለምሳሌ፡ አሊስ ጆንሰን",
+    "usernamePlaceholder": "staff_username",
+    "phonePlaceholder": "+251 9XX XXX XXX",
+    "passwordNew": "አዲስ የይለፍ ቃል ያስቀምጡ",
+    "passwordTemp": "ጊዜያዊ የይለፍ ቃል"
+  },
+  "drawer": {
+    "addTitle": "የቡድን አባል ያክሉ",
+    "editTitle": "የቡድን አባል ያርትዑ",
+    "add": "ሠራተኛ አክል",
+    "back": "ተመለስ",
+    "cancel": "ሰርዝ",
+    "saving": "በማስቀመጥ ላይ..."
+  },
+  "remove": {
+    "title": "{{name}}ን ያስወግዱ?",
+    "thisStaff": "ይህን የቡድን አባል",
+    "description": "ይህ መዝገቡን ለዘላለም ይሰርዛል። የሚሠራው ትዕዛዝ፣ ክፍያ፣ ደመወዝ ወይም የመገኘት መዝገብ ለሌላቸው ሠራተኞች ብቻ ነው — ታሪክ ካላቸው፣ በምትኩ አቁሟቸው መዝገቦቹ ተያይዘው እንዲቆዩ።",
+    "confirm": "አስወግድ"
+  },
+  "errors": {
+    "loadFailed": "ሠራተኞችን መጫን አልተቻለም።",
+    "namePhoneRequired": "ስም እና ስልክ ያስፈልጋሉ።",
+    "invalidPhone": "ልክ ያልሆነ ስልክ ቁጥር",
+    "invalidPhoneMsg": "የኢትዮጵያ ቁጥሮች {{code}} እና 9 አሃዞች ይፈልጋሉ።",
+    "invalidPin": "ልክ ያልሆነ ፒን",
+    "invalidPinMsg": "ፒን በትክክል 4 አሃዞች ነው።",
+    "pinRequired": "ፒን ያስፈልጋል",
+    "pinRequiredMsg": "ይህ ሚና በሞባይል መተግበሪያው ላይ በፒን ይገባል።",
+    "saveFailed": "ማስቀመጥ አልተሳካም",
+    "removeFailed": "ማስወገድ አልተሳካም",
+    "actionFailed": "ተግባሩ አልተሳካም",
+    "notAllowed": "አይፈቀድም",
+    "notAllowedMsg": "አስተዳዳሪዎች የአስተዳዳሪ ሚና መፍጠር ወይም መመደብ አይችሉም።",
+    "retry": "እንደገና ሞክር",
+    "undo": "ቀልብስ"
+  },
+  "toasts": {
+    "updated": "የቡድን አባሉ ተሻሽሏል",
+    "added": "{{name}} ተጨምሯል",
+    "removed": "{{name}} ተወግዷል",
+    "reactivated": "{{name}} እንደገና ተጀምሯል",
+    "deactivated": "{{name}} ተቁሟል",
+    "canLogIn": "አሁን እንደገና መግባት ይችላሉ።",
+    "cannotLogIn": "ከእንግዲህ መግባት አይችሉም።",
+    "reactivationUndone": "እንደገና ማስጀመር ተቀልብሷል — {{name}} ንቁ ያልሆነ ሆኖ ይቆያል",
+    "deactivationUndone": "ማቆም ተቀልብሷል — {{name}} ንቁ ሆኖ ይቆያል"
+  },
+  "manager": {
+    "pageTitle": "ሠራተኞች",
+    "pageSubtitle": "ከእርስዎ በታች ያለውን ቡድን ያስተዳድሩ",
+    "revertTitle": "አጠቃላይ እይታ"
   }
 }
