@@ -1,5 +1,6 @@
 import { extractErrorMessage } from '../../utils/errorHandler';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -21,6 +22,7 @@ const SETTING_KEY = 'managerMenuEditEnabled';
  * When on, managers can add, edit, and hide menu items.
  */
 export const ManagerMenuEditToggle: React.FC = () => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const { fetchSettings } = useSettingsStore();
   const queryClient = useQueryClient();
@@ -51,37 +53,37 @@ export const ManagerMenuEditToggle: React.FC = () => {
       await fetchSettings();
       addToast({
         type: 'success',
-        title: checked ? 'Manager menu editing enabled' : 'Manager menu editing disabled',
+        title: checked ? t('settings.menuEdit.managerEnabled') : t('settings.menuEdit.managerDisabled'),
         message: checked
-          ? 'Managers can now add, edit, and hide menu items.'
-          : 'The menu is now read-only for managers.',
+          ? t('settings.menuEdit.managerEnabledMsg')
+          : t('settings.menuEdit.managerDisabledMsg'),
       });
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Update failed',
-        message: extractErrorMessage(err) || 'Could not update setting.',
+        title: t('settings.menuEdit.updateFailed'),
+        message: extractErrorMessage(err) || t('settings.menuEdit.updateFailedMsg'),
       });
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (settingQuery.isLoading) return <LoadingState message="Loading setting..." />;
+  if (settingQuery.isLoading) return <LoadingState message={t('loading')} />;
 
   return (
     <SettingsRow
       icon={UtensilsCrossed}
       iconClassName="text-emerald-600 dark:text-emerald-400"
       iconBgClassName="bg-emerald-500/10"
-      title="Allow manager menu editing"
-      description="Off by default — managers can browse the menu but not change it. Turn it on to unlock adding, editing, and hiding menu items for managers."
+      title={t('settings.menuEdit.managerTitle')}
+      description={t('settings.menuEdit.managerDescription')}
       control={
         <Switch
           checked={enabled}
           onCheckedChange={handleToggle}
           disabled={isSaving}
-          aria-label="Allow manager menu editing"
+          aria-label={t('settings.menuEdit.managerTitle')}
         />
       }
     />
