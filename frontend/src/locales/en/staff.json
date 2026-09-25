@@ -43,5 +43,110 @@
     "review": "Review & Save",
     "next": "Next: Credentials",
     "save": "Save Changes"
+  },
+  "table": {
+    "staff": "Staff",
+    "role": "Role",
+    "contact": "Contact",
+    "salary": "Salary",
+    "status": "Status",
+    "actions": "Actions"
+  },
+  "sections": {
+    "identity": "Identity",
+    "credentials": "Credentials"
+  },
+  "search": {
+    "placeholder": "Search staff...",
+    "roleAria": "Filter staff by role",
+    "statusAria": "Filter staff by status",
+    "allRoles": "All Roles",
+    "active": "Active",
+    "inactive": "Inactive",
+    "all": "All"
+  },
+  "badges": {
+    "noPin": "No PIN",
+    "noPinTooltip": "No mobile PIN yet — they cannot sign in on the app",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "row": {
+    "edit": "Edit",
+    "editAria": "Edit {{name}}",
+    "remove": "Remove",
+    "removeAria": "Remove {{name}}",
+    "deactivate": "Deactivate",
+    "deactivateAria": "Deactivate {{name}}",
+    "reactivate": "Reactivate",
+    "reactivateAria": "Reactivate {{name}}",
+    "readOnly": "Read-only",
+    "managerLocked": "You can't modify another manager — ask the owner."
+  },
+  "empty": {
+    "noStaffTitle": "No staff yet",
+    "noStaffMsg": "Add your first team member — managers, cashiers, waiters, and kitchen staff.",
+    "noStaffMsgManager": "Add your first team member — cashiers, waiters, and kitchen staff.",
+    "noMatchTitle": "No staff match your search",
+    "noMatchMsg": "Nothing here matches the search or filters above.",
+    "clearFilters": "Clear filters"
+  },
+  "form": {
+    "fullName": "Full Name",
+    "username": "Username",
+    "phone": "Phone",
+    "role": "Role",
+    "namePlaceholder": "e.g. Alice Johnson",
+    "usernamePlaceholder": "staff_username",
+    "phonePlaceholder": "+251 9XX XXX XXX",
+    "passwordNew": "Set a new password",
+    "passwordTemp": "Temporary password"
+  },
+  "drawer": {
+    "addTitle": "Add Staff Member",
+    "editTitle": "Edit Staff Member",
+    "add": "Add Staff",
+    "back": "Back",
+    "cancel": "Cancel",
+    "saving": "Saving..."
+  },
+  "remove": {
+    "title": "Remove {{name}}?",
+    "thisStaff": "this staff member",
+    "description": "This permanently deletes the account. It only works for staff with no orders, settlements, payroll or attendance on record — if they have history, deactivate them instead so the records stay attributed.",
+    "confirm": "Remove"
+  },
+  "errors": {
+    "loadFailed": "Failed to load staff.",
+    "namePhoneRequired": "Name and phone are required.",
+    "invalidPhone": "Invalid phone",
+    "invalidPhoneMsg": "Ethiopian numbers need {{code}} plus 9 digits.",
+    "invalidPin": "Invalid PIN",
+    "invalidPinMsg": "A PIN is exactly 4 digits.",
+    "pinRequired": "PIN required",
+    "pinRequiredMsg": "This role signs in with a PIN in the mobile app.",
+    "saveFailed": "Save failed",
+    "removeFailed": "Remove failed",
+    "actionFailed": "Action failed",
+    "notAllowed": "Not allowed",
+    "notAllowedMsg": "Managers cannot create or assign the Manager role.",
+    "retry": "Retry",
+    "undo": "Undo"
+  },
+  "toasts": {
+    "updated": "Staff member updated",
+    "added": "{{name}} added",
+    "removed": "{{name}} removed",
+    "reactivated": "{{name}} reactivated",
+    "deactivated": "{{name}} deactivated",
+    "canLogIn": "They can now log in again.",
+    "cannotLogIn": "They will no longer be able to log in.",
+    "reactivationUndone": "Reactivation undone — {{name}} stays inactive",
+    "deactivationUndone": "Deactivation undone — {{name}} stays active"
+  },
+  "manager": {
+    "pageTitle": "Staff",
+    "pageSubtitle": "Manage the team below you",
+    "revertTitle": "Overview"
   }
 }
