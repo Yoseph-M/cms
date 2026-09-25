@@ -60,15 +60,15 @@ const CashierOrderingPanel = lazy(() =>
 /* ─── Payment method visual config (matches original) ─── */
 type PaymentTile = {
   pm: PaymentMethod;
-  label: string;
-  short: string;
+  /** i18n key suffix under `cashier.method.*` for the tile caption. */
+  methodKey: string;
   icon: React.FC<{ className?: string }>;
   hotkey: string;
 };
 const PAYMENT_TILES: PaymentTile[] = [
-  { pm: 'CASH',   label: 'Cash',   short: 'Cash',   icon: Banknote,   hotkey: '1' },
-  { pm: 'CARD',   label: 'Card',   short: 'Card',   icon: CreditCard, hotkey: '2' },
-  { pm: 'MOBILE', label: 'Mobile', short: 'Mobile', icon: Smartphone, hotkey: '3' },
+  { pm: 'CASH',   methodKey: 'cash',   icon: Banknote,   hotkey: '1' },
+  { pm: 'CARD',   methodKey: 'card',   icon: CreditCard, hotkey: '2' },
+  { pm: 'MOBILE', methodKey: 'mobile', icon: Smartphone, hotkey: '3' },
 ];
 
 
@@ -87,7 +87,7 @@ const PayBlock: React.FC<{
     return (
       <div className="text-sm text-muted-foreground flex items-center gap-2">
         <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-        {phase === 'printed' ? 'Receipt printed.' : 'This ticket is settled.'}
+        {phase === 'printed' ? t('payBlock.receiptPrinted') : t('payBlock.settled')}
       </div>
     );
   }
@@ -123,7 +123,7 @@ const PayBlock: React.FC<{
                 </span>
               )}
               <Icon className={cn('w-5 h-5', active && 'text-primary')} />
-              <span className="text-xs font-bold">{meta.short}</span>
+              <span className="text-xs font-bold">{t(`payment.${meta.methodKey}`)}</span>
               <kbd
                 className={cn(
                   'absolute bottom-1 right-1 text-[9px] font-mono px-1 rounded',
@@ -146,9 +146,9 @@ const PayBlock: React.FC<{
             <kbd className="px-1 py-0.5 rounded bg-secondary border border-border font-mono text-[10px]">1</kbd>
             <kbd className="px-1 py-0.5 rounded bg-secondary border border-border font-mono text-[10px] ml-1">2</kbd>
             <kbd className="px-1 py-0.5 rounded bg-secondary border border-border font-mono text-[10px] ml-1">3</kbd>
-            <span className="ml-1.5">method</span>
+            <span className="ml-1.5">{t('payBlock.methodHint')}</span>
             <kbd className="px-1 py-0.5 rounded bg-secondary border border-border font-mono text-[10px] ml-2">↵</kbd>
-            <span className="ml-1.5">settle</span>
+            <span className="ml-1.5">{t('payBlock.settleHint')}</span>
           </span>
         </div>
         <button
@@ -234,13 +234,13 @@ export const CashierTicketsPage: React.FC = () => {
 
   // Reflect the current section in the global header.
   useEffect(() => {
-    setPageTitle({ title: 'Tickets', subtitle: 'Live order queue and payment collection' });
+    setPageTitle({ title: t('tickets.pageTitle'), subtitle: t('tickets.pageSubtitle') });
     setShowDateRange(false);
     return () => {
-      setPageTitle({ title: 'Overview', subtitle: '' });
+      setPageTitle({ title: t('tickets.overviewTitle'), subtitle: '' });
       setShowDateRange(false);
     };
-  }, [setPageTitle, setShowDateRange]);
+  }, [setPageTitle, setShowDateRange, t]);
 
   /* ── Settings ── */
   const tableCountQuery = useSystemSettingQuery('tableCount');
@@ -395,7 +395,9 @@ export const CashierTicketsPage: React.FC = () => {
         return {
           id,
           reason,
-          label: order?.tableNumber ? `Table ${order.tableNumber}` : 'Takeout',
+          label: order?.tableNumber
+            ? t('toasts.tableN', { number: order.tableNumber })
+            : t('toasts.takeoutLabel'),
         };
       }),
     [reprintFailures, orders],
@@ -431,7 +433,7 @@ export const CashierTicketsPage: React.FC = () => {
       const totalPages = Math.max(1, Math.ceil(fetched.length / QUEUE_PAGE_SIZE));
       if (page > totalPages) setPage(totalPages);
     } catch (err: any) {
-      setError(extractErrorMessage(err, 'Failed to fetch active queue'));
+      setError(extractErrorMessage(err, t('errors.fetchQueue')));
     } finally {
       if (!silent) setIsLoading(false);
     }
@@ -500,18 +502,22 @@ export const CashierTicketsPage: React.FC = () => {
           : undefined);
       if (!orderId) return;
       const order = ordersRef.current.find((o) => o.id === orderId);
-      const label = order?.tableNumber ? `Table ${order.tableNumber}` : 'The takeout ticket';
+      const label = order?.tableNumber
+        ? t('toasts.tableN', { number: order.tableNumber })
+        : t('toasts.takeoutTicket');
       const attempts = reprintAttempts.current.get(orderId) ?? 0;
       setReprintFailures((prev) => ({
         ...prev,
-        [orderId]: payload?.error || 'The printer did not accept the ticket.',
+        [orderId]: payload?.error || t('errors.printerRejected'),
       }));
       // NOTE: the payload's `error` is kept for context; the copy the cashier
       // reads stays in plain language rather than raw driver text.
       addToast({
         type: 'error',
-        title: attempts > 0 ? 'Reprint failed again' : 'Kitchen ticket failed',
-        message: `${label} did not reach the printer${attempts > 1 ? ' again' : ''}. Check the printer is switched on and loaded, then reprint.`,
+        title: attempts > 0 ? t('toasts.reprintFailedAgain') : t('toasts.kitchenTicketFailed'),
+        message: attempts > 1
+          ? t('toasts.reprintFailedAgainMsg', { label })
+          : t('toasts.reprintFailedMsg', { label }),
       });
     };
 
@@ -570,7 +576,7 @@ export const CashierTicketsPage: React.FC = () => {
 
     try {
       const order = orders.find((o) => o.id === orderId);
-      if (!order) throw new Error('Order not found');
+      if (!order) throw new Error(t('errors.orderNotFound'));
 
       // If the order is already settled in our local state, don't even try.
       // This can happen if a socket message arrived while we were waiting to retry.
@@ -588,8 +594,8 @@ export const CashierTicketsPage: React.FC = () => {
         isSettlingRef.current = false;
         addToast({
           type: 'warning',
-          title: 'Kitchen ticket not printed',
-          message: 'Re-send the ticket to the printer before settling it.',
+          title: t('toasts.kitchenNotPrinted'),
+          message: t('toasts.kitchenNotPrintedMsg'),
         });
         return;
       }
@@ -600,7 +606,7 @@ export const CashierTicketsPage: React.FC = () => {
           amountMinor: order.totalAmount,
           method: paymentMethod,
           reference: '',
-          note: 'Settlement recorded via Cashier Dashboard',
+          note: t('notes.settlementRecorded'),
         },
         { headers: { 'Idempotency-Key': `settle-full-${orderId}-${user?.id || 'anon'}` } },
       );
@@ -636,14 +642,14 @@ export const CashierTicketsPage: React.FC = () => {
         setPhase('idle');
         
         let errorMessage = extractErrorMessage(err);
-        let errorTitle = 'Payment Issue';
+        let errorTitle = t('errors.paymentIssue');
         
         if (isAlreadySettled) {
-          errorMessage = 'This order has already been fully settled.';
-          errorTitle = 'Already Settled';
+          errorMessage = t('errors.alreadySettledMsg');
+          errorTitle = t('errors.alreadySettled');
         } else if (isOverage) {
-          errorMessage = 'Settlement amount exceeds the remaining balance.';
-          errorTitle = 'Overpayment Attempted';
+          errorMessage = t('errors.overageMsg');
+          errorTitle = t('errors.overage');
         }
         
         // Refresh the order to show current state
@@ -675,8 +681,8 @@ export const CashierTicketsPage: React.FC = () => {
             isSettlingRef.current = false;
             addToast({
               type: 'success',
-              title: 'Payment recorded',
-              message: 'This order was settled while the payment was being confirmed.',
+              title: t('toasts.paymentRecorded'),
+              message: t('toasts.paymentRecordedMsg'),
             });
             return;
           }
@@ -688,8 +694,8 @@ export const CashierTicketsPage: React.FC = () => {
         const delay = SETTLE_BACKOFF_MS[retryCount];
         addToast({
           type: 'info',
-          title: 'Confirming payment…',
-          message: 'The order changed while payment was recorded. Checking once more.',
+          title: t('toasts.confirmingPayment'),
+          message: t('toasts.confirmingPaymentMsg'),
         });
         settlementRetryTimerRef.current = setTimeout(() => {
           settlementRetryTimerRef.current = null;
@@ -706,10 +712,10 @@ export const CashierTicketsPage: React.FC = () => {
       let errorTitle = t('toasts.paymentFailed');
       
       if (errorDetails.statusCode === 401) {
-        errorMessage = 'Your session has expired. Please log in again.';
-        errorTitle = 'Session Expired';
+        errorMessage = t('errors.sessionExpiredMsg');
+        errorTitle = t('errors.sessionExpired');
       } else if (isConcurrent) {
-        errorMessage = 'Order is being modified by another user or process. Please try again.';
+        errorMessage = t('errors.concurrent');
         // Also refresh the order
         axiosClient.get(`/orders/${orderId}`)
           .then(res => setOrders(prev => prev.map(o => o.id === orderId ? res.data : o)))
@@ -742,22 +748,24 @@ export const CashierTicketsPage: React.FC = () => {
       });
       addToast({
         type: 'success',
-        title: 'Reprint sent',
-        message: 'The kitchen ticket was sent to the printer again.',
+        title: t('toasts.reprintSent'),
+        message: t('toasts.reprintSentMsg'),
       });
       void fetchOrdersRef.current(true);
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Could not reprint',
-        message: extractErrorMessage(err, 'Please try again in a moment.'),
+        title: t('toasts.reprintFailed'),
+        message: extractErrorMessage(err, t('errors.tryAgain')),
       });
     }
   };
 
   const handleRequestCancellation = async (reason: string) => {
     if (!selectedOrderId || !reason.trim() || cancellationState === 'processing') return;
-    const orderLabel = selectedOrder?.tableNumber ? `Table ${selectedOrder.tableNumber}` : 'This order';
+    const orderLabel = selectedOrder?.tableNumber
+      ? t('toasts.tableN', { number: selectedOrder.tableNumber })
+      : t('toasts.takeoutLabel');
     setCancellationState('processing');
     try {
       const res = await axiosClient.post(`/orders/${selectedOrderId}/cancel`, { reason });
@@ -773,7 +781,7 @@ export const CashierTicketsPage: React.FC = () => {
       addToast({
         type: 'error',
         title: t('toasts.cancelFailed', { defaultValue: 'Cancel failed' }),
-        message: extractErrorMessage(err, 'Failed to cancel the order.'),
+        message: extractErrorMessage(err, t('errors.cancelFailedMsg')),
       });
     }
   };
@@ -993,7 +1001,7 @@ export const CashierTicketsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setReprintFailures({})}
-                  aria-label="Dismiss"
+                  aria-label={t('a11y.dismiss')}
                   className="shrink-0 p-1 rounded-md text-destructive/80 hover:bg-destructive/10 transition-colors"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -1073,8 +1081,8 @@ export const CashierTicketsPage: React.FC = () => {
           cancellationState === 'complete'
             ? cancelledOrderLabel
             : selectedOrder?.tableNumber
-              ? `Table ${selectedOrder.tableNumber}`
-              : 'takeout order'
+              ? t('toasts.tableN', { number: selectedOrder.tableNumber })
+              : t('toasts.takeoutLabel')
         }
       />
     </div>
