@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import enCashier from '../locales/en/cashier.json';
+import enCommon from '../locales/en/common.json';
 
 /**
  * A kitchen reprint is fire-and-forget: `POST /print-jobs/reprint/:orderId`
@@ -30,7 +31,9 @@ vi.mock('react-i18next', () => {
   return {
     useTranslation: (ns?: string) => ({
       t: (key: string, opts?: Record<string, unknown>) => {
-        const value = String(ns ?? 'cashier') === 'cashier' ? resolve(enCashier, key) : undefined;
+        // `cashier` is the page's own namespace; anything else (including the
+        // default `common`) resolves against the shared catalog.
+        const value = ns === 'cashier' ? resolve(enCashier, key) : resolve(enCommon, key);
         if (typeof value === 'string') {
           return value.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(opts?.[k] ?? ''));
         }
