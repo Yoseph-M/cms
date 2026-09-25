@@ -1,6 +1,7 @@
 import { prisma } from './prisma.service';
 import { createNotification } from './notification.service';
 import { emitToLiveOrders } from './socket.service';
+import { getReminderPause } from './reminder-pause.service';
 import { recordAudit, SYSTEM_USER_ID } from './audit.service';
 import { Role, OrderStatus, SettlementStatus, PaymentMethod } from '@prisma/client';
 import { logger } from '../utils/logger';
@@ -218,9 +219,23 @@ export async function autoCancelStaleOrders() {
 
 export async function runScheduledNotificationChecks() {
   try {
-    await checkMissingAttendance();
-    await checkPayrollPeriodDue();
-    await checkUnavailableMenuItems();
+    // A destructive reset pauses the "someone is missing something" reminders —
+    // they are built from staff/menu data the reset keeps, so without this the
+    // inbox refilled within minutes and the reset looked like it never ran.
+    const pausedUntil = await getReminderPause();
+    if (pausedUntil) {
+      logger.info(
+        { pausedUntil: pausedUntil.toISOString() },
+        'Reminders are paused after a reset; skipping reminder checks.',
+      );
+    } else {
+      await checkMissingAttendance();
+      await checkPayrollPeriodDue();
+      await checkUnavailableMenuItems();
+    }
+
+    // Never paused: an open ticket left unsettled still has to be closed out,
+    // or the day's books keep carrying money that was never collected.
     await autoCancelStaleOrders();
   } catch (err) {
     logger.error({ err }, 'Scheduled notification checks failed');
