@@ -37,3 +37,21 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: () => false,
   }),
 });
+
+// Recharts measures its container through ResizeObserver, which jsdom does not
+// implement. Page-level suites (the dashboards) render real charts, so provide a
+// no-op observer instead of forcing every one of them to stub it.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(globalThis, 'ResizeObserver', {
+  value: ResizeObserverStub,
+  writable: true,
+  configurable: true,
+});
+
+// Some suites render translated UI without mocking react-i18next, so make sure
+// the real catalogue is initialised (English) for every test run.
+import './i18n';
