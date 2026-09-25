@@ -2,6 +2,10 @@
   "title": "Attendance",
   "subtitleOwner": "All staff attendance",
   "subtitleManager": "Team attendance and shift log",
+  "loadFailedAttendance": "Failed to load attendance data.",
+  "loadFailedStaff": "Failed to load staff.",
+  "bulkNote": "Bulk mark all present",
+  "noStaffToDisplay": "No staff to display.",
   "status": {
     "present": "Present",
     "absent": "Absent",
@@ -37,6 +41,7 @@
     "markedAllPresent": "Marked all present",
     "markedAllPresentMsg": "{{done}}/{{total}} staff marked Present for {{date}}. Individual cells remain overridable."
   },
+  "retry": "Retry",
   "history": {
     "title": "Attendance history",
     "filterByMonth": "Filter attendance by month",
