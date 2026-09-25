@@ -9,11 +9,13 @@ import React, { useEffect, useState } from 'react';
 import { axiosClient } from '../api/axiosClient';
 import { useAuthStore } from '../store/authStore';
 import { extractErrorMessage } from '../utils/errorHandler';
+import { useTranslation } from 'react-i18next';
 
 interface Settlement {
   id: string;
   amountMinor: number;
-  method: 'CASH' | 'CARD' | 'MOBILE';
+  /** NONE is the VOID audit row a cancellation writes — never a payment. */
+  method: 'CASH' | 'CARD' | 'MOBILE' | 'NONE';
   reference: string;
   note: string;
   recordedBy: {
@@ -41,6 +43,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
   onSettlementAdded,
 }) => {
   const { accessToken } = useAuthStore();
+  const { t } = useTranslation();
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
       setRemainingAmount(remainingRes.data.remainingAmount);
     } catch (err: any) {
       console.error('Failed to fetch settlements:', err);
-      setError(extractErrorMessage(err, 'Failed to load settlement history'));
+      setError(extractErrorMessage(err, t('settlements.loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -83,17 +86,22 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
   const getMethodLabel = (method: string) => {
     switch (method) {
       case 'CASH':
-        return '💵 Cash';
+        return `💵 ${t('cashier.method.cash')}`;
       case 'CARD':
-        return '💳 Card';
+        return `💳 ${t('cashier.method.card')}`;
       case 'MOBILE':
-        return '📱 Mobile';
+        return `📱 ${t('cashier.method.mobile')}`;
       default:
         return method;
     }
   };
 
-  const totalSettled = settlements.reduce((sum, s) => sum + s.amountMinor, 0);
+  /* Money actually taken on this ticket. A VOID row (method NONE) is the
+     cancellation audit entry — it carries the ticket's whole value so the void
+     shows in the history — so it must not be added to "Total Settled", which
+     would show a cancelled ticket as paid in full. */
+  const moneyRows = settlements.filter((s) => s.method !== 'NONE');
+  const totalSettled = moneyRows.reduce((sum, s) => sum + s.amountMinor, 0);
   const settlementStatus =
     totalSettled === 0
       ? 'UNSETTLED'
@@ -104,10 +112,10 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
   if (loading) {
     return (
       <div className="settlement-history">
-        <h3 className="text-lg font-semibold mb-4">Settlement History</h3>
+        <h3 className="text-lg font-semibold mb-4">{t('settlements.title')}</h3>
         <div className="text-center py-4">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2 text-gray-600">Loading settlements...</p>
+          <p className="mt-2 text-gray-600">{t('settlements.loading')}</p>
         </div>
       </div>
     );
@@ -116,15 +124,15 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
   if (error) {
     return (
       <div className="settlement-history">
-        <h3 className="text-lg font-semibold mb-4">Settlement History</h3>
+        <h3 className="text-lg font-semibold mb-4">{t('settlements.title')}</h3>
         <div className="bg-red-50 border border-red-200 rounded p-4 text-red-700">
-          <p className="font-semibold">Error loading settlements</p>
+          <p className="font-semibold">{t('settlements.loadError')}</p>
           <p className="text-sm mt-1">{error}</p>
           <button
             onClick={fetchSettlements}
             className="mt-2 text-sm underline hover:no-underline"
           >
-            Try again
+            {t('buttons.retry')}
           </button>
         </div>
       </div>
@@ -134,13 +142,13 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
   return (
     <div className="settlement-history">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold">Settlement History</h3>
+        <h3 className="text-lg font-semibold">{t('settlements.title')}</h3>
         <button
           onClick={fetchSettlements}
           className="text-sm text-blue-600 hover:text-blue-800"
-          title="Refresh"
+          title={t('settlements.refresh')}
         >
-          🔄 Refresh
+          🔄 {t('settlements.refresh')}
         </button>
       </div>
 
@@ -148,32 +156,32 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
         <div className="grid grid-cols-2 max-[419px]:grid-cols-1 gap-4">
           <div>
-            <p className="text-sm text-gray-600">Order Total</p>
+            <p className="text-sm text-gray-600">{t('settlements.orderTotal')}</p>
             <p className="text-xl font-bold">{formatAmount(orderTotal)}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Total Settled</p>
+            <p className="text-sm text-gray-600">{t('settlements.totalSettled')}</p>
             <p className="text-xl font-bold text-green-600">
               {formatAmount(totalSettled)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Remaining</p>
+            <p className="text-sm text-gray-600">{t('settlements.remaining')}</p>
             <p className="text-xl font-bold text-amber-600">
               {formatAmount(remainingAmount)}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Status</p>
+            <p className="text-sm text-gray-600">{t('settlements.statusLabel')}</p>
             <p className="text-xl font-bold">
               {settlementStatus === 'SETTLED' && (
-                <span className="text-green-600">✓ Settled</span>
+                <span className="text-green-600">✓ {t('settlements.settled')}</span>
               )}
               {settlementStatus === 'PARTIALLY_SETTLED' && (
-                <span className="text-amber-600">⚠ Partial</span>
+                <span className="text-amber-600">⚠ {t('settlements.partial')}</span>
               )}
               {settlementStatus === 'UNSETTLED' && (
-                <span className="text-red-600">✗ Unsettled</span>
+                <span className="text-red-600">✗ {t('settlements.unsettled')}</span>
               )}
             </p>
           </div>
@@ -184,28 +192,40 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
       {settlements.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
           <p className="text-lg">💸</p>
-          <p className="mt-2">No settlements recorded yet</p>
+          <p className="mt-2">{t('settlements.empty')}</p>
           <p className="text-sm mt-1">
-            External payments will be recorded here by the cashier
+            {t('settlements.emptyHint')}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           <p className="text-sm text-gray-600 font-semibold">
-            Payment Records ({settlements.length})
+            {t('settlements.paymentRecords', { count: moneyRows.length })}
           </p>
           {settlements.map((settlement) => (
             <div
               key={settlement.id}
-              className="border border-gray-200 rounded-lg p-4 bg-white hover:shadow-sm transition-shadow"
+              className={
+                settlement.method === 'NONE'
+                  ? 'border border-gray-200 rounded-lg p-4 bg-gray-50 hover:shadow-sm transition-shadow'
+                  : 'border border-gray-200 rounded-lg p-4 bg-white hover:shadow-sm transition-shadow'
+              }
             >
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <p className="font-semibold text-lg">
+                  <p
+                    className={
+                      settlement.method === 'NONE'
+                        ? 'font-semibold text-lg text-gray-400 line-through'
+                        : 'font-semibold text-lg'
+                    }
+                  >
                     {formatAmount(settlement.amountMinor)}
                   </p>
                   <p className="text-sm text-gray-600">
-                    {getMethodLabel(settlement.method)}
+                    {settlement.method === 'NONE'
+                      ? t('settlements.voided')
+                      : getMethodLabel(settlement.method)}
                   </p>
                 </div>
                 <div className="text-right text-sm text-gray-500">
@@ -215,7 +235,7 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
 
               {settlement.reference && (
                 <div className="mt-2 text-sm">
-                  <span className="text-gray-600">Reference: </span>
+                  <span className="text-gray-600">{t('settlements.reference')} </span>
                   <span className="font-mono text-gray-800">
                     {settlement.reference}
                   </span>
@@ -224,13 +244,13 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
 
               {settlement.note && (
                 <div className="mt-2 text-sm">
-                  <span className="text-gray-600">Note: </span>
+                  <span className="text-gray-600">{t('settlements.note')} </span>
                   <span className="text-gray-800">{settlement.note}</span>
                 </div>
               )}
 
               <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500">
-                Waiter: {settlement.order?.waiter?.name || 'N/A'}
+                {t('settlements.waiter')}: {settlement.order?.waiter?.name || t('settlements.na')}
               </div>
             </div>
           ))}
@@ -239,10 +259,9 @@ export const SettlementHistory: React.FC<SettlementHistoryProps> = ({
 
       {/* Information Banner */}
       <div className="mt-4 bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-800">
-        <p className="font-semibold">ℹ️ About Settlements</p>
+        <p className="font-semibold">ℹ️ {t('settlements.about')}</p>
         <p className="mt-1">
-          This CMS records external payments only. The actual payment processing
-          happens outside this system (e.g., cash register, card terminal, mobile app).
+          {t('settlements.aboutMsg')}
         </p>
       </div>
     </div>
