@@ -17,6 +17,7 @@ import {
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { useTranslation } from 'react-i18next';
 
 interface StaffUser {
   id: string;
@@ -75,16 +76,20 @@ interface EmployeeLedger {
 export const OwnerPayroll: React.FC = () => {
   const { addToast } = useToastStore();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
+  const { t } = useTranslation('common');
 
   // Reflect the current section in the global header.
   useEffect(() => {
-    setPageTitle({ title: 'Payroll', subtitle: 'Salary records and adjustments' });
+    setPageTitle({
+      title: t('payroll.title', { defaultValue: 'Payroll' }),
+      subtitle: t('payroll.subtitle', { defaultValue: 'Salary records and adjustments' }),
+    });
     setShowDateRange(false);
     return () => {
-      setPageTitle({ title: 'Overview', subtitle: '' });
+      setPageTitle({ title: t('app.overview', { defaultValue: 'Overview' }), subtitle: '' });
       setShowDateRange(false);
     };
-  }, [setPageTitle, setShowDateRange]);
+  }, [setPageTitle, setShowDateRange, t]);
 
   const queryClient = useQueryClient();
   const payrollQuery = usePayrollQuery();
@@ -147,12 +152,12 @@ export const OwnerPayroll: React.FC = () => {
 
   const handleRecordEntry = async () => {
     if (!userId) {
-      addToast({ type: 'error', title: 'Staff is required.' });
+      addToast({ type: 'error', title: t('payroll.staffRequired', { defaultValue: 'Staff is required.' }) });
       return;
     }
     
     if (calculatedPaidAmount < 0) {
-      addToast({ type: 'error', title: 'Calculated paid amount cannot be negative.' });
+      addToast({ type: 'error', title: t('payroll.amountNegative', { defaultValue: 'Calculated paid amount cannot be negative.' }) });
       return;
     }
 
@@ -174,8 +179,8 @@ export const OwnerPayroll: React.FC = () => {
       });
       addToast({
         type: 'success',
-        title: 'Payroll entry recorded',
-        message: 'Also logged in Expenses under Payroll.',
+        title: t('payroll.recorded', { defaultValue: 'Payroll entry recorded' }),
+        message: t('payroll.recordedMsg', { defaultValue: 'Also logged in Expenses under Payroll.' }),
       });
       setFormOpen(false);
       resetForm();
@@ -184,7 +189,7 @@ export const OwnerPayroll: React.FC = () => {
       const detail = err.response?.data?.details?.[0]?.error;
       addToast({
         type: 'error',
-        title: 'Could not record entry',
+        title: t('payroll.recordFailed', { defaultValue: 'Could not record entry' }),
         message: detail || extractErrorMessage(err),
       });
     } finally {
@@ -328,34 +333,34 @@ export const OwnerPayroll: React.FC = () => {
       {/* Payroll totals — every staff member's payments rolled up. */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 max-[419px]:grid-cols-1">
         <PayrollStat
-          label="Total payroll · all staff"
+          label={t('payroll.totalAllStaff', { defaultValue: 'Total payroll · all staff' })}
           value={formatCurrency(totalPaid)}
-          hint={`${paymentRows.length} payment${paymentRows.length === 1 ? '' : 's'} recorded`}
+          hint={t('payroll.paymentsRecorded', { count: paymentRows.length, defaultValue: '{{count}} payments recorded' })}
           accent="text-primary"
         />
         <PayrollStat
-          label={`This month · ${MONTHS[now.getMonth()]} ${now.getFullYear()}`}
+          label={`${t('payroll.thisMonth', { defaultValue: 'This month' })} · ${MONTHS[now.getMonth()]} ${now.getFullYear()}`}
           value={formatCurrency(payrollThisMonth)}
-          hint="Current payroll period"
+          hint={t('payroll.currentPeriod', { defaultValue: 'Current payroll period' })}
           accent="text-emerald-600"
         />
         <PayrollStat
-          label="Staff on payroll"
+          label={t('payroll.staffOnPayroll', { defaultValue: 'Staff on payroll' })}
           value={String(employeeLedger.length)}
-          hint={`${staff.length} active staff in total`}
+          hint={t('payroll.activeStaffTotal', { count: staff.length, defaultValue: '{{count}} active staff in total' })}
           accent="text-sky-600"
         />
         <PayrollStat
-          label="Adjustments"
+          label={t('payroll.adjustments', { defaultValue: 'Adjustments' })}
           value={String(ledger.length - paymentRows.length)}
-          hint="Bonuses and deductions"
+          hint={t('payroll.adjustmentsHint', { defaultValue: 'Bonuses and deductions' })}
           accent="text-[hsl(var(--warning))]"
         />
       </div>
 
       {/* Staff Grid for quick payroll insertion */}
       <div>
-        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Active Staff</h2>
+        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">{t('payroll.activeStaff', { defaultValue: 'Active Staff' })}</h2>
         
         {isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 max-[419px]:grid-cols-1 gap-4">
@@ -370,7 +375,7 @@ export const OwnerPayroll: React.FC = () => {
               className="bg-primary/5 border border-primary/20 hover:border-primary/40 rounded-xl p-4 shadow-sm cursor-pointer transition-colors flex flex-col items-center justify-center text-primary min-h-[6rem]"
             >
               <Plus className="w-8 h-8 mb-2" />
-              <div className="font-semibold text-sm">Add Record</div>
+              <div className="font-semibold text-sm">{t('payroll.addRecord', { defaultValue: 'Add Record' })}</div>
             </motion.div>
             {staffWithRecords.map(s => (
               <motion.div 
@@ -383,7 +388,7 @@ export const OwnerPayroll: React.FC = () => {
                 <div className="font-semibold text-foreground truncate">{s.name}</div>
                 <div className="text-xs text-muted-foreground mb-3">{s.role}</div>
                 <div className="text-sm font-mono font-medium text-primary">
-                  {formatCurrency(s.salaryAmount)} <span className="text-[10px] text-muted-foreground ml-1">/ mo</span>
+                  {formatCurrency(s.salaryAmount)} <span className="text-[10px] text-muted-foreground ml-1">{t('payroll.perMonth', { defaultValue: '/ mo' })}</span>
                 </div>
               </motion.div>
             ))}
@@ -394,13 +399,13 @@ export const OwnerPayroll: React.FC = () => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <CardTitle className="text-sm font-bold text-foreground flex items-center gap-3">
-            Historical Ledger
+            {t('payroll.historicalLedger', { defaultValue: 'Historical Ledger' })}
             <div className="flex items-center gap-2">
               <span className="text-xs font-normal text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full">
-                {employeeLedger.length} staff · {paymentRows.length} records
+                {t('payroll.staffAndRecords', { count: employeeLedger.length, records: paymentRows.length, defaultValue: '{{count}} staff · {{records}} records' })}
               </span>
               <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                {formatCurrency(totalPaid)} total paid
+                {t('payroll.totalPaid', { total: formatCurrency(totalPaid), defaultValue: '{{total}} total paid' })}
               </span>
             </div>
           </CardTitle>
@@ -411,24 +416,23 @@ export const OwnerPayroll: React.FC = () => {
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-destructive">{error}</p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={invalidatePayroll}>Retry</Button>
+              <Button variant="outline" size="sm" className="mt-3" onClick={invalidatePayroll}>{t('payroll.retry', { defaultValue: 'Retry' })}</Button>
             </div>
           ) : employeeLedger.length === 0 ? (
             <EmptyState
-              title="No payroll entries yet"
-              message="Click on a staff card above to record your first payroll entry."
+              title={t('payroll.emptyTitle', { defaultValue: 'No payroll entries yet' })}
+              message={t('payroll.emptyMsg', { defaultValue: 'Click on a staff card above to record your first payroll entry.' })}
               icon={<DollarSign className="w-7 h-7" />}
             />
           ) : (
-            <div>
-              <div className="flex items-center border-b border-border bg-secondary/30 text-sm px-4 py-3 font-semibold text-muted-foreground">
-                <div className="flex-[2]">Staff</div>
-                <div className="flex-1 text-center hidden sm:block">Last period</div>
-                <div className="flex-1 text-center hidden md:block">Records</div>
-                <div className="flex-1 text-right">Total paid</div>
-                <div className="flex-1 hidden lg:block">Last paid</div>
-                <div className="w-4" />
-              </div>
+            <div>                <div className="flex items-center border-b border-border bg-secondary/30 text-sm px-4 py-3 font-semibold text-muted-foreground">
+                  <div className="flex-[2]">{t('payroll.colStaff', { defaultValue: 'Staff' })}</div>
+                  <div className="flex-1 text-center hidden sm:block">{t('payroll.colLastPeriod', { defaultValue: 'Last period' })}</div>
+                  <div className="flex-1 text-center hidden md:block">{t('payroll.colRecords', { defaultValue: 'Records' })}</div>
+                  <div className="flex-1 text-right">{t('payroll.colTotalPaid', { defaultValue: 'Total paid' })}</div>
+                  <div className="flex-1 hidden lg:block">{t('payroll.colLastPaid', { defaultValue: 'Last paid' })}</div>
+                  <div className="w-4" />
+                </div>
               <FixedSizeList
                 height={LEDGER_LIST_HEIGHT}
                 itemCount={employeeLedger.length}
@@ -438,7 +442,7 @@ export const OwnerPayroll: React.FC = () => {
                 {renderLedgerRow}
               </FixedSizeList>
               <div className="border-t border-border px-4 py-2 text-center text-xs text-muted-foreground">
-                Tap an employee to open their full payroll history.
+                {t('payroll.tapEmployee', { defaultValue: 'Tap an employee to open their full payroll history.' })}
               </div>
             </div>
           )}
@@ -448,17 +452,17 @@ export const OwnerPayroll: React.FC = () => {
       <Sheet
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        title="Record Payroll Entry"
-        description={selectedStaff ? `Log payment for ${selectedStaff.name}` : ''}
+        title={t('payroll.formTitle', { defaultValue: 'Record Payroll Entry' })}
+        description={selectedStaff ? t('payroll.logPaymentFor', { name: selectedStaff.name, defaultValue: 'Log payment for {{name}}' }) : ''}
         footer={
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setFormOpen(false)} className="flex-1">Cancel</Button>
+            <Button variant="outline" onClick={() => setFormOpen(false)} className="flex-1">{t('payroll.cancel', { defaultValue: 'Cancel' })}</Button>
             <Button
               onClick={handleRecordEntry}
               disabled={isSubmitting || !userId || calculatedPaidAmount < 0}
               className="flex-1"
             >
-              {isSubmitting ? 'Saving...' : 'Record Payment'}
+              {isSubmitting ? t('payroll.saving', { defaultValue: 'Saving...' }) : t('payroll.recordPayment', { defaultValue: 'Record Payment' })}
             </Button>
           </div>
         }
@@ -466,17 +470,17 @@ export const OwnerPayroll: React.FC = () => {
         <div className="space-y-6">
           
           <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
-            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">Staff Member</label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">{t('payroll.staffMember', { defaultValue: 'Staff Member' })}</label>
             <DropdownSelect
-              ariaLabel="Staff Member"
+              ariaLabel={t('payroll.staffMember', { defaultValue: 'Staff Member' })}
               className="w-full justify-between mb-4"
               contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
               value={userId}
               onChange={setUserId}
-              placeholder="Select Staff"
+              placeholder={t('payroll.selectStaff', { defaultValue: 'Select Staff' })}
               options={staff.map(s => ({ value: s.id, label: `${s.name} (${s.role})` }))}
             />
-            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">Base Salary</label>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">{t('payroll.baseSalary', { defaultValue: 'Base Salary' })}</label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold font-mono text-foreground text-base">ETB</span>
               <Input
@@ -493,10 +497,10 @@ export const OwnerPayroll: React.FC = () => {
           <div className="bg-secondary/30 rounded-lg p-4 border border-border/50 flex gap-3">
             <div className="flex-1">
               <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
-                Period Month
+                {t('payroll.periodMonth', { defaultValue: 'Period Month' })}
               </label>
               <DropdownSelect
-                ariaLabel="Period Month"
+                ariaLabel={t('payroll.periodMonth', { defaultValue: 'Period Month' })}
                 className="w-full justify-between"
                 contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                 value={String(periodMonth)}
@@ -506,10 +510,10 @@ export const OwnerPayroll: React.FC = () => {
             </div>
             <div className="w-28">
               <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
-                Year
+                {t('payroll.year', { defaultValue: 'Year' })}
               </label>
               <DropdownSelect
-                ariaLabel="Year"
+                ariaLabel={t('payroll.year', { defaultValue: 'Year' })}
                 className="w-full justify-between"
                 contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                 value={String(periodYear)}
@@ -520,28 +524,28 @@ export const OwnerPayroll: React.FC = () => {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground block mb-2">Adjustments (Optional)</label>
+            <label className="text-sm font-medium text-foreground block mb-2">{t('payroll.adjustmentsOptional', { defaultValue: 'Adjustments (Optional)' })}</label>
             <div className="flex gap-2 mb-3">
               <button 
                 onClick={() => setAdjustmentType('none')}
                 className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'none' ? 'bg-secondary border-border text-foreground' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
               >
                 <Minus className="w-4 h-4 mx-auto mb-1" />
-                None
+                {t('payroll.adjNone', { defaultValue: 'None' })}
               </button>
               <button 
                 onClick={() => setAdjustmentType('bonus')}
                 className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'bonus' ? 'bg-[hsl(var(--success))]/10 border-[hsl(var(--success))]/30 text-[hsl(var(--success))]' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
               >
                 <TrendingUp className="w-4 h-4 mx-auto mb-1" />
-                Bonus
+                {t('payroll.adjBonus', { defaultValue: 'Bonus' })}
               </button>
               <button 
                 onClick={() => setAdjustmentType('deduction')}
                 className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-colors ${adjustmentType === 'deduction' ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'border-transparent text-muted-foreground hover:bg-secondary/40'}`}
               >
                 <TrendingDown className="w-4 h-4 mx-auto mb-1" />
-                Deduct
+                {t('payroll.adjDeduct', { defaultValue: 'Deduct' })}
               </button>
             </div>
 
@@ -557,7 +561,7 @@ export const OwnerPayroll: React.FC = () => {
                     type="number"
                     step="1"
                     min="0"
-                    placeholder={`Enter ${adjustmentType} amount in ETB`}
+                    placeholder={t('payroll.adjustmentPlaceholder', { kind: adjustmentType, defaultValue: 'Enter {{kind}} amount in ETB' })}
                     value={adjustmentAmount}
                     onChange={(e) => setAdjustmentAmount(e.target.value.replace(/[^\d]/g, ''))}
                     className="font-mono mt-1"
@@ -568,7 +572,7 @@ export const OwnerPayroll: React.FC = () => {
           </div>
           
           <div className="bg-primary/5 rounded-lg p-4 border border-primary/20 flex justify-between items-center">
-            <span className="font-semibold text-primary text-sm">Total to Pay:</span>
+            <span className="font-semibold text-primary text-sm">{t('payroll.totalToPay', { defaultValue: 'Total to Pay:' })}</span>
             <span className="font-bold font-mono text-primary text-xl">
               {formatCurrency(calculatedPaidAmount)}
             </span>
@@ -578,23 +582,23 @@ export const OwnerPayroll: React.FC = () => {
             <Receipt className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             <span className="min-w-0">
               <span className="block text-sm font-medium text-foreground">
-                Logged in Expenses automatically
+                {t('payroll.autoExpenses', { defaultValue: 'Logged in Expenses automatically' })}
               </span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                Every payroll payment is recorded on the Expenses page under the Payroll category — nothing to enter twice.
+                {t('payroll.autoExpensesMsg', { defaultValue: 'Every payroll payment is recorded on the Expenses page under the Payroll category — nothing to enter twice.' })}
               </span>
             </span>
           </div>
 
           <div>
             <label htmlFor="payroll-note" className="text-sm font-medium text-foreground block mb-1.5">
-              Note <span className="text-muted-foreground font-normal">(optional)</span>
+              {t('payroll.note', { defaultValue: 'Note' })} <span className="text-muted-foreground font-normal">{t('payroll.optional', { defaultValue: '(optional)' })}</span>
             </label>
             <Input
               id="payroll-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Paid in cash on the 28th"
+              placeholder={t('payroll.notePlaceholder', { defaultValue: 'e.g. Paid in cash on the 28th' })}
             />
           </div>
         </div>
@@ -627,13 +631,13 @@ export const OwnerPayroll: React.FC = () => {
                   <div className="min-w-0">
                     <h3 className="truncate text-base font-bold">{detailEmployee.name}</h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {detailEmployee.role} · {detailEmployee.payments.length} payment{detailEmployee.payments.length === 1 ? '' : 's'}
-                      {detailEmployee.adjustments.length > 0 ? ` · ${detailEmployee.adjustments.length} correction${detailEmployee.adjustments.length === 1 ? '' : 's'}` : ''}
+                      {detailEmployee.role} · {t('payroll.paymentsCount', { count: detailEmployee.payments.length, defaultValue: '{{count}} payments' })}
+                      {detailEmployee.adjustments.length > 0 ? ` · ${t('payroll.correctionsCount', { count: detailEmployee.adjustments.length, defaultValue: '{{count}} corrections' })}` : ''}
                     </p>
                   </div>
                   <button
                     onClick={() => setDetailEmployee(null)}
-                    aria-label="Close"
+                    aria-label={t('payroll.close', { defaultValue: 'Close' })}
                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   >
                     <X className="h-4 w-4" />
@@ -641,7 +645,7 @@ export const OwnerPayroll: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between border-b border-primary/20 bg-primary/5 px-5 py-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">Total paid</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">{t('payroll.colTotalPaid', { defaultValue: 'Total paid' })}</span>
                   <span className="font-mono text-lg font-bold text-primary">{formatCurrency(detailEmployee.totalPaid)}</span>
                 </div>
 
@@ -653,7 +657,7 @@ export const OwnerPayroll: React.FC = () => {
                           <span className="truncate text-sm font-medium">{row.period}</span>
                           {row.isAdjustment && (
                             <span className="rounded bg-[hsl(var(--warning))]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--warning))]">
-                              Correction
+                              {t('payroll.correction', { defaultValue: 'Correction' })}
                             </span>
                           )}
                         </div>
@@ -662,8 +666,8 @@ export const OwnerPayroll: React.FC = () => {
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-                        {row.base !== undefined && <span>Base {formatCurrency(row.base)}</span>}
-                        {row.by && <span>By {row.by}</span>}
+                        {row.base !== undefined && <span>{t('payroll.base', { base: formatCurrency(row.base), defaultValue: 'Base {{base}}' })}</span>}
+                        {row.by && <span>{t('payroll.by', { name: row.by, defaultValue: 'By {{name}}' })}</span>}
                         <span>{row.date}</span>
                       </div>
                       {row.note && <p className="mt-1 truncate text-xs italic text-muted-foreground">{row.note}</p>}
@@ -673,7 +677,7 @@ export const OwnerPayroll: React.FC = () => {
 
                 <div className="border-t border-border p-4">
                   <Button variant="outline" onClick={() => setDetailEmployee(null)} className="w-full">
-                    Close
+                    {t('payroll.close', { defaultValue: 'Close' })}
                   </Button>
                 </div>
               </div>
