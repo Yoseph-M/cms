@@ -82,7 +82,7 @@ export const OwnerStaff: React.FC = () => {
   // Shared cached user list — OwnerStaff, ManagerDashboard, and payroll pages all
   // read the same cache, so switching tabs never fetches staff from scratch.
   const { data: serverUsers = [], isLoading, error: queryError, refetch: refetchUsers } = useUsersQuery();
-  const error = queryError ? extractErrorMessage(queryError, 'Failed to load staff.') : null;
+  const error = queryError ? extractErrorMessage(queryError, t('errors.loadFailed')) : null;
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
@@ -203,15 +203,15 @@ export const OwnerStaff: React.FC = () => {
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.phone.trim()) {
-      addToast({ type: 'error', title: 'Name and phone are required.' });
+      addToast({ type: 'error', title: t('errors.namePhoneRequired') });
       return;
     }
     if (!isValidEthiopianPhone(form.phone)) {
-      addToast({ type: 'error', title: 'Invalid phone', message: `Ethiopian numbers need ${ETHIOPIAN_COUNTRY_CODE} plus ${9} digits.` });
+      addToast({ type: 'error', title: t('errors.invalidPhone'), message: t('errors.invalidPhoneMsg', { code: ETHIOPIAN_COUNTRY_CODE }) });
       return;
     }
     if (form.pin && !/^\d{4}$/.test(form.pin)) {
-      addToast({ type: 'error', title: 'Invalid PIN', message: 'A PIN is exactly 4 digits.' });
+      addToast({ type: 'error', title: t('errors.invalidPin'), message: t('errors.invalidPinMsg') });
       return;
     }
     // Two-step card: the first Save is "review" — it validates the identity
@@ -224,7 +224,7 @@ export const OwnerStaff: React.FC = () => {
     // it blank keeps the PIN that is already stored. The role may change on the
     // card, so the EDITED role decides whether a PIN/password must exist.
     if (pinRequired && !form.pin && !editingUser) {
-      addToast({ type: 'error', title: 'PIN required', message: 'This role signs in with a PIN in the mobile app.' });
+      addToast({ type: 'error', title: t('errors.pinRequired'), message: t('errors.pinRequiredMsg') });
       return;
     }
     // A site role with no stored password cannot sign in — the amber warning
@@ -248,15 +248,15 @@ export const OwnerStaff: React.FC = () => {
         queryClient.setQueryData<User[]>(['users'], (old) =>
           (old ?? []).map((u) => (u.id === editingUser.id ? res.data : u))
         );
-        addToast({ type: 'success', title: 'Staff member updated' });
+        addToast({ type: 'success', title: t('toasts.updated') });
       } else {
         const res = await axiosClient.post('/users', payload);
         queryClient.setQueryData<User[]>(['users'], (old) => [res.data, ...(old ?? [])]);
-        addToast({ type: 'success', title: `${form.name} added` });
+        addToast({ type: 'success', title: t('toasts.added', { name: form.name }) });
       }
       setSlideOverOpen(false);
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Save failed', message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: t('errors.saveFailed'), message: extractErrorMessage(err) });
     } finally {
       setIsSaving(false);
     }
@@ -271,9 +271,9 @@ export const OwnerStaff: React.FC = () => {
       queryClient.setQueryData<User[]>(['users'], (old) =>
         (old ?? []).filter((u) => u.id !== removingUser.id)
       );
-      addToast({ type: 'success', title: `${removingUser.name} removed` });
+      addToast({ type: 'success', title: t('toasts.removed', { name: removingUser.name }) });
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Remove failed', message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: t('errors.removeFailed'), message: extractErrorMessage(err) });
     } finally {
       setIsRemoving(false);
       setRemovingUser(null);
@@ -301,7 +301,7 @@ export const OwnerStaff: React.FC = () => {
           delete next[user.id];
           return next;
         });
-        addToast({ type: 'error', title: 'Action failed', message: extractErrorMessage(err) });
+        addToast({ type: 'error', title: t('errors.actionFailed'), message: extractErrorMessage(err) });
         pendingStatusTimeouts.current.delete(user.id);
       }
     };
@@ -310,8 +310,8 @@ export const OwnerStaff: React.FC = () => {
     pendingStatusTimeouts.current.set(user.id, timeoutId);
 
     const undo = () => {
-      const t = pendingStatusTimeouts.current.get(user.id);
-      if (t) clearTimeout(t);
+      const pending = pendingStatusTimeouts.current.get(user.id);
+      if (pending) clearTimeout(pending);
       pendingStatusTimeouts.current.delete(user.id);
       setActiveOverrides((prev) => {
         const next = { ...prev };
@@ -320,19 +320,21 @@ export const OwnerStaff: React.FC = () => {
       });
       addToast({
         type: 'info',
-        title: nextActive ? `Reactivation undone — ${user.name} stays inactive` : `Deactivation undone — ${user.name} stays active`,
+        title: nextActive
+          ? t('toasts.reactivationUndone', { name: user.name })
+          : t('toasts.deactivationUndone', { name: user.name }),
       });
     };
 
     addToast({
       type: 'success',
-      title: nextActive ? `${user.name} reactivated` : `${user.name} deactivated`,
-      message: nextActive
-        ? 'They can now log in again.'
-        : 'They will no longer be able to log in.',
-      undo: { label: 'Undo', onClick: undo },
+      title: nextActive
+        ? t('toasts.reactivated', { name: user.name })
+        : t('toasts.deactivated', { name: user.name }),
+      message: nextActive ? t('toasts.canLogIn') : t('toasts.cannotLogIn'),
+      undo: { label: t('errors.undo'), onClick: undo },
     });
-  }, [addToast]);
+  }, [addToast, t]);
 
   const clearFilters = () => {
     setSearch('');
@@ -362,7 +364,7 @@ export const OwnerStaff: React.FC = () => {
       ) : error ? (
         <div className="py-16 text-center">
           <p className="text-destructive">{error}</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetchUsers()}>Retry</Button>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetchUsers()}>{t('errors.retry')}</Button>
         </div>
       ) : (
         <div className="rounded-xl border border-border overflow-hidden">
@@ -374,34 +376,34 @@ export const OwnerStaff: React.FC = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                 <Input
                   id="staff-search"
-                  placeholder="Search staff..."
+                  placeholder={t('search.placeholder')}
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="pl-9 w-52 max-[767px]:w-44 h-9"
                 />
               </div>
               <DropdownSelect
-                ariaLabel="Filter staff by role"
+                ariaLabel={t('search.roleAria')}
                 size="sm"
                 icon={Users}
                 value={roleFilter}
                 onChange={setRoleFilter}
                 options={[
-                  { value: 'All', label: 'All Roles' },
+                  { value: 'All', label: t('search.allRoles') },
                   ...STAFF_ROLES.map(r => ({ value: r, label: r })),
                 ]}
                 contentClassName="w-40"
               />
               <DropdownSelect
-                ariaLabel="Filter staff by status"
+                ariaLabel={t('search.statusAria')}
                 size="sm"
                 icon={ShieldCheck}
                 value={statusFilter}
                 onChange={setStatusFilter}
                 options={[
-                  { value: 'active', label: 'Active' },
-                  { value: 'inactive', label: 'Inactive' },
-                  { value: 'all', label: 'All' },
+                  { value: 'active', label: t('search.active') },
+                  { value: 'inactive', label: t('search.inactive') },
+                  { value: 'all', label: t('search.all') },
                 ]}
                 contentClassName="w-36"
               />
@@ -419,7 +421,7 @@ export const OwnerStaff: React.FC = () => {
                 </span>
               </div>
               <Button id="add-staff-btn" onClick={openAdd} size="sm" className="shadow-sm">
-                <Plus className="w-4 h-4 mr-2" />Add Staff
+                <Plus className="w-4 h-4 mr-2" />{t('drawer.add')}
               </Button>
             </div>
           </div>
@@ -429,17 +431,17 @@ export const OwnerStaff: React.FC = () => {
           {filteredUsers.length === 0 ? (
             <EmptyState
               className="py-14"
-              title={users.length === 0 ? 'No staff yet' : 'No staff match your search'}
+              title={users.length === 0 ? t('empty.noStaffTitle') : t('empty.noMatchTitle')}
               message={
                 users.length === 0
-                  ? 'Add your first team member — managers, cashiers, waiters, and kitchen staff.'
-                  : 'Nothing here matches the search or filters above.'
+                  ? t('empty.noStaffMsg')
+                  : t('empty.noMatchMsg')
               }
               icon={<Users className="w-7 h-7" />}
               action={
                 users.length === 0
-                  ? { label: 'Add Staff', onClick: openAdd, icon: <Plus className="w-4 h-4 mr-1.5" /> }
-                  : { label: 'Clear filters', onClick: clearFilters, variant: 'outline' }
+                  ? { label: t('drawer.add'), onClick: openAdd, icon: <Plus className="w-4 h-4 mr-1.5" /> }
+                  : { label: t('empty.clearFilters'), onClick: clearFilters, variant: 'outline' }
               }
             />
           ) : (
@@ -447,12 +449,12 @@ export const OwnerStaff: React.FC = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-secondary/50 border-b border-border">
-                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Staff</th>
-                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden sm:table-cell">Role</th>
-                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Contact</th>
-                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">Salary</th>
-                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground">Status</th>
-                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground">Actions</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t('table.staff')}</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden sm:table-cell">{t('table.role')}</th>
+                  <th className="text-left px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">{t('table.contact')}</th>
+                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground hidden md:table-cell">{t('table.salary')}</th>
+                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground">{t('table.status')}</th>
+                  <th className="text-right px-4 py-3 font-semibold text-muted-foreground">{t('table.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -467,10 +469,10 @@ export const OwnerStaff: React.FC = () => {
                         </Avatar>
                         <span className="font-medium truncate max-w-[120px]">{user.name}</span>
                         {needsPinFor(user.role) && !user.hasPin && (
-                          <Tooltip label="No mobile PIN yet — they cannot sign in on the app">
+                          <Tooltip label={t('badges.noPinTooltip')}>
                             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
                               <KeyRound className="h-3 w-3" />
-                              No PIN
+                              {t('badges.noPin')}
                             </span>
                           </Tooltip>
                         )}
@@ -488,13 +490,13 @@ export const OwnerStaff: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${user.isActive ? 'bg-[hsl(var(--success))]/20 text-[hsl(var(--success))] border-[hsl(var(--success))]/40' : 'bg-secondary text-muted-foreground border-border'}`}>
-                        {user.isActive ? 'Active' : 'Inactive'}
+                        {user.isActive ? t('badges.active') : t('badges.inactive')}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <Tooltip label="Edit">
-                          <button onClick={() => openEdit(user)} aria-label={`Edit ${user.name}`} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                        <Tooltip label={t('row.edit')}>
+                          <button onClick={() => openEdit(user)} aria-label={t('row.editAria', { name: user.name })} className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         </Tooltip>
@@ -506,21 +508,21 @@ export const OwnerStaff: React.FC = () => {
                           </Tooltip>
                         )}
                         {user.id !== currentUser?.id && (
-                          <Tooltip label="Remove">
-                            <button onClick={() => setRemovingUser(user)} aria-label={`Remove ${user.name}`} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                          <Tooltip label={t('row.remove')}>
+                            <button onClick={() => setRemovingUser(user)} aria-label={t('row.removeAria', { name: user.name })} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
                         )}
                         {user.isActive ? (
-                          <Tooltip label="Deactivate">
-                            <button onClick={() => toggleActiveStatus(user, false)} aria-label={`Deactivate ${user.name}`} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                          <Tooltip label={t('row.deactivate')}>
+                            <button onClick={() => toggleActiveStatus(user, false)} aria-label={t('row.deactivateAria', { name: user.name })} className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                               <ShieldOff className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
                         ) : (
-                          <Tooltip label="Reactivate">
-                            <button onClick={() => toggleActiveStatus(user, true)} aria-label={`Reactivate ${user.name}`} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
+                          <Tooltip label={t('row.reactivate')}>
+                            <button onClick={() => toggleActiveStatus(user, true)} aria-label={t('row.reactivateAria', { name: user.name })} className="p-1.5 rounded-md text-muted-foreground hover:text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors">
                               <ShieldCheck className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
@@ -541,24 +543,24 @@ export const OwnerStaff: React.FC = () => {
       <Sheet
         open={slideOverOpen}
         onClose={() => setSlideOverOpen(false)}
-        title={editingUser ? 'Edit Staff Member' : 'Add Staff Member'}
+        title={editingUser ? t('drawer.editTitle') : t('drawer.addTitle')}
         footer={
           <div className="flex gap-3">
             {form.credentialsDone ? (
-              <Button variant="outline" onClick={() => setForm(f => ({ ...f, credentialsDone: false }))} className="flex-1">Back</Button>
+              <Button variant="outline" onClick={() => setForm(f => ({ ...f, credentialsDone: false }))} className="flex-1">{t('drawer.back')}</Button>
             ) : (
-              <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
+              <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">{t('drawer.cancel')}</Button>
             )}
             <Button onClick={handleSave} disabled={isSaving} className="flex-1">
               {isSaving
-                ? 'Saving...'
+                ? t('drawer.saving')
                 : !form.credentialsDone
                   ? editingUser
                     ? t('actions.review')
                     : t('actions.next')
                   : editingUser
                     ? t('actions.save')
-                    : 'Add Staff'}
+                    : t('drawer.add')}
             </Button>
           </div>
         }
@@ -583,33 +585,33 @@ export const OwnerStaff: React.FC = () => {
           {!form.credentialsDone ? (
           <section className="space-y-4">
             {/* Identity — short fields share a row so the form stays scannable. */}
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Identity</h3>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('sections.identity')}</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="sf-name" className="text-sm font-medium text-foreground block mb-1.5">
-                  Full Name <span className="text-destructive">*</span>
+                  {t('form.fullName')} <span className="text-destructive">*</span>
                 </label>
                 <Input
                   id="sf-name"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Alice Johnson"
+                  placeholder={t('form.namePlaceholder')}
                 />
               </div>
               <div>
                 <label htmlFor="sf-username" className="text-sm font-medium text-foreground block mb-1.5">
-                  Username
+                  {t('form.username')}
                 </label>
                 <Input
                   id="sf-username"
                   value={form.username}
                   onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                  placeholder="staff_username"
+                  placeholder={t('form.usernamePlaceholder')}
                 />
               </div>
               <div className="sm:col-span-2">
                 <label htmlFor="sf-phone" className="text-sm font-medium text-foreground block mb-1.5">
-                  Phone <span className="text-destructive">*</span>
+                  {t('form.phone')} <span className="text-destructive">*</span>
                 </label>
                 <Input
                   id="sf-phone"
@@ -617,15 +619,15 @@ export const OwnerStaff: React.FC = () => {
                   value={form.phone}
                   maxLength={ETHIOPIAN_COUNTRY_CODE.length + 9}
                   onChange={e => setForm(f => ({ ...f, phone: formatEthiopianPhone(e.target.value) }))}
-                  placeholder="+251 9XX XXX XXX"
+                  placeholder={t('form.phonePlaceholder')}
                 />
               </div>
               <div className="sm:col-span-2 bg-secondary/30 rounded-lg p-4 border border-border/50">
                 <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
-                  Role <span className="text-destructive">*</span>
+                  {t('form.role')} <span className="text-destructive">*</span>
                 </label>
                 <DropdownSelect
-                  ariaLabel="Role"
+                  ariaLabel={t('form.role')}
                   className="w-full justify-between"
                   contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                   value={form.role}
@@ -645,7 +647,7 @@ export const OwnerStaff: React.FC = () => {
           <section className="space-y-4 border-t border-border pt-5">
             {/* Credentials — what the role signs in with: a PIN for the app, a
                 password for the website, and both for a manager. */}
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Credentials</h3>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('sections.credentials')}</h3>
             {credentialWarning && (
               <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-800 dark:text-amber-300">
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -701,7 +703,7 @@ export const OwnerStaff: React.FC = () => {
                           type={showCredential ? 'text' : 'password'}
                           value={form.credential}
                           onChange={e => setForm(f => ({ ...f, credential: e.target.value }))}
-                          placeholder={editingUser ? 'Set a new password' : 'Temporary password'}
+                          placeholder={editingUser ? t('form.passwordNew') : t('form.passwordTemp')}
                           className="pr-10"
                           autoComplete="new-password"
                         />
@@ -731,15 +733,9 @@ export const OwnerStaff: React.FC = () => {
           if (!isRemoving) setRemovingUser(null);
         }}
         onConfirm={handleRemove}
-        title={`Remove ${removingUser?.name ?? 'this staff member'}?`}
-        description={
-          <>
-            This permanently deletes the account. It only works for staff with no
-            orders, settlements, payroll or attendance on record — if they have
-            history, deactivate them instead so the records stay attributed.
-          </>
-        }
-        confirmText="Remove"
+        title={t('remove.title', { name: removingUser?.name ?? t('remove.thisStaff') })}
+        description={<>{t('remove.description')}</>}
+        confirmText={t('remove.confirm')}
         tone="destructive"
         loading={isRemoving}
       />
