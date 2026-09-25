@@ -1,5 +1,7 @@
 import { prisma } from '../../services/prisma.service';
 import { logger } from '../../utils/logger';
+import { emitToRoom } from '../../services/socket.service';
+import { pauseReminders } from '../../services/reminder-pause.service';
 import { queryAuditFeed, type AuditFeedRow } from '../audit/auditFeed';
 
 /**
@@ -457,21 +459,34 @@ export const SNAPSHOT_FORMAT = 'mern-pos-backup';
 export const SNAPSHOT_VERSION = 1;
 
 export async function buildSnapshot(): Promise<Snapshot> {
+  // Every collection is read concurrently. Awaiting them one at a time made the
+  // download wait for a full round trip per collection (~18 of them, on top of
+  // each query's own scan time), which is what made "Preparing backup…" crawl on
+  // a database with real volume. The reads are independent and read-only, so
+  // running them together only shortens the wall clock — the payload is
+  // identical, section order included.
+  const sections = await Promise.all(
+    SNAPSHOT_COLLECTIONS.map(async (collection) => {
+      try {
+        const rows = await collection.list();
+        return [
+          collection.key,
+          { rows: rows.map((row) => without(row, collection.omit)), count: rows.length },
+        ] as const;
+      } catch (err) {
+        // One unreadable collection must not cost the operator the whole backup;
+        // the missing section is reported in `counts` as -1.
+        logger.error({ err, collection: collection.key }, 'Snapshot collection failed.');
+        return [collection.key, { rows: [] as unknown[], count: -1 }] as const;
+      }
+    }),
+  );
+
   const data: Record<string, unknown[]> = {};
   const counts: Record<string, number> = {};
-
-  for (const collection of SNAPSHOT_COLLECTIONS) {
-    try {
-      const rows = await collection.list();
-      data[collection.key] = rows.map((row) => without(row, collection.omit));
-      counts[collection.key] = rows.length;
-    } catch (err) {
-      // One unreadable collection must not cost the operator the whole backup;
-      // the missing section is reported in `counts` as -1.
-      logger.error({ err, collection: collection.key }, 'Snapshot collection failed.');
-      data[collection.key] = [];
-      counts[collection.key] = -1;
-    }
+  for (const [key, section] of sections) {
+    data[key] = section.rows;
+    counts[key] = section.count;
   }
 
   return {
@@ -554,10 +569,21 @@ export async function restoreSnapshot(payload: unknown): Promise<RestoreResult> 
     });
   }
 
+  const inserted = results.reduce((sum, item) => sum + item.inserted, 0);
+
+  // Same contract as a reset: the books changed underneath every open screen,
+  // so any of them still holding cached figures must drop them. Best-effort —
+  // the restore itself has already succeeded.
+  try {
+    emitToRoom('orders', 'data:reset', { resetAt: new Date().toISOString(), inserted });
+  } catch (err) {
+    logger.warn({ err }, 'Could not broadcast the restore to connected clients.');
+  }
+
   return {
     generatedAt: typeof snapshot.generatedAt === 'string' ? snapshot.generatedAt : null,
     collections: results,
-    inserted: results.reduce((sum, item) => sum + item.inserted, 0),
+    inserted,
     skipped: results.reduce((sum, item) => sum + item.skipped, 0),
     failed: results.reduce((sum, item) => sum + item.failed, 0),
   };
@@ -679,6 +705,13 @@ export interface ResetResult {
   collections: ResetCollectionResult[];
   deleted: number;
   resetAt: string;
+  /**
+   * When the scheduled reminders (missing attendance, payroll due, stale menu
+   * items) resume. They are derived from staff/menu data a reset keeps, so they
+   * are paused until the end of the day — otherwise the inbox refills within
+   * one scheduler pass and the reset looks like it did nothing.
+   */
+  remindersPausedUntil: string | null;
 }
 
 /**
@@ -700,9 +733,26 @@ export async function resetBusinessData(): Promise<ResetResult> {
     }
   }
 
-  return {
-    collections,
-    deleted: collections.reduce((sum, item) => sum + item.deleted, 0),
-    resetAt: new Date().toISOString(),
-  };
+  const deleted = collections.reduce((sum, item) => sum + item.deleted, 0);
+  const resetAt = new Date().toISOString();
+
+  // Best-effort: a failed settings write must never report the reset itself as
+  // failed — the books are already gone at this point.
+  let remindersPausedUntil: string | null = null;
+  try {
+    remindersPausedUntil = await pauseReminders();
+  } catch (err) {
+    logger.warn({ err }, 'Could not pause reminders after a reset.');
+  }
+
+  // Every signed-in screen is holding these rows in a client cache. One event
+  // tells all of them to drop it, so a manager's tablet shows the wiped books
+  // in the same second as the operator's browser.
+  try {
+    emitToRoom('orders', 'data:reset', { resetAt, deleted });
+  } catch (err) {
+    logger.warn({ err }, 'Could not broadcast the reset to connected clients.');
+  }
+
+  return { collections, deleted, resetAt, remindersPausedUntil };
 }
