@@ -1,5 +1,6 @@
 import { extractErrorMessage } from '../../utils/errorHandler';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -19,6 +20,7 @@ import { LoadingState } from '../common/LoadingState';
  * can always edit the menu regardless of this switch.
  */
 export const MenuEditToggle: React.FC = () => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const { socket } = useSocketStore();
@@ -57,37 +59,37 @@ export const MenuEditToggle: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['systemSetting', 'cashierMenuEditRestricted'] });
       addToast({
         type: 'success',
-        title: checked ? 'Menu editing restricted' : 'Menu editing allowed',
+        title: checked ? t('settings.menuEdit.restrictedTitle') : t('settings.menuEdit.allowedTitle'),
         message: checked
-          ? 'Cashiers can view the menu but can no longer change it.'
-          : 'Cashiers can add, edit, and hide menu items again.',
+          ? t('settings.menuEdit.restrictedMsg')
+          : t('settings.menuEdit.allowedMsg'),
       });
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Update failed',
-        message: extractErrorMessage(err) || 'Could not update setting.',
+        title: t('settings.menuEdit.updateFailed'),
+        message: extractErrorMessage(err) || t('settings.menuEdit.updateFailedMsg'),
       });
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (settingQuery.isLoading) return <LoadingState message="Loading setting..." />;
+  if (settingQuery.isLoading) return <LoadingState message={t('loading')} />;
 
   return (
     <SettingsRow
       icon={UtensilsCrossed}
       iconClassName="text-blue-600 dark:text-blue-400"
       iconBgClassName="bg-blue-500/10"
-      title="Restrict cashier menu editing"
-      description="Off by default — cashiers can add, edit, and hide menu items. Turn it on to make the menu read-only for cashiers. Owners and managers can always edit."
+      title={t('settings.menuEdit.title')}
+      description={t('settings.menuEdit.description')}
       control={
         <Switch
           checked={restricted}
           onCheckedChange={handleToggle}
           disabled={isSaving}
-          aria-label="Restrict cashier menu editing"
+          aria-label={t('settings.menuEdit.title')}
         />
       }
     />
