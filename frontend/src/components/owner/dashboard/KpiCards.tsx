@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card, Text } from '@tremor/react';
+import { useTranslation } from 'react-i18next';
 import { Package, ShoppingCart, TrendingUp, type LucideIcon } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { AnimatedCurrency, AnimatedNumber } from '../../ui/AnimatedNumber';
@@ -148,31 +149,32 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
   todayRevenue,
   totalRevenue,
 }) => {
+  const { t } = useTranslation();
   return (
     <div className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
       <KpiCard
-        label="Today's orders"
+        label={t('ownerKpi.todaysOrders')}
         value={totalOrders}
         kind="number"
         icon={Package}
         tone="cream"
       />
       <KpiCard
-        label="Today's revenue"
+        label={t('ownerKpi.todaysRevenue')}
         value={todayRevenue}
         kind="currency"
         icon={DollarGlyph as unknown as LucideIcon}
         tone="mint"
       />
       <KpiCard
-        label="Total orders"
+        label={t('ownerKpi.totalOrders')}
         value={completed}
         kind="number"
         icon={ShoppingCart}
         tone="blush"
       />
       <KpiCard
-        label="Total revenue"
+        label={t('ownerKpi.totalRevenue')}
         value={totalRevenue}
         kind="currency"
         icon={TrendingUp as unknown as LucideIcon}
