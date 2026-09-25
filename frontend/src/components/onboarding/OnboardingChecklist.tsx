@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
@@ -7,15 +8,16 @@ import { CheckCircle2, Circle, ArrowRight, Settings2, X } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useQueryClient } from '@tanstack/react-query';
 
-export const STEPS = [
-  { label: 'Service Type', desc: 'Table service or counter service' },
-  { label: 'First Printer', desc: 'Add a kitchen or receipt printer' },
-  { label: 'Menu', desc: 'Add a few items or skip for later' },
-  { label: 'Your Team', desc: 'Add your first manager or cashier' },
-  { label: 'Notifications', desc: 'Choose what you want to hear about' },
+const STEPS = [
+  { labelKey: 'onboarding.stepServiceType', descKey: 'onboarding.stepServiceTypeDesc' },
+  { labelKey: 'onboarding.stepPrinter', descKey: 'onboarding.stepPrinterDesc' },
+  { labelKey: 'onboarding.stepMenu', descKey: 'onboarding.stepMenuDesc' },
+  { labelKey: 'onboarding.stepTeam', descKey: 'onboarding.stepTeamDesc' },
+  { labelKey: 'onboarding.stepNotifications', descKey: 'onboarding.stepNotificationsDesc' },
 ];
 
 export const OnboardingChecklist: React.FC = () => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const openWizard = useOnboardingStore((s) => s.openWizard);
 
@@ -42,12 +44,12 @@ export const OnboardingChecklist: React.FC = () => {
         <div>
           <CardTitle className="text-base flex items-center gap-2">
             <Settings2 className="w-5 h-5 text-primary" />
-            Finish Setup
+            {t('onboarding.title')}
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
             {remainingCount > 0
-              ? `You have ${remainingCount} step${remainingCount === 1 ? '' : 's'} remaining to fully configure your system.`
-              : `You've completed all steps! Finish the setup to close this.`}
+              ? t('onboarding.remaining', { count: remainingCount })
+              : t('onboarding.allDone')}
           </p>
         </div>
         <Button variant="ghost" size="icon" onClick={handleDismiss} className="-mt-2 -mr-2 text-muted-foreground hover:text-foreground">
@@ -76,10 +78,10 @@ export const OnboardingChecklist: React.FC = () => {
                 )}
                 <div>
                   <p className={`text-sm font-medium ${isDone ? 'text-foreground line-through opacity-70' : 'text-foreground'}`}>
-                    {step.label}
+                    {t(step.labelKey)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {step.desc}
+                    {t(step.descKey)}
                   </p>
                 </div>
               </button>
@@ -88,7 +90,7 @@ export const OnboardingChecklist: React.FC = () => {
         </div>
         <div className="mt-4 flex justify-end">
           <Button onClick={() => openWizard(currentStep)} className="gap-2">
-            Resume Setup <ArrowRight className="w-4 h-4" />
+            {t('onboarding.resume')} <ArrowRight className="w-4 h-4" />
           </Button>
         </div>
       </CardContent>
