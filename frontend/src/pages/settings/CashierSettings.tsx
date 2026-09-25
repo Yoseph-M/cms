@@ -56,7 +56,7 @@ export const CashierSettings: React.FC = () => {
   return (
     <SettingsShell
       title={t('settings.title', { defaultValue: 'Terminal Settings' })}
-      description="Personalize appearance, notifications, and language for this terminal."
+      description={t('settings.cashierDescription')}
       categories={categories}
     />
   );
