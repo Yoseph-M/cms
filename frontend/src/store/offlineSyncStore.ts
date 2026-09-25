@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import i18n from '../i18n';
 import { getPendingOfflineOrders, removeOfflineOrder } from '../db/offlineDb';
 import { axiosClient } from '../api/axiosClient';
 import { useToastStore } from './toastStore';
@@ -62,8 +63,8 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
       if (syncedCount > 0) {
         useToastStore.getState().addToast({
           type: 'success',
-          title: 'Offline Sync Confirmed',
-          message: `Successfully synchronized ${syncedCount} offline order(s) to server.`,
+          title: i18n.t('offline.syncConfirmed'),
+          message: i18n.t('offline.syncConfirmedMsg', { count: syncedCount }),
         });
       }
     } finally {
@@ -76,8 +77,8 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
       set({ isOnline: true });
       useToastStore.getState().addToast({
         type: 'info',
-        title: 'Network Restored',
-        message: 'Connection re-established. Syncing offline orders...',
+        title: i18n.t('offline.networkRestored'),
+        message: i18n.t('offline.networkRestoredMsg'),
       });
       get().processSyncQueue();
     });
@@ -86,8 +87,8 @@ export const useOfflineSyncStore = create<OfflineSyncState>((set, get) => ({
       set({ isOnline: false });
       useToastStore.getState().addToast({
         type: 'warning',
-        title: 'Offline Mode Active',
-        message: 'Network disconnected. New orders will be stored locally in IndexedDB.',
+        title: i18n.t('offline.offlineActive'),
+        message: i18n.t('offline.offlineActiveMsg'),
       });
     });
 
