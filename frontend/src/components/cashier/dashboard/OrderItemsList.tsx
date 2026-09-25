@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { MessageSquare, StickyNote } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useTranslation } from 'react-i18next';
 import { formatCurrency } from '../../../utils/currency';
 import type { OrderItem } from '../../../types';
 
@@ -13,12 +14,13 @@ export interface OrderItemsListProps {
 }
 
 export const OrderItemsList: React.FC<OrderItemsListProps> = ({ items, className, maxVisible }) => {
+  const { t } = useTranslation();
   const safeItems = items || [];
   const visible = maxVisible ? safeItems.slice(0, maxVisible) : safeItems;
   const hiddenCount = safeItems.length - visible.length;
 
   return (
-    <ul className={cn('space-y-1', className)} aria-label="Order items">
+    <ul className={cn('space-y-1', className)} aria-label={t('orderDetails.items')}>
       {visible.map((item, idx) => (
         <motion.li
           key={`${item.menuItemId}-${idx}`}
@@ -51,7 +53,7 @@ export const OrderItemsList: React.FC<OrderItemsListProps> = ({ items, className
       {hiddenCount > 0 && (
         <li className="text-[11px] text-muted-foreground text-center py-1.5 flex items-center justify-center gap-1.5">
           <StickyNote className="w-3 h-3" />
-          +{hiddenCount} more item{hiddenCount === 1 ? '' : 's'} — scroll to see all
+          {t('cashier.itemsMore', { count: hiddenCount })}
         </li>
       )}
     </ul>
