@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { axiosClient } from '../../api/axiosClient';
@@ -13,15 +14,16 @@ import { X, Store, Printer, Coffee, Users, Bell, ArrowRight, CheckCircle2 } from
 import { motion } from 'framer-motion';
 
 const NOTIFICATION_TYPES = [
-  { key: 'MISSING_ATTENDANCE', label: 'Missing attendance alerts' },
-  { key: 'PRINTER_FAILURE', label: 'Printer failure alerts' },
-  { key: 'PAYROLL_PERIOD_DUE', label: 'Payroll period reminders' },
-  { key: 'MENU_ITEM_UNAVAILABLE', label: 'Menu availability changes' },
-  { key: 'SYSTEM_OVERRIDE', label: 'System override notices' },
-  { key: 'QUIET_HOURS', label: 'Quiet hours (no non-critical alerts 10PM-6AM)' },
+  { key: 'MISSING_ATTENDANCE', labelKey: 'settings.notif.attendance.label' },
+  { key: 'PRINTER_FAILURE', labelKey: 'settings.notif.printer.label' },
+  { key: 'PAYROLL_PERIOD_DUE', labelKey: 'settings.notif.payroll.label' },
+  { key: 'MENU_ITEM_UNAVAILABLE', labelKey: 'settings.notif.menu.label' },
+  { key: 'SYSTEM_OVERRIDE', labelKey: 'settings.notif.system.label' },
+  { key: 'QUIET_HOURS', labelKey: 'wizard.quietHours' },
 ];
 
 export const OnboardingWizard: React.FC = () => {
+  const { t } = useTranslation();
   const { isOpen, stepIndex, closeWizard, setStep } = useOnboardingStore();
   const queryClient = useQueryClient();
   const { addToast } = useToastStore();
@@ -63,7 +65,7 @@ export const OnboardingWizard: React.FC = () => {
       
       closeWizard();
     } catch (e) {
-      addToast({ type: 'error', title: 'Error finishing setup' });
+      addToast({ type: 'error', title: t('wizard.errorFinishing') });
     }
   };
 
@@ -74,7 +76,7 @@ export const OnboardingWizard: React.FC = () => {
       <div className="bg-card w-full max-w-2xl rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90dvh]">
         <div className="flex items-center justify-between p-4 border-b border-border bg-muted/30">
           <h2 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
-            Setup Guide • Step {stepIndex + 1} of 6
+            {t('wizard.stepOf', { step: stepIndex + 1 })}
           </h2>
           <Button variant="ghost" size="icon" onClick={closeWizard} className="-mr-2 rounded-full">
             <X className="w-5 h-5" />
@@ -96,6 +98,7 @@ export const OnboardingWizard: React.FC = () => {
 
 // --- Step 2: Service Type ---
 const Step2Service: React.FC<{ onNext: () => void }> = ({ onNext }) => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const [type, setType] = useState<'TABLE'|'COUNTER'|null>(null);
   const [tableCount, setTableCount] = useState('12');
@@ -113,7 +116,7 @@ const Step2Service: React.FC<{ onNext: () => void }> = ({ onNext }) => {
       }
       onNext();
     } catch (e) {
-      addToast({ type: 'error', title: 'Could not save preferences' });
+      addToast({ type: 'error', title: t('wizard.couldNotSave') });
     } finally {
       setSaving(false);
     }
@@ -123,7 +126,7 @@ const Step2Service: React.FC<{ onNext: () => void }> = ({ onNext }) => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-3 text-primary mb-2">
         <div className="p-3 rounded-full bg-primary/10"><Store className="w-6 h-6" /></div>
-        <h1 className="text-2xl font-display font-bold text-foreground">How do you take orders?</h1>
+        <h1 className="text-2xl font-display font-bold text-foreground">{t('wizard.howOrders')}</h1>
       </div>
       
       <div className="grid sm:grid-cols-2 gap-4 pt-4">
@@ -131,38 +134,37 @@ const Step2Service: React.FC<{ onNext: () => void }> = ({ onNext }) => {
           onClick={() => setType('TABLE')}
           className={`text-left p-5 rounded-xl border-2 transition-all ${type === 'TABLE' ? 'border-primary bg-primary/5 ring-4 ring-primary/10' : 'border-border hover:border-primary/40'}`}
         >
-          <h3 className="font-bold text-foreground text-lg mb-2">Table Service</h3>
-          <p className="text-sm text-muted-foreground">Staff take orders at the table using a companion app. The cashier only settles the bill.</p>
+          <h3 className="font-bold text-foreground text-lg mb-2">{t('wizard.tableService')}</h3>
+          <p className="text-sm text-muted-foreground">{t('wizard.tableServiceDesc')}</p>
         </button>
         <button 
           onClick={() => setType('COUNTER')}
           className={`text-left p-5 rounded-xl border-2 transition-all ${type === 'COUNTER' ? 'border-primary bg-primary/5 ring-4 ring-primary/10' : 'border-border hover:border-primary/40'}`}
         >
-          <h3 className="font-bold text-foreground text-lg mb-2">Counter Service</h3>
-          <p className="text-sm text-muted-foreground">Customers order and pay at the till. Cashiers create orders directly.</p>
+          <h3 className="font-bold text-foreground text-lg mb-2">{t('wizard.counterService')}</h3>
+          <p className="text-sm text-muted-foreground">{t('wizard.counterServiceDesc')}</p>
         </button>
       </div>
 
       {type === 'COUNTER' && (
         <div className="mt-6 p-5 rounded-xl bg-muted/50 border border-border animate-fade-in">
-          <label className="text-sm font-medium mb-1 block text-foreground">How many tables or pickup zones do you have?</label>
-          <p className="text-xs text-muted-foreground mb-3">This configures the grid shown to cashiers when assigning an order.</p>
+          <label className="text-sm font-medium mb-1 block text-foreground">{t('wizard.howManyTables')}</label>
+          <p className="text-xs text-muted-foreground mb-3">{t('wizard.howManyTablesHint')}</p>
           <Input type="number" min="1" max="100" value={tableCount} onChange={e => setTableCount(e.target.value)} className="max-w-[120px]" />
         </div>
       )}
 
       {type === 'TABLE' && (
         <div className="mt-6 p-5 rounded-xl bg-primary/10 text-primary-foreground border border-primary/20 animate-fade-in">
-          <h4 className="font-bold text-primary mb-2">Setting up the ordering app</h4>
+          <h4 className="font-bold text-primary mb-2">{t('wizard.orderingAppTitle')}</h4>
           <p className="text-sm text-foreground/90">
-            Waiters can use any mobile device to take orders. They just need to log in to this same URL. 
-            The system automatically provides a mobile-optimized interface for them.
+            {t('wizard.orderingAppMsg')}
           </p>
         </div>
       )}
 
       <div className="pt-6 flex justify-end">
-        <Button onClick={handleSave} disabled={saving || !type} className="gap-2">Continue <ArrowRight className="w-4 h-4" /></Button>
+        <Button onClick={handleSave} disabled={saving || !type} className="gap-2">{t('wizard.continue')} <ArrowRight className="w-4 h-4" /></Button>
       </div>
     </div>
   );
@@ -170,6 +172,7 @@ const Step2Service: React.FC<{ onNext: () => void }> = ({ onNext }) => {
 
 // --- Step 3: First Printer ---
 const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNext, onSkip }) => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const [form, setForm] = useState({ ip: '', port: '9100' });
   const [saving, setSaving] = useState(false);
@@ -186,9 +189,9 @@ const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ on
         ],
       });
       setCreatedId(res.data?.[0]?.id ?? null);
-      addToast({ type: 'success', title: 'Printer added' });
+      addToast({ type: 'success', title: t('wizard.printerAdded') });
     } catch (e: any) {
-      addToast({ type: 'error', title: 'Failed to add printer', message: extractErrorMessage(e, 'Failed to add printer.') });
+      addToast({ type: 'error', title: t('wizard.printerAddFailed'), message: extractErrorMessage(e, t('wizard.printerAddFailed')) });
     } finally {
       setSaving(false);
     }
@@ -199,10 +202,10 @@ const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ on
     setTesting(true);
     try {
       await axiosClient.post(`/settings/printers/${createdId}/test-print`);
-      addToast({ type: 'success', title: 'Nailed it — check your printer 🖨️' });
+      addToast({ type: 'success', title: t('wizard.testOk') });
       setTimeout(onNext, 1500); // Auto advance after success
     } catch (e) {
-      addToast({ type: 'error', title: 'Test failed', message: 'Check printer IP and power.' });
+      addToast({ type: 'error', title: t('wizard.testFailed'), message: t('wizard.testFailedMsg') });
     } finally {
       setTesting(false);
     }
@@ -212,19 +215,19 @@ const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ on
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-3 text-primary mb-2">
         <div className="p-3 rounded-full bg-primary/10"><Printer className="w-6 h-6" /></div>
-        <h1 className="text-2xl font-display font-bold text-foreground">Your First Printer</h1>
+        <h1 className="text-2xl font-display font-bold text-foreground">{t('wizard.firstPrinter')}</h1>
       </div>
-      <p className="text-muted-foreground">Let's connect a receipt or kitchen printer. Make sure it's connected to your network.</p>
+      <p className="text-muted-foreground">{t('wizard.firstPrinterDesc')}</p>
 
       {!createdId ? (
         <div className="space-y-4 pt-4">
           <div className="grid grid-cols-2 max-[419px]:grid-cols-1 gap-4">
             <div className="col-span-1">
-              <label className="text-sm font-medium mb-1 block">IP Address</label>
+              <label className="text-sm font-medium mb-1 block">{t('wizard.ipAddress')}</label>
               <Input value={form.ip} onChange={e => setForm(f => ({ ...f, ip: e.target.value }))} placeholder="192.168.1.100" />
             </div>
             <div className="col-span-1">
-              <label className="text-sm font-medium mb-1 block">Port</label>
+              <label className="text-sm font-medium mb-1 block">{t('wizard.port')}</label>
               <Input type="number" value={form.port} onChange={e => setForm(f => ({ ...f, port: e.target.value }))} placeholder="9100" />
             </div>
           </div>
@@ -232,20 +235,20 @@ const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ on
       ) : (
         <div className="p-6 rounded-xl border border-border bg-muted/30 text-center animate-fade-in">
           <CheckCircle2 className="w-12 h-12 text-[hsl(var(--success))] mx-auto mb-3" />
-          <h3 className="font-bold text-foreground text-lg">Printer Registered</h3>
-          <p className="text-sm text-muted-foreground mb-4">Let's make sure it's working properly.</p>
+          <h3 className="font-bold text-foreground text-lg">{t('wizard.printerRegistered')}</h3>
+          <p className="text-sm text-muted-foreground mb-4">{t('wizard.printerRegisteredMsg')}</p>
           <Button onClick={handleTest} disabled={testing} className="w-full max-w-xs mx-auto">
-            {testing ? 'Sending...' : 'Send test ticket'}
+            {testing ? t('wizard.sending') : t('wizard.sendTestTicket')}
           </Button>
         </div>
       )}
 
       <div className="pt-6 flex justify-between items-center">
-        <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">Skip for now</Button>
+        <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">{t('wizard.skipForNow')}</Button>
         {!createdId ? (
-          <Button onClick={handleSave} disabled={saving || !form.ip}>Save Printer</Button>
+          <Button onClick={handleSave} disabled={saving || !form.ip}>{t('wizard.savePrinter')}</Button>
         ) : (
-          <Button variant="secondary" onClick={onNext} className="gap-2">Continue <ArrowRight className="w-4 h-4" /></Button>
+          <Button variant="secondary" onClick={onNext} className="gap-2">{t('wizard.continue')} <ArrowRight className="w-4 h-4" /></Button>
         )}
       </div>
     </div>
@@ -254,6 +257,7 @@ const Step3Printer: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ on
 
 // --- Step 4: Menu ---
 const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNext, onSkip }) => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const [items, setItems] = useState([{ name: '', category: 'FOOD', price: '' }]);
   const [saving, setSaving] = useState(false);
@@ -271,10 +275,10 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
           price: parseFloat(item.price) // Store as entered (ETB)
         })
       ));
-      addToast({ type: 'success', title: `Added ${validItems.length} items` });
+      addToast({ type: 'success', title: t('wizard.itemsAdded', { count: validItems.length }) });
       onNext();
     } catch (e) {
-      addToast({ type: 'error', title: 'Failed to add items' });
+      addToast({ type: 'error', title: t('wizard.itemsAddFailed') });
     } finally {
       setSaving(false);
     }
@@ -284,15 +288,15 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-3 text-primary mb-2">
         <div className="p-3 rounded-full bg-primary/10"><Coffee className="w-6 h-6" /></div>
-        <h1 className="text-2xl font-display font-bold text-foreground">Your Menu</h1>
+        <h1 className="text-2xl font-display font-bold text-foreground">{t('wizard.yourMenu')}</h1>
       </div>
-      <p className="text-muted-foreground">Quickly add a few bestsellers, or skip to import your full catalog via CSV later.</p>
+      <p className="text-muted-foreground">{t('wizard.yourMenuDesc')}</p>
 
       <div className="space-y-3 pt-4">
         {items.map((item, idx) => (
           <div key={idx} className="flex gap-3 items-start">
             <div className="flex-1">
-              <Input placeholder="Item name (e.g. Latte)" value={item.name} onChange={e => {
+              <Input placeholder={t('wizard.itemNamePlaceholder')} value={item.name} onChange={e => {
                 const newItems = [...items];
                 newItems[idx].name = e.target.value;
                 setItems(newItems);
@@ -300,10 +304,10 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
             </div>
             <div className="w-32 bg-secondary/30 rounded-lg p-4 border border-border/50">
               <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
-                Category
+                {t('menu.category')}
               </label>
               <DropdownSelect
-                ariaLabel="Item category"
+                ariaLabel={t('menu.category')}
                 className="w-full justify-between"
                 contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                 value={item.category}
@@ -313,14 +317,14 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
                   setItems(newItems);
                 }}
                 options={[
-                  { value: 'FOOD', label: 'Food' },
-                  { value: 'BEVERAGE', label: 'Beverage' },
-                  { value: 'DESSERT', label: 'Dessert' },
+                  { value: 'FOOD', label: t('categories.food') },
+                  { value: 'BEVERAGE', label: t('wizard.beverage') },
+                  { value: 'DESSERT', label: t('categories.dessert') },
                 ]}
               />
             </div>
             <div className="w-24">
-              <Input type="number" step="1" min="0" placeholder="Price" value={item.price} onChange={e => {
+              <Input type="number" step="1" min="0" placeholder={t('wizard.pricePlaceholder')} value={item.price} onChange={e => {
                 const newItems = [...items];
                 newItems[idx].price = e.target.value.replace(/[^\d]/g, '');
                 setItems(newItems);
@@ -329,13 +333,13 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
           </div>
         ))}
         <Button variant="outline" size="sm" onClick={() => setItems([...items, { name: '', category: 'FOOD', price: '' }])}>
-          + Add another
+          + {t('wizard.addAnother')}
         </Button>
       </div>
 
       <div className="pt-6 flex justify-between items-center">
-        <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">Skip for now</Button>
-        <Button onClick={handleSave} disabled={saving} className="gap-2">Save & Continue <ArrowRight className="w-4 h-4" /></Button>
+        <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">{t('wizard.skipForNow')}</Button>
+        <Button onClick={handleSave} disabled={saving} className="gap-2">{t('wizard.saveContinue')} <ArrowRight className="w-4 h-4" /></Button>
       </div>
     </div>
   );
@@ -343,6 +347,7 @@ const Step4Menu: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
 
 // --- Step 5: Team ---
 const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNext, onSkip }) => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const [form, setForm] = useState({ name: '', username: '', role: 'MANAGER', password: '' });
   const [saving, setSaving] = useState(false);
@@ -354,7 +359,7 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
       await axiosClient.post('/users', form);
       setCreated({ username: form.username, password: form.password });
     } catch (e: any) {
-      addToast({ type: 'error', title: 'Failed to add user', message: extractErrorMessage(e, 'Failed to add user.') });
+      addToast({ type: 'error', title: t('wizard.userAddFailed'), message: extractErrorMessage(e, t('wizard.userAddFailed')) });
     } finally {
       setSaving(false);
     }
@@ -364,50 +369,50 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-3 text-primary mb-2">
         <div className="p-3 rounded-full bg-primary/10"><Users className="w-6 h-6" /></div>
-        <h1 className="text-2xl font-display font-bold text-foreground">Your Team</h1>
+        <h1 className="text-2xl font-display font-bold text-foreground">{t('wizard.yourTeam')}</h1>
       </div>
-      <p className="text-muted-foreground">Create an account for your first manager or cashier.</p>
+      <p className="text-muted-foreground">{t('wizard.yourTeamDesc')}</p>
 
       {!created ? (
         <div className="space-y-4 pt-4">
           <div className="grid grid-cols-2 max-[419px]:grid-cols-1 gap-4">
             <div>
-              <label className="text-sm font-medium mb-1 block">Name</label>
-              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Alex" />
+              <label className="text-sm font-medium mb-1 block">{t('menu.name')}</label>
+              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder={t('wizard.namePlaceholder')} />
             </div>
             <div className="bg-secondary/30 rounded-lg p-4 border border-border/50">
               <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
-                Role
+                {t('loginHistory.colRole')}
               </label>
               <DropdownSelect
-                ariaLabel="Role"
+                ariaLabel={t('loginHistory.colRole')}
                 className="w-full justify-between"
                 contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
                 value={form.role}
                 onChange={(next) => setForm(f => ({ ...f, role: next }))}
                 options={[
-                  { value: 'MANAGER', label: 'Manager' },
-                  { value: 'CASHIER', label: 'Cashier' },
+                  { value: 'MANAGER', label: t('roles.manager') },
+                  { value: 'CASHIER', label: t('roles.cashier') },
                 ]}
               />
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Username</label>
-              <Input type="text" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="alex_manager" />
+              <label className="text-sm font-medium mb-1 block">{t('wizard.username')}</label>
+              <Input type="text" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder={t('wizard.usernamePlaceholder')} />
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Temporary Password</label>
-              <Input type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="secret123" />
+              <label className="text-sm font-medium mb-1 block">{t('wizard.tempPassword')}</label>
+              <Input type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={t('wizard.passwordPlaceholder')} />
             </div>
           </div>
         </div>
       ) : (
         <div className="p-6 rounded-xl border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 text-center animate-fade-in">
-          <h3 className="font-bold text-[hsl(var(--success))] text-lg mb-2">Account Created!</h3>
-          <p className="text-sm text-foreground mb-4">Share these credentials securely. They will not be shown again.</p>
+          <h3 className="font-bold text-[hsl(var(--success))] text-lg mb-2">{t('wizard.accountCreated')}</h3>
+          <p className="text-sm text-foreground mb-4">{t('wizard.accountCreatedMsg')}</p>
           <div className="inline-block text-left bg-background p-4 rounded-lg border border-border">
-            <p className="text-sm"><span className="text-muted-foreground w-20 inline-block">Username:</span> <strong>{created.username}</strong></p>
-            <p className="text-sm mt-1"><span className="text-muted-foreground w-20 inline-block">Password:</span> <strong>{created.password}</strong></p>
+            <p className="text-sm"><span className="text-muted-foreground w-20 inline-block">{t('wizard.username')}:</span> <strong>{created.username}</strong></p>
+            <p className="text-sm mt-1"><span className="text-muted-foreground w-20 inline-block">{t('wizard.passwordWord')}:</span> <strong>{created.password}</strong></p>
           </div>
         </div>
       )}
@@ -415,12 +420,12 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
       <div className="pt-6 flex justify-between items-center">
         {!created ? (
           <>
-            <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">Skip for now</Button>
-            <Button onClick={handleSave} disabled={saving || !form.name || !form.username || !form.password}>Add User</Button>
+            <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">{t('wizard.skipForNow')}</Button>
+            <Button onClick={handleSave} disabled={saving || !form.name || !form.username || !form.password}>{t('wizard.addUser')}</Button>
           </>
         ) : (
           <div className="w-full flex justify-end">
-            <Button onClick={onNext} className="gap-2">Continue <ArrowRight className="w-4 h-4" /></Button>
+            <Button onClick={onNext} className="gap-2">{t('wizard.continue')} <ArrowRight className="w-4 h-4" /></Button>
           </div>
         )}
       </div>
@@ -432,6 +437,7 @@ const Step5Team: React.FC<{ onNext: () => void, onSkip: () => void }> = ({ onNex
 const PREFS_KEY = 'cafeflow:notificationPrefs';
 
 const Step6Notifications: React.FC<{ onNext: () => void }> = ({ onNext }) => {
+  const { t } = useTranslation();
   const [prefs, setPrefs] = useState<Record<string, boolean>>(() => {
     try {
       const raw = localStorage.getItem(PREFS_KEY);
@@ -455,21 +461,21 @@ const Step6Notifications: React.FC<{ onNext: () => void }> = ({ onNext }) => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-3 text-primary mb-2">
         <div className="p-3 rounded-full bg-primary/10"><Bell className="w-6 h-6" /></div>
-        <h1 className="text-2xl font-display font-bold text-foreground">Stay Informed</h1>
+        <h1 className="text-2xl font-display font-bold text-foreground">{t('wizard.stayInformed')}</h1>
       </div>
-      <p className="text-muted-foreground">Choose what you want to be notified about. You can change this later in Settings.</p>
+      <p className="text-muted-foreground">{t('wizard.stayInformedDesc')}</p>
 
       <div className="space-y-2 pt-2">
-        {NOTIFICATION_TYPES.map(t => (
-          <div key={t.key} className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
-            <span className="text-sm font-medium text-foreground">{t.label}</span>
-            <Switch checked={prefs[t.key]} onCheckedChange={(c) => handleToggle(t.key, c)} />
+        {NOTIFICATION_TYPES.map((n) => (
+          <div key={n.key} className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
+            <span className="text-sm font-medium text-foreground">{t(n.labelKey)}</span>
+            <Switch checked={prefs[n.key]} onCheckedChange={(c) => handleToggle(n.key, c)} />
           </div>
         ))}
       </div>
 
       <div className="pt-6 flex justify-end">
-        <Button onClick={handleSave} className="gap-2">Finish Setup <CheckCircle2 className="w-4 h-4" /></Button>
+        <Button onClick={handleSave} className="gap-2">{t('wizard.finishSetup')} <CheckCircle2 className="w-4 h-4" /></Button>
       </div>
     </div>
   );
@@ -477,6 +483,7 @@ const Step6Notifications: React.FC<{ onNext: () => void }> = ({ onNext }) => {
 
 // --- Step 7: Completion ---
 const Step7Complete: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
+  const { t } = useTranslation();
   return (
     <div className="py-12 text-center animate-fade-in flex flex-col items-center">
       <motion.div 
@@ -493,12 +500,12 @@ const Step7Complete: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
           <CheckCircle2 className="w-10 h-10" />
         </motion.div>
       </motion.div>
-      <h1 className="text-4xl font-display font-bold text-foreground mb-4">You're all set!</h1>
+      <h1 className="text-4xl font-display font-bold text-foreground mb-4">{t('wizard.allSet')}</h1>
       <p className="text-lg text-muted-foreground mb-10 max-w-md">
-        Welcome to CafeFlow ☕. Your system is ready.
+        {t('wizard.allSetMsg')}
       </p>
       <Button size="lg" onClick={onFinish} className="px-8 text-md rounded-full shadow-xl shadow-primary/20 hover:shadow-primary/40">
-        Go to your dashboard
+        {t('wizard.goToDashboard')}
       </Button>
     </div>
   );
