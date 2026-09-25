@@ -6,11 +6,13 @@ import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { DateRangePicker, computeRange, type DateRange } from '../../components/ui/DateRangePicker';
 import { BarChart, LineChart, DONUT_COLORS } from '../../components/ui/Charts';
 import { RevenueDonut } from '../../components/owner/dashboard/RevenueDonut';
+import { MarginDial } from '../../components/owner/dashboard/MarginDial';
+import { DailyRevenueButton, type EodDayRow } from '../../components/owner/dashboard/DailyRevenueButton';
 import { PeakHoursHeatmap } from '../../components/ui/PeakHoursHeatmap';
-import { TremorWidget, ChartToggle, KpiMetricCard } from '../../components/ui/TremorWidgets';
+import { TremorWidget, KpiMetricCard, ChartToggle } from '../../components/ui/TremorWidgets';
 import { GrowthBadge } from '../../components/ui/GrowthBadge';
 import { motion } from 'framer-motion';
-import { Clock, TrendingUp } from 'lucide-react';
+import { Clock, Gauge, TrendingUp } from 'lucide-react';
 import { formatCurrency, formatCurrencyCompact } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
@@ -32,6 +34,28 @@ function useWidget<T>(endpoint: string, deps: Record<string, string> = {}) {
   });
   const message = error ? extractErrorMessage(error, 'Failed to load data.') : null;
   return { data: data ?? null, loading: isLoading, error: message, refetch };
+}
+
+/**
+ * One row of `GET /daily-close/reconciliation` — a business day a manager
+ * approved, the total they signed off on, and that same day's paid revenue as
+ * the ledger reads it now. The server does the comparison; the page only shows
+ * where the two disagree.
+ */
+interface ReconciliationRow {
+  businessDate: string;
+  closedSalesMinor: number;
+  paidRevenueMinor: number;
+  deltaMinor: number;
+  deltaPercent: number | null;
+  flagged: boolean;
+  closedByName: string | null;
+}
+
+interface ReconciliationReport {
+  days: ReconciliationRow[];
+  closedDayCount: number;
+  flaggedCount: number;
 }
 
 const DONUT_PALETTE = DONUT_COLORS;
@@ -90,8 +114,6 @@ export const OwnerFinance: React.FC = () => {
   })();
 
   const [trendChart, setTrendChart] = useState<'line' | 'bar'>('line');
-  const [trendOverlay, setTrendOverlay] = useState<'none' | 'wow' | 'mom' | 'yoy'>('none');
-  const [topItemsMode, setTopItemsMode] = useState<'revenue' | 'qty'>('qty');
   const [peakPreset, setPeakPreset] = useState<PeakRangePreset>('7d');
 
   const rangeDeps = useMemo(() => ({ from, to }), [from, to]);
@@ -131,11 +153,6 @@ export const OwnerFinance: React.FC = () => {
   const trend = useWidget<{ date: string; revenue: number; orderCount: number }[]>(
     '/analytics/sales/trend',
     { startDate: from, endDate: to }
-  );
-
-  const topItm = useWidget<{ name: string; totalQty: number; totalRevenue: number }[]>(
-    '/analytics/top-items',
-    rangeDeps
   );
 
   const catSpl = useWidget<{ category: string; revenue: number; count: number }[]>(
@@ -184,6 +201,16 @@ export const OwnerFinance: React.FC = () => {
     netProfit: number;
   }>('/analytics/profit-loss', rangeDeps);
 
+  /**
+   * The End of Day ledger — one entry per business day a manager approved,
+   * each carrying that day's takings AND the same day's paid revenue read from
+   * the ledger now. This, and not the trend series, is what the "Daily takings"
+   * card reads: a day's money is the figure the manager signed off on, and a day
+   * nobody closed simply has no line. The reconciliation the endpoint returns is
+   * what lets the card mark a day whose two figures no longer agree.
+   */
+  const recon = useWidget<ReconciliationReport>('/daily-close/reconciliation', { days: '90' });
+
   // ── Real-time: re-fetch finance widgets when backend signals a change ──
   const socket = useSocketStore((s) => s.socket);
   useEffect(() => {
@@ -194,12 +221,12 @@ export const OwnerFinance: React.FC = () => {
       priorTotal.refetch();
       trend.refetch();
       pnl.refetch();
-      topItm.refetch();
       catSpl.refetch();
       peak.refetch();
       payMth.refetch();
       staffP.refetch();
       cancels.refetch();
+      recon.refetch();
     };
     socket.on('finance:updated', handler);
     return () => { socket.off('finance:updated', handler); };
@@ -211,6 +238,20 @@ export const OwnerFinance: React.FC = () => {
   const trendValues = useMemo(() => (trend.data || []).map((d) => d.revenue), [trend.data]);
 
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  /**
+   * Cancellation reasons chosen on the floor. Auto-cancellations are the
+   * system voiding an unsettled ticket — written either as "Auto-cancelled …"
+   * or as "No settlement received within N hours" — not a person's decision,
+   * so every phrasing of those is left out of the analysis card.
+   */
+  const cancellationReasons = useMemo(
+    () =>
+      (cancels.data || []).filter(
+        (d) => !/auto[\s-]*cancel|no settlement received within/i.test(d.reason ?? ''),
+      ),
+    [cancels.data],
+  );
 
   const heatmap = useMemo(() => {
     const grid: Record<number, Record<number, number>> = {};
@@ -245,45 +286,92 @@ export const OwnerFinance: React.FC = () => {
   }, [peak.data]);
 
   /**
-   * Item names are snapshotted at order time and may be bilingual,
-   * e.g. "የበሬ ጥብስ (Beef Tibs)". Prefer the English name in parentheses
-   * so chart labels stay readable instead of single Amharic fragments.
+   * The days the manager closed at End of Day, inside the selected window, in
+   * date order — the list behind the "Daily takings" button on the Revenue
+   * Trend card. The endpoint only ever returns approved (CLOSED) days, so a day
+   * still waiting for a decision is not a day the shop closed. The business day
+   * is the unit here, so the window is compared in whole days rather than
+   * against the ISO timestamps the trend endpoint is queried with.
    */
-  const displayName = (raw: unknown): string => {
-    const s = String(raw ?? '').trim();
-    if (!s) return 'Unnamed item';
-    const m = s.match(/\(([^)]+)\)\s*$/);
-    return m ? m[1] : s;
-  };
+  const eodRows = useMemo<EodDayRow[]>(() => {
+    const start = new Date(range.from);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(range.to);
+    end.setHours(23, 59, 59, 999);
 
-  const topChartData = useMemo(() => {
-    const items = (topItm.data || []).slice(0, 8);
+    return (recon.data?.days || [])
+      .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(String(r.businessDate ?? '')))
+      .filter((r) => {
+        const day = new Date(`${r.businessDate}T00:00:00`).getTime();
+        return !Number.isNaN(day) && day >= start.getTime() && day <= end.getTime();
+      })
+      .map((r) => ({
+        date: r.businessDate,
+        amount: Number(r.closedSalesMinor) || 0,
+        closedByName: r.closedByName ?? null,
+        paidRevenue: Number(r.paidRevenueMinor) || 0,
+        delta: Number(r.deltaMinor) || 0,
+        flagged: Boolean(r.flagged),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [recon.data, range.from, range.to]);
+
+  /* ── Margin: of every 100 birr this window collected, how much stayed in the
+        business. Revenue vs Costs prints the three numbers beside each other;
+        the dial reads where the window sits relative to break-even, which no
+        other card on the page expresses. ── */
+  const margin = useMemo(() => {
+    const revenue = rangeTotal.data?.totalRevenue ?? 0;
+    const costs = pnl.data?.expenses ?? 0;
+    const net = revenue - costs;
     return {
-      labels: items.map((d) => displayName(d.name)),
-      values: items.map((d) => (topItemsMode === 'revenue' ? Number(d.totalRevenue) || 0 : Number(d.totalQty) || 0)),
+      revenue,
+      costs,
+      net,
+      /** null when the window collected nothing — there is no margin to read. */
+      band: revenue === 0 ? 'none' : net < 0 ? 'loss' : net / revenue < 0.2 ? 'thin' : 'healthy',
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topItm.data, topItemsMode]);
+  }, [rangeTotal.data, pnl.data]);
 
-  // Compact currency ticks keep the amount labels on a single line inside the
-  // y-axis gutter instead of wrapping/clipping mid-number; tooltips still show
-  // the full, exact amount.
-  const topTickFormat = useCallback(
-    (v: number) => (topItemsMode === 'revenue' ? formatCurrencyCompact(v) : String(v)),
-    [topItemsMode],
+  /* ── How the week is shaped: revenue per weekday over the selected window,
+        Monday first so the weekend reads as one block. ── */
+  const weekdayRevenue = useMemo(() => {
+    const revenue = new Array(7).fill(0);
+    const orders = new Array(7).fill(0);
+    for (const row of trend.data || []) {
+      const key = String(row.date ?? '').slice(0, 10);
+      const day = new Date(`${key}T00:00:00.000Z`);
+      if (Number.isNaN(day.getTime())) continue;
+      const dow = day.getUTCDay();
+      revenue[dow] += Number(row.revenue) || 0;
+      orders[dow] += Number(row.orderCount) || 0;
+    }
+    return [1, 2, 3, 4, 5, 6, 0].map((dow) => ({
+      dow,
+      // Localised weekday name straight from the platform — no new key to
+      // translate, and it follows the reader's language.
+      label: new Date(Date.UTC(2024, 0, 7 + dow)).toLocaleDateString(undefined, {
+        weekday: 'short',
+        timeZone: 'UTC',
+      }),
+      revenue: revenue[dow],
+      orders: orders[dow],
+    }));
+  }, [trend.data]);
+
+  const busiestDay = useMemo(
+    () => weekdayRevenue.reduce((top, d) => (d.revenue > top.revenue ? d : top), weekdayRevenue[0]),
+    [weekdayRevenue],
   );
-  const topTooltipFormat = useCallback(
-    (v: number) => (topItemsMode === 'revenue' ? formatCurrency(v) : String(v)),
-    [topItemsMode],
-  );
+
   const moneyTickFormat = useCallback((v: number) => formatCurrencyCompact(v), []);
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6">
       <Flex justifyContent="between" alignItems="center" className="flex-wrap gap-4">
         <div>
-          <Title className="text-xl font-bold text-foreground">Finance</Title>
-          <Text className="text-sm text-muted-foreground mt-0.5">Analytics & revenue intelligence</Text>
+          <Title className="text-xl font-bold text-foreground">{t('nav.finance')}</Title>
+          <Text className="text-sm text-muted-foreground mt-0.5">{t('finance.subtitle')}</Text>
         </div>
         <DateRangePicker value={range} onChange={setRange} />
       </Flex>
@@ -360,33 +448,26 @@ export const OwnerFinance: React.FC = () => {
         onRetry={trend.refetch}
         empty={!trend.data?.length}
         emptyMsg={t('finance.noRevenueInRange', { defaultValue: 'No revenue in this date range.' })}
-        headerExtra={
-          <Flex alignItems="center" className="gap-2">
+        /* The shape control belongs to the chart, not to the card, so it sits
+           in its own bar under the header: the title row is left to the title
+           and the one control that is about the whole card. The "compare against
+           WoW / MoM / YoY" dropdown that used to sit here is gone — it changed
+           nothing on the chart. */
+        headerToolbar={
+          <div role="group" aria-label={t('finance.chartStyle', { defaultValue: 'Chart style' })}>
             <ChartToggle
               options={[
                 { value: 'line', label: t('finance.line', { defaultValue: 'Line' }) },
                 { value: 'bar', label: t('finance.bar', { defaultValue: 'Bar' }) },
               ]}
               value={trendChart}
-              onChange={(v) => setTrendChart(v as 'line' | 'bar')}
+              onChange={(v) => setTrendChart(v === 'bar' ? 'bar' : 'line')}
             />
-            <DropdownSelect
-              ariaLabel={t('finance.compareAgainst', { defaultValue: 'Compare against' })}
-              size="sm"
-              icon={TrendingUp}
-              className="h-8"
-              value={trendOverlay}
-              onChange={(v) => setTrendOverlay(v as typeof trendOverlay)}
-              options={[
-                { value: 'none', label: t('finance.noOverlay', { defaultValue: 'No overlay' }) },
-                { value: 'wow', label: 'WoW' },
-                { value: 'mom', label: 'MoM' },
-                { value: 'yoy', label: 'YoY' },
-              ]}
-              contentClassName="w-40"
-            />
-          </Flex>
+          </div>
         }
+        /* Right end of the card: the day-by-day takings the manager closed, on
+           a float card of their own. */
+        headerExtra={<DailyRevenueButton rows={eodRows} />}
       >
         {trendChart === 'line' ? (
           <LineChart
@@ -400,7 +481,7 @@ export const OwnerFinance: React.FC = () => {
         ) : (
           <BarChart
             labels={trendLabels}
-            series={[{ label: 'Revenue', values: trendValues }]}
+            series={[{ label: t('finance.revenue', { defaultValue: 'Revenue' }), values: trendValues }]}
             height={180}
             yTickFormat={moneyTickFormat}
             tooltipFormat={formatCurrency}
@@ -409,32 +490,77 @@ export const OwnerFinance: React.FC = () => {
         )}
       </TremorWidget>
 
-      <TremorWidget
-        title={t('finance.topItems', { defaultValue: 'Top Items' })}
-        loading={topItm.loading}
-        error={topItm.error}
-        onRetry={topItm.refetch}
-        empty={!topItm.data?.length}
-        headerExtra={
-          <ChartToggle
-            options={[
-              { value: 'qty', label: t('finance.qty', { defaultValue: 'Qty' }) },
-              { value: 'revenue', label: t('finance.revenue', { defaultValue: 'Revenue' }) },
+      {/* Margin + how the week is shaped. The dial answers a question the other
+          cards do not — where this window sits relative to break-even, as a
+          position rather than a pair of numbers — and it is the only gauge in
+          the system, so nothing here repeats a chart the page already draws.
+          Busiest Days reads from the same trend series the chart above plots. */}
+      <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4">
+        <TremorWidget
+          title={t('finance.marginDial', { defaultValue: 'Margin Dial' })}
+          loading={rangeTotal.loading || pnl.loading}
+          error={rangeTotal.error || pnl.error}
+          onRetry={rangeTotal.refetch}
+          empty={false}
+          /* Where the needle sits, in one word: the window lost money, kept a
+             sliver of it, or kept a healthy share. */
+          headerExtra={
+            <span
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold uppercase tracking-wider ${
+                margin.band === 'loss'
+                  ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                  : margin.band === 'healthy'
+                    ? 'border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]'
+                    : 'border-border bg-secondary/30 text-muted-foreground'
+              }`}
+            >
+              <Gauge className="h-3.5 w-3.5" />
+              {margin.band === 'loss'
+                ? t('finance.marginLoss', { defaultValue: 'Loss' })
+                : margin.band === 'healthy'
+                  ? t('finance.marginHealthy', { defaultValue: 'Healthy margin' })
+                  : margin.band === 'thin'
+                    ? t('finance.marginThin', { defaultValue: 'Thin margin' })
+                    : t('finance.marginNoRevenueShort', { defaultValue: 'No revenue' })}
+            </span>
+          }
+        >
+          <MarginDial revenue={margin.revenue} costs={margin.costs} net={margin.net} />
+        </TremorWidget>
+
+        <TremorWidget
+          title={t('finance.busiestDays', { defaultValue: 'Busiest Days' })}
+          loading={trend.loading}
+          error={trend.error}
+          onRetry={trend.refetch}
+          empty={!trend.data?.length}
+          emptyMsg={t('finance.noRevenueInRange', { defaultValue: 'No revenue in this date range.' })}
+          headerExtra={
+            <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {busiestDay && busiestDay.revenue > 0
+                ? t('finance.bestDay', {
+                    day: busiestDay.label,
+                    defaultValue: 'Best day: {{day}}',
+                  })
+                : t('finance.revenue', { defaultValue: 'Revenue' })}
+            </Text>
+          }
+        >
+          <BarChart
+            labels={weekdayRevenue.map((d) => d.label)}
+            series={[
+              {
+                label: t('finance.revenue', { defaultValue: 'Revenue' }),
+                values: weekdayRevenue.map((d) => d.revenue),
+              },
             ]}
-            value={topItemsMode}
-            onChange={(v) => setTopItemsMode(v as 'revenue' | 'qty')}
+            height={190}
+            yTickFormat={moneyTickFormat}
+            tooltipFormat={formatCurrency}
+            yAxisWidth={72}
           />
-        }
-      >
-        <BarChart
-          labels={topChartData.labels}
-          series={[{ label: topItemsMode === 'revenue' ? t('finance.revenue', { defaultValue: 'Revenue' }) : t('finance.qty', { defaultValue: 'Qty' }), values: topChartData.values }]}
-          height={180}
-          yTickFormat={topTickFormat}
-          tooltipFormat={topTooltipFormat}
-          yAxisWidth={topItemsMode === 'revenue' ? 72 : 48}
-        />
-      </TremorWidget>
+        </TremorWidget>
+      </div>
 
       <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4">
         <TremorWidget
@@ -470,7 +596,7 @@ export const OwnerFinance: React.FC = () => {
           loading={cancels.loading}
           error={cancels.error}
           onRetry={cancels.refetch}
-          empty={!cancels.data?.length}
+          empty={cancellationReasons.length === 0}
           emptyMsg={t('finance.noCancellations', { defaultValue: 'No cancellations in this period.' })}
           headerExtra={
             <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -479,7 +605,7 @@ export const OwnerFinance: React.FC = () => {
           }
         >
           <BarList
-            data={(cancels.data || []).map((d, i) => ({
+            data={cancellationReasons.map((d, i) => ({
               key: String(i),
               name: d.reason || t('finance.noReasonGiven', { defaultValue: 'No reason given' }),
               value: d.count || 0,
@@ -499,19 +625,22 @@ export const OwnerFinance: React.FC = () => {
         emptyTitle={t('finance.peakEmptyTitle', { defaultValue: 'No peak-hour data yet' })}
         emptyMsg={t('finance.peakEmptyMsg', { defaultValue: 'Orders placed during the selected window will populate this heatmap.' })}
         headerExtra={
-          <DropdownSelect
-            ariaLabel={t('finance.peakRange', { defaultValue: 'Peak hours time range' })}
-            size="sm"
-            icon={Clock}
-            className="h-8"
-            value={peakPreset}
-            onChange={(v) => setPeakPreset(v as PeakRangePreset)}
-            options={PEAK_RANGE_OPTIONS.map((o) => ({
-              value: o.value,
-              label: t(`finance.${o.key}`, { defaultValue: o.key }),
-            }))}
-            contentClassName="w-52"
-          />
+          // ml-auto pins the range picker to the right end of the card header.
+          <div className="ml-auto flex items-center gap-2">
+            <DropdownSelect
+              ariaLabel={t('finance.peakRange', { defaultValue: 'Peak hours time range' })}
+              size="sm"
+              icon={Clock}
+              className="h-8"
+              value={peakPreset}
+              onChange={(v) => setPeakPreset(v as PeakRangePreset)}
+              options={PEAK_RANGE_OPTIONS.map((o) => ({
+                value: o.value,
+                label: t(`finance.${o.key}`, { defaultValue: o.key }),
+              }))}
+              contentClassName="w-52"
+            />
+          </div>
         }
       >
         <PeakHoursHeatmap grid={heatmap} dayLabels={DAYS} />
