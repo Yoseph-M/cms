@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useTranslation } from 'react-i18next';
 import { formatCurrency } from '../../../utils/currency';
 import type { Order, OrderPrintJob } from '../../../types';
 import { useElapsedTime } from './hooks/useElapsedTime';
@@ -35,14 +36,18 @@ export interface OrderCardProps {
  */
 export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
   ({ order, isSelected, onClick, cardRef, selectMode, bulkSelected, onToggleSelect, onReprint }, ref) => {
+    const { t } = useTranslation();
     const elapsed = useElapsedTime(order.createdAt);
     const status = getOrderStatus(order);
     const accent = statusAccent(status);
 
     const tableLabel = order.tableNumber
       ? order.tableNumber
-      : 'Takeout';
+      : t('app.takeout');
     const isTakeout = !order.tableNumber;
+    const cardTitle = isTakeout
+      ? t('app.takeout')
+      : t('app.tableN', { number: order.tableNumber });
     const itemCount = (order.items || []).reduce((acc, i) => acc + i.quantity, 0);
 
     const handleKey = (e: React.KeyboardEvent) => {
@@ -64,7 +69,7 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
         onKeyDown={handleKey}
         tabIndex={0}
         role="button"
-        aria-label={`${order.tableNumber ? `Table ${tableLabel}` : 'Takeout'} order ${order.clientOrderId.slice(0, 8).toUpperCase()}`}
+        aria-label={`${cardTitle} — ${t('app.orders')} ${order.clientOrderId.slice(0, 8).toUpperCase()}`}
         initial={{ opacity: 0, y: 16, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.18 } }}
@@ -116,7 +121,7 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
             <div className={cn('w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border', isTakeout ? 'bg-cyan-50 text-cyan-700 border-cyan-100' : isSelected ? 'bg-slate-950 text-white border-slate-950' : 'bg-primary/10 text-primary border-primary/15')}>
               {isTakeout ? <ShoppingCart className="w-4 h-4" /> : <span className="font-display font-bold text-lg leading-none">{tableLabel}</span>}
             </div>
-            <div className="min-w-0"><p className="font-display text-base font-bold text-slate-950 leading-tight truncate">{isTakeout ? 'Takeout' : `Table ${tableLabel}`}</p><p className="mt-1 font-mono text-[10px] tracking-wide text-slate-400">#{order.clientOrderId.slice(0, 6).toUpperCase()}</p></div>
+            <div className="min-w-0"><p className="font-display text-base font-bold text-slate-950 leading-tight truncate">{cardTitle}</p><p className="mt-1 font-mono text-[10px] tracking-wide text-slate-400">#{order.clientOrderId.slice(0, 6).toUpperCase()}</p></div>
           </div>
           {!selectMode && <StatusBadge status={status} />}
         </div>
@@ -131,7 +136,7 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
                   onReprint(order.id);
                 }}
                 onKeyDown={(e) => e.stopPropagation()}
-                aria-label="Reprint kitchen ticket"
+                aria-label={t('cashier.print.reprintAria')}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors shrink-0',
                   'border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900',
@@ -140,7 +145,7 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
                 )}
               >
                 <RefreshCw className="w-3 h-3" />
-                Reprint
+                {t('cashier.print.reprint')}
               </button>
             )}
           </div>
@@ -149,7 +154,7 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(
         <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
           <div className="min-w-0 text-[11px] text-slate-500">
             <p>
-              {itemCount} {itemCount === 1 ? 'item' : 'items'}
+              {t('cashier.itemsCount', { count: itemCount })}
             </p>
             <div className="mt-1"><WaitChip elapsed={elapsed} /></div>
           </div>
@@ -177,10 +182,11 @@ OrderCard.displayName = 'OrderCard';
  * send it again.
  */
 const KitchenPrintChip: React.FC<{ job: OrderPrintJob | null }> = ({ job }) => {
+  const { t } = useTranslation();
   const config = (() => {
     if (!job) {
       return {
-        label: 'Not sent to kitchen',
+        label: t('cashier.print.notSent'),
         className: 'bg-slate-100 text-slate-500 border-slate-200',
         icon: <Printer className="w-3 h-3" />,
       };
@@ -188,31 +194,31 @@ const KitchenPrintChip: React.FC<{ job: OrderPrintJob | null }> = ({ job }) => {
     switch (job.status) {
       case 'PRINTED':
         return {
-          label: 'Kitchen printed',
+          label: t('cashier.print.kitchenPrinted'),
           className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
           icon: <CheckCircle2 className="w-3 h-3" />,
         };
       case 'FAILED':
         return {
-          label: 'Kitchen failed',
+          label: t('cashier.print.kitchenFailed'),
           className: 'bg-red-50 text-red-700 border-red-200',
           icon: <AlertTriangle className="w-3 h-3" />,
         };
       case 'PRINTING':
         return {
-          label: 'Printing…',
+          label: t('cashier.print.printing'),
           className: 'bg-sky-50 text-sky-700 border-sky-200',
           icon: <Printer className="w-3 h-3" />,
         };
       case 'CANCELLED':
         return {
-          label: 'Print cancelled',
+          label: t('cashier.print.printCancelled'),
           className: 'bg-slate-100 text-slate-500 border-slate-200',
           icon: <X className="w-3 h-3" />,
         };
       default:
         return {
-          label: 'Kitchen queued',
+          label: t('cashier.print.kitchenQueued'),
           className: 'bg-amber-50 text-amber-700 border-amber-200',
           icon: <Clock className="w-3 h-3" />,
         };
@@ -233,6 +239,7 @@ const KitchenPrintChip: React.FC<{ job: OrderPrintJob | null }> = ({ job }) => {
 };
 
 const StatusBadge: React.FC<{ status: ReturnType<typeof getOrderStatus> }> = ({ status }) => {
+  const { t } = useTranslation();
   const accent = statusAccent(status);
   const Icon =
     status === 'ready' || status === 'paid'
@@ -252,7 +259,7 @@ const StatusBadge: React.FC<{ status: ReturnType<typeof getOrderStatus> }> = ({ 
       ) : (
         <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
       )}
-      <span className="hidden sm:inline">{STATUS_LABEL[status]}</span>
+      <span className="hidden sm:inline">{t(STATUS_LABEL[status])}</span>
     </span>
   );
 };
