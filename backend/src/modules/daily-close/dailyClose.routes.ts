@@ -43,6 +43,16 @@ router.get(
   DailyCloseController.getDailyCloseHistory
 );
 
+// Reconciliation: each approved day's takings against the same day's paid
+// revenue, with the days that diverge flagged. Money figures, so it is the
+// approver's read surface — a cashier sees their own day on the End of Day
+// screen instead. Also registered before the /:date/* param routes.
+router.get(
+  '/reconciliation',
+  requireRole([Role.OWNER, Role.MANAGER]),
+  DailyCloseController.getReconciliation
+);
+
 // Request the close: whoever is on the floor at the end of service sends it,
 // and a manager decides. The server snapshots the day's totals.
 router.post(
