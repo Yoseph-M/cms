@@ -1,10 +1,11 @@
 import React from 'react';
 import { AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/utils';
 
 export function ErrorState({
-  message = 'Failed to load data.',
+  message,
   onRetry,
   className,
 }: {
@@ -12,6 +13,7 @@ export function ErrorState({
   onRetry?: () => void;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -22,13 +24,13 @@ export function ErrorState({
       <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
         <AlertCircle className="w-6 h-6 text-destructive" />
       </div>
-      <p className="font-semibold text-center mb-1">Something went wrong</p>
+      <p className="font-semibold text-center mb-1">{t('errorState.title')}</p>
       <p className="text-sm text-muted-foreground text-center max-w-sm mb-4">
-        {message}
+        {message ?? t('errorState.message')}
       </p>
       {onRetry && (
         <Button variant="destructive" size="sm" onClick={onRetry}>
-          Try again
+          {t('buttons.retry')}
         </Button>
       )}
     </div>
