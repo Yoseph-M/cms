@@ -175,7 +175,7 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
     }
 
     // 3. Calculate authoritative state INSIDE transaction
-    const totalSettled = order.settlements.reduce((sum, s) => sum + s.amountMinor, 0);
+    const totalSettled = settledMoneyOn(order.settlements);
     const newTotal = totalSettled + amountMinor;
 
     // Invariant 2: sum(active settlements) <= order.totalAmount
@@ -295,6 +295,21 @@ export async function recordSettlement(params: CreateSettlementParams): Promise<
 /**
  * Get all settlements for an order
  */
+/**
+ * The money an order has actually taken.
+ *
+ * A VOID row (method NONE) is an audit entry, not a payment: the cancellation
+ * paths write one carrying the ticket's whole value so the void is visible on
+ * the settlements pages. Adding those rows to a money total made a cancelled
+ * ticket look settled in full — and, once a part payment was on the ticket, it
+ * pushed "settled" above the order total. Only collection rows count here.
+ */
+export function settledMoneyOn(settlements: Array<{ amountMinor: number; method: string }>): number {
+  return settlements
+    .filter((s) => s.method !== 'NONE')
+    .reduce((sum, s) => sum + s.amountMinor, 0);
+}
+
 export async function getOrderSettlements(orderId: string) {
   return prisma.settlement.findMany({
     where: { orderId },
@@ -344,6 +359,10 @@ export async function getRemainingAmount(orderId: string): Promise<number> {
     throw new NotFoundError('Order', orderId);
   }
 
-  const totalSettled = order.settlements.reduce((sum, s) => sum + s.amountMinor, 0);
+  // A cancelled ticket has nothing left to collect: its VOID audit row is not
+  // money, and nobody owes the remainder of a voided order.
+  if (order.status === OrderStatus.CANCELLED) return 0;
+
+  const totalSettled = settledMoneyOn(order.settlements);
   return Math.max(0, order.totalAmount - totalSettled);
 }
