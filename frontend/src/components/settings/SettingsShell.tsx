@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Search, X, SlidersHorizontal, CheckCircle2, Sparkles } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Input } from '../ui/Input';
@@ -42,6 +43,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
   defaultCategoryId,
   className,
 }) => {
+  const { t } = useTranslation();
   const [activeCategoryId, setActiveCategoryId] = useState<string>(
     defaultCategoryId || categories[0]?.id || '',
   );
@@ -121,7 +123,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter settings..."
+                placeholder={t('settings.filterPlaceholder')}
                 leftIcon={<Search className="h-4 w-4" />}
                 className="h-10 bg-secondary/60 text-xs shadow-none transition-colors hover:bg-secondary/90 focus:bg-background"
                 rightAdornment={
@@ -147,32 +149,30 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between rounded-xl border border-border/50 bg-secondary/40 px-4 py-3">
             <p className="text-xs font-medium text-muted-foreground">
-              Found{' '}
-              <span className="font-bold text-foreground">{searchResults.length}</span>{' '}
-              {searchResults.length === 1 ? 'setting' : 'settings'} matching &ldquo;{searchQuery}&rdquo;
+              {t('settings.foundMatching', { count: searchResults.length, query: searchQuery })}
             </p>
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               className="text-xs font-semibold text-primary hover:underline"
             >
-              Clear filter
+              {t('a11y.clearFilters')}
             </button>
           </div>
 
           {searchResults.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/80 bg-card/60 p-12 text-center">
               <Search className="mx-auto h-8 w-8 text-muted-foreground/60" />
-              <h3 className="mt-3 text-base font-semibold text-foreground">No settings found</h3>
+              <h3 className="mt-3 text-base font-semibold text-foreground">{t('settings.noneFound')}</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                No setting titles, descriptions, or keywords matched &ldquo;{searchQuery}&rdquo;.
+                {t('settings.noneFoundMsg', { query: searchQuery })}
               </p>
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
                 className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary/80"
               >
-                Reset filter
+                {t('settings.resetFilter')}
               </button>
             </div>
           ) : (
@@ -234,7 +234,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
           <div className="hidden lg:block space-y-4">
             <nav className="rounded-2xl border border-border/60 bg-card p-2 shadow-sm space-y-1">
               <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Settings Navigation ({totalSettingsCount})
+                {t('settings.navigation', { count: totalSettingsCount })}
               </div>
               {categories.map((cat) => {
                 const isActive = cat.id === activeCategoryId;
@@ -295,10 +295,10 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
             <div className="rounded-2xl border border-border/50 bg-secondary/30 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span>Instant Persistence</span>
+                <span>{t('settings.instantPersistence')}</span>
               </div>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Changes to business details apply across all terminals. Device preferences follow your active account.
+                {t('settings.instantPersistenceMsg')}
               </p>
             </div>
           </div>
@@ -335,8 +335,7 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
 
                 <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground">
                   <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                  {activeCategory.items.length}{' '}
-                  {activeCategory.items.length === 1 ? 'module' : 'modules'}
+                  {t('settings.modules', { count: activeCategory.items.length })}
                 </span>
               </div>
 
