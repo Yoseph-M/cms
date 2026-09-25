@@ -86,8 +86,8 @@ export const SystemAdminPage: React.FC = () => {
      * below 768px, so every section is always reachable at a glance.
      */
     <div className="max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in">
-      <section aria-label="Administration sections" className="rounded-2xl border border-border/50 bg-card p-2 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.22)]">
-        <div role="tablist" aria-label="Administration sections" className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-1">
+      <section aria-label={t('a11y.administrationSections')} className="rounded-2xl border border-border/50 bg-card p-2 shadow-[0_10px_30px_-20px_rgba(15,23,42,0.22)]">
+        <div role="tablist" aria-label={t('a11y.administrationSections')} className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
