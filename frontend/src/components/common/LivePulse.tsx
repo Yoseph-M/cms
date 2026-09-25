@@ -1,9 +1,11 @@
 import React from 'react';
 import { Activity } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export const LivePulse: React.FC<{ activeOrdersCount: number }> = ({
   activeOrdersCount,
 }) => {
+  const { t } = useTranslation();
   const hasOrders = activeOrdersCount > 0;
   return (
     <div className="flex items-center gap-2.5">
@@ -23,7 +25,7 @@ export const LivePulse: React.FC<{ activeOrdersCount: number }> = ({
       <span className="font-mono text-sm font-medium tabular-nums text-foreground">
         {activeOrdersCount}
         <span className="text-muted-foreground ml-1.5 font-sans">
-          {activeOrdersCount === 1 ? 'order' : 'orders'} in queue
+          {t('livePulse.inQueue', { count: activeOrdersCount })}
         </span>
       </span>
     </div>
