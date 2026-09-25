@@ -9,6 +9,7 @@ import React, { useState, useRef } from 'react';
 import { axiosClient } from '../api/axiosClient';
 import { useAuthStore } from '../store/authStore';
 import { extractErrorMessage, extractErrorDetails } from '../utils/errorHandler';
+import { useTranslation } from 'react-i18next';
 
 interface RecordSettlementProps {
   orderId: string;
@@ -24,6 +25,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
   onCancel,
 }) => {
   const { accessToken } = useAuthStore();
+  const { t } = useTranslation();
   const [amount, setAmount] = useState<string>(String(Math.round(remainingAmount)));
   const [method, setMethod] = useState<'CASH' | 'CARD' | 'MOBILE'>('CASH');
   const [reference, setReference] = useState('');
@@ -72,7 +74,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
         console.log(`Concurrent modification detected. Retrying in ${delay}ms (attempt ${retryCountRef.current + 1}/${MAX_RETRIES})...`);
         
         if (retryCountRef.current === 0) {
-          setError('Order is being updated. Retrying automatically...');
+          setError(t('settlements.retryingAuto'));
         }
         
         retryCountRef.current += 1;
@@ -89,9 +91,9 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
       isSubmittingRef.current = false;
       
       if (isConcurrentError) {
-        setError('Order is being modified by another user. Please wait and try again.');
+        setError(t('settlements.concurrentError'));
       } else {
-        const errorMessage = extractErrorMessage(err, 'Failed to record settlement');
+        const errorMessage = extractErrorMessage(err, t('settlements.recordFailed'));
         setError(errorMessage);
       }
       setSubmitting(false);
@@ -109,14 +111,16 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
     const amountMinor = parseFloat(amount);
 
     if (amountMinor <= 0) {
-      setError('Amount must be greater than zero');
+      setError(t('settlements.amountTooLow'));
       isSubmittingRef.current = false;
       return;
     }
 
     if (amountMinor > remainingAmount) {
       setError(
-        `Amount cannot exceed remaining balance of ${Math.round(remainingAmount).toLocaleString('en-US')} ETB`
+        t('settlements.amountTooHigh', {
+          remaining: Math.round(remainingAmount).toLocaleString('en-US'),
+        })
       );
       isSubmittingRef.current = false;
       return;
@@ -134,17 +138,17 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
   return (
     <div className="record-settlement bg-white rounded-lg shadow-lg p-6 max-[767px]:p-4">
-      <h3 className="text-xl font-bold mb-4">Record External Payment</h3>
+      <h3 className="text-xl font-bold mb-4">{t('settlements.recordTitle')}</h3>
 
       {error && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded p-3 text-red-700">
-          <p className="font-semibold">Error</p>
+          <p className="font-semibold">{t('settlements.errorLabel')}</p>
           <p className="text-sm mt-1">{error}</p>
         </div>
       )}
 
       <div className="mb-4 bg-blue-50 border border-blue-200 rounded p-3 text-sm text-blue-800">
-        <p className="font-semibold">Remaining Balance</p>
+        <p className="font-semibold">{t('settlements.remainingBalance')}</p>
         <p className="text-2xl font-bold mt-1">
           {Math.round(remainingAmount).toLocaleString('en-US')} ETB
         </p>
@@ -154,7 +158,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
         {/* Amount */}
         <div className="mb-4">
           <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Payment Amount <span className="text-red-500">*</span>
+            {t('settlements.paymentAmount')} <span className="text-red-500">*</span>
           </label>
           <div className="relative">
             <span className="absolute left-3 top-2.5 text-gray-500 text-lg">ETB</span>
@@ -193,7 +197,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
               className="flex-1 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm font-semibold"
               disabled={submitting}
             >
-              Full
+              {t('settlements.full')}
             </button>
           </div>
         </div>
@@ -201,7 +205,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
         {/* Payment Method */}
         <div className="mb-4">
           <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Payment Method <span className="text-red-500">*</span>
+            {t('settlements.paymentMethod')} <span className="text-red-500">*</span>
           </label>
           <div className="grid grid-cols-3 max-[419px]:grid-cols-1 gap-2">
             <button
@@ -214,7 +218,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
               }`}
               disabled={submitting}
             >
-              💵 Cash
+              💵 {t('cashier.method.cash')}
             </button>
             <button
               type="button"
@@ -226,7 +230,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
               }`}
               disabled={submitting}
             >
-              💳 Card
+              💳 {t('cashier.method.card')}
             </button>
             <button
               type="button"
@@ -238,7 +242,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
               }`}
               disabled={submitting}
             >
-              📱 Mobile
+              📱 {t('cashier.method.mobile')}
             </button>
           </div>
         </div>
@@ -246,31 +250,31 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
         {/* Reference */}
         <div className="mb-4">
           <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Transaction Reference (optional)
+            {t('settlements.transactionRef')}
           </label>
           <input
             type="text"
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            placeholder="e.g., Receipt #12345, Transaction ID"
+            placeholder={t('settlements.refPlaceholder')}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={submitting}
             maxLength={100}
           />
           <p className="mt-1 text-xs text-gray-500">
-            External transaction ID or receipt number
+            {t('settlements.refHint')}
           </p>
         </div>
 
         {/* Note */}
         <div className="mb-6">
           <label className="block text-sm font-semibold text-gray-700 mb-2">
-            Note (optional)
+            {t('settlements.noteOptional')}
           </label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Additional notes about this payment"
+            placeholder={t('settlements.notePlaceholder2')}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             rows={3}
             disabled={submitting}
@@ -286,7 +290,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
             className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition"
             disabled={submitting}
           >
-            Cancel
+            {t('buttons.cancel')}
           </button>
           <button
             type="submit"
@@ -296,10 +300,10 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
             {submitting ? (
               <span className="flex items-center justify-center">
                 <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                Recording...
+                {t('settlements.recording')}
               </span>
             ) : (
-              'Record Payment'
+              t('settlements.recordPayment')
             )}
           </button>
         </div>
@@ -307,8 +311,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
       <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
         <p>
-          ℹ️ This records that an external payment was received. The actual payment
-          processing happens outside this system.
+          ℹ️ {t('settlements.recordHint')}
         </p>
       </div>
     </div>
