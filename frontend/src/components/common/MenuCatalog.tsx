@@ -63,17 +63,17 @@ const CATEGORIES = ['All', 'FOOD', 'DRINK', 'DESSERT', 'OTHER'] as const;
 
 type MenuCategory = Exclude<(typeof CATEGORIES)[number], 'All'>;
 
-const CATEGORY_META: Record<MenuCategory, { label: string; icon: LucideIcon; badge: 'success' | 'default' | 'warning' | 'neutral'; tint: string }> = {
-  FOOD: { label: 'Food', icon: UtensilsCrossed, badge: 'success', tint: 'bg-[hsl(var(--success))]/10 text-success' },
-  DRINK: { label: 'Drink', icon: Coffee, badge: 'default', tint: 'bg-primary/10 text-primary' },
-  DESSERT: { label: 'Dessert', icon: CakeSlice, badge: 'warning', tint: 'bg-[hsl(var(--warning))]/10 text-warning' },
-  OTHER: { label: 'Other', icon: Sparkles, badge: 'neutral', tint: 'bg-secondary text-muted-foreground' },
+const CATEGORY_META: Record<MenuCategory, { labelKey: string; icon: LucideIcon; badge: 'success' | 'default' | 'warning' | 'neutral'; tint: string }> = {
+  FOOD: { labelKey: 'menuCatalog.categories.FOOD', icon: UtensilsCrossed, badge: 'success', tint: 'bg-[hsl(var(--success))]/10 text-success' },
+  DRINK: { labelKey: 'menuCatalog.categories.DRINK', icon: Coffee, badge: 'default', tint: 'bg-primary/10 text-primary' },
+  DESSERT: { labelKey: 'menuCatalog.categories.DESSERT', icon: CakeSlice, badge: 'warning', tint: 'bg-[hsl(var(--warning))]/10 text-warning' },
+  OTHER: { labelKey: 'menuCatalog.categories.OTHER', icon: Sparkles, badge: 'neutral', tint: 'bg-secondary text-muted-foreground' },
 };
 
 const SORT_OPTIONS = [
-  { value: 'name-asc', label: 'Name (A–Z)' },
-  { value: 'price-asc', label: 'Price (Low → High)' },
-  { value: 'price-desc', label: 'Price (High → Low)' },
+  { value: 'name-asc', labelKey: 'menuCatalog.sort.nameAsc' },
+  { value: 'price-asc', labelKey: 'menuCatalog.sort.priceAsc' },
+  { value: 'price-desc', labelKey: 'menuCatalog.sort.priceDesc' },
 ] as const;
 
 type SortValue = (typeof SORT_OPTIONS)[number]['value'];
@@ -82,15 +82,17 @@ type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 // missing either language is unusable to whichever language the operator is
 // running, so the form refuses to save a half-named item instead of silently
 // seeding one name from the other.
+// Validation messages are i18n keys — `validateForm` translates them before
+// they reach the form, so the schema itself stays language-agnostic.
 const menuFormSchema = z.object({
-  name: z.string().trim().min(1, 'English name is required.'),
+  name: z.string().trim().min(1, 'menuCatalog.errors.nameRequired'),
   nameAmharic: z
     .string()
     .trim()
-    .min(1, 'Amharic name is required.')
-    .max(200, 'Amharic name is too long.'),
-  category: z.enum(['FOOD', 'DRINK', 'DESSERT', 'OTHER'], { message: 'Category is required.' }),
-  price: z.coerce.number().positive('Price must be a positive number.'),
+    .min(1, 'menuCatalog.errors.nameAmharicRequired')
+    .max(200, 'menuCatalog.errors.nameAmharicTooLong'),
+  category: z.enum(['FOOD', 'DRINK', 'DESSERT', 'OTHER'], { message: 'menuCatalog.errors.categoryRequired' }),
+  price: z.coerce.number().positive('menuCatalog.errors.pricePositive'),
 });
 
 const EMPTY_FORM = {
@@ -130,7 +132,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   // The Amharic UI shows ONLY the Amharic name — never the English one.
   // Every other language shows the English `name`. Items that have no
@@ -145,21 +147,21 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
   // Reflect the current section in the global header.
   useEffect(() => {
     setPageTitle({
-      title: 'Menu catalog',
-      subtitle: canEdit ? 'Manage items, categories, and availability' : 'Browse the menu catalog',
+      title: t('menuCatalog.pageTitle'),
+      subtitle: canEdit ? t('menuCatalog.pageSubtitleEdit') : t('menuCatalog.pageSubtitleView'),
     });
     setShowDateRange(false);
     return () => {
-      setPageTitle({ title: 'Overview', subtitle: '' });
+      setPageTitle({ title: t('menuCatalog.revertTitle'), subtitle: '' });
       setShowDateRange(false);
     };
-  }, [setPageTitle, setShowDateRange, canEdit]);
+  }, [setPageTitle, setShowDateRange, canEdit, t]);
 
   const menuQuery = useMenuQuery();
   const items: MenuItem[] = menuQuery.data ?? [];
   const isLoading = menuQuery.isLoading;
   const error = menuQuery.error
-    ? extractErrorMessage(menuQuery.error, 'Failed to load menu.')
+    ? extractErrorMessage(menuQuery.error, t('menuCatalog.errors.loadFailed'))
     : null;
 
   const [search, setSearch] = useState('');
@@ -300,7 +302,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       const errors: Record<string, string> = {};
       result.error.issues.forEach((issue) => {
         const key = issue.path[0]?.toString();
-        if (key) errors[key] = issue.message;
+        if (key) errors[key] = t(issue.message);
       });
       setFormErrors(errors);
       return false;
@@ -353,15 +355,15 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       };
       if (editingItem) {
         await axiosClient.patch(`/menu/${editingItem.id}`, payload);
-        addToast({ type: 'success', title: 'Item updated' });
+        addToast({ type: 'success', title: t('menuCatalog.toasts.updated') });
       } else {
         await axiosClient.post('/menu', payload);
-        addToast({ type: 'success', title: 'Item added to menu' });
+        addToast({ type: 'success', title: t('menuCatalog.toasts.added') });
       }
       invalidateMenu();
       setSlideOverOpen(false);
     } catch (err: unknown) {
-      addToast({ type: 'error', title: 'Save failed', message: extractErrorMessage(err, 'Failed to save item.') });
+      addToast({ type: 'error', title: t('menuCatalog.errors.saveFailed'), message: extractErrorMessage(err, t('menuCatalog.errors.saveFailedMsg')) });
     } finally {
       setIsSaving(false);
     }
@@ -385,7 +387,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       // Roll back ONLY this item — restoring a whole-list snapshot could
       // revert a different toggle that committed while this request failed.
       patchAvailability(vars.id, !vars.isAvailable);
-      addToast({ type: 'error', title: 'Availability update failed', message: extractErrorMessage(err, 'Failed to update availability.') });
+      addToast({ type: 'error', title: t('menuCatalog.errors.availabilityFailed'), message: extractErrorMessage(err, t('menuCatalog.errors.availabilityFailedMsg')) });
     },
     onSettled: () => {
       // Silent reconciliation: refetch only queries with no mounted observer
@@ -435,7 +437,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
           if (list.some((i) => i.id === item.id)) return list;
           return [...list, item];
         });
-        addToast({ type: 'error', title: 'Delete failed', message: extractErrorMessage(err, 'Failed to delete item.') });
+        addToast({ type: 'error', title: t('menuCatalog.errors.deleteFailed'), message: extractErrorMessage(err, t('menuCatalog.errors.deleteFailedMsg')) });
         pendingDeletes.current.delete(item.id);
       }
     };
@@ -444,8 +446,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     pendingDeletes.current.set(item.id, timeoutId);
 
     const undo = () => {
-      const t = pendingDeletes.current.get(item.id);
-      if (t) clearTimeout(t);
+      const pending = pendingDeletes.current.get(item.id);
+      if (pending) clearTimeout(pending);
       pendingDeletes.current.delete(item.id);
       setLocalItems((prev) => {
         const list = prev ?? items;
@@ -454,17 +456,17 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       });
       addToast({
         type: 'info',
-        title: `Removed — ${displayName(item)} restored to menu`,
+        title: t('menuCatalog.toasts.restored', { name: displayName(item) }),
       });
     };
 
     addToast({
       type: 'success',
-      title: `${displayName(item)} removed from menu`,
-      message: 'Item is no longer visible in the catalog.',
-      undo: { label: 'Undo', onClick: undo },
+      title: t('menuCatalog.toasts.removed', { name: displayName(item) }),
+      message: t('menuCatalog.toasts.removedMsg'),
+      undo: { label: t('menuCatalog.toasts.undo'), onClick: undo },
     });
-  }, [items, addToast, invalidateMenu, displayName]);
+  }, [items, addToast, invalidateMenu, displayName, t]);
 
   const bulkAvailabilityMutation = useMutation({
     mutationKey: ['menu', 'bulkAvailability'],
@@ -479,8 +481,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       addToast({
         type: 'success',
         title: vars.isAvailable
-          ? `${vars.ids.length} item${vars.ids.length > 1 ? 's' : ''} marked available`
-          : `${vars.ids.length} item${vars.ids.length > 1 ? 's' : ''} marked unavailable`,
+          ? t('menuCatalog.toasts.bulkAvailable', { count: vars.ids.length })
+          : t('menuCatalog.toasts.bulkUnavailable', { count: vars.ids.length }),
       });
       clearSelection();
       setSelectMode(false);
@@ -488,7 +490,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
     onError: (err, vars) => {
       // Roll back only the affected items, never the whole list.
       for (const id of vars.ids) patchAvailability(id, !vars.isAvailable);
-      addToast({ type: 'error', title: 'Bulk update failed', message: extractErrorMessage(err, 'Failed to update items.') });
+      addToast({ type: 'error', title: t('menuCatalog.errors.bulkFailed'), message: extractErrorMessage(err, t('menuCatalog.errors.bulkFailedMsg')) });
     },
     onSettled: () => {
       // Same rationale as the single toggle: silent invalidate — other pages
@@ -516,7 +518,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
         setForm((f) => ({ ...f, imageUrl: dataUrl }));
       })
       .catch(() => {
-        addToast({ type: 'error', title: 'Could not process image', message: 'Try a different file.' });
+        addToast({ type: 'error', title: t('menuCatalog.errors.imageFailed'), message: t('menuCatalog.errors.imageFailedMsg') });
       });
   };
 
@@ -552,7 +554,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       if (text && (/^data:image\//i.test(text) || /^https?:\/\/\S+$/i.test(text))) {
         setImagePreview(text);
         setForm((f) => ({ ...f, imageUrl: text }));
-        addToast({ type: 'success', title: 'Image added from clipboard' });
+        addToast({ type: 'success', title: t('menuCatalog.toasts.imagePasted') });
       }
     };
     window.addEventListener('paste', onPaste);
@@ -571,27 +573,27 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
         disabled={!canEdit || selectMode}
       />
       <span className={cn('text-[11px] font-medium', item.isAvailable ? 'text-success' : 'text-destructive')}>
-        {item.isAvailable ? 'Available' : 'Unavailable'}
+        {item.isAvailable ? t('menuCatalog.availability.available') : t('menuCatalog.availability.unavailable')}
       </span>
     </span>
   );
 
   const actionButtons = (item: MenuItem, iconClass = 'w-3.5 h-3.5') => (
     <div className="flex items-center gap-0.5 shrink-0">
-      <Tooltip label="Edit" side="top">
+      <Tooltip label={t('menuCatalog.row.edit')} side="top">
         <button
           onClick={() => openEdit(item)}
           className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-          aria-label={`Edit ${item.name}`}
+          aria-label={t('menuCatalog.row.editAria', { name: item.name })}
         >
           <Pencil className={iconClass} />
         </button>
       </Tooltip>
-      <Tooltip label="Remove" side="top">
+      <Tooltip label={t('menuCatalog.row.remove')} side="top">
         <button
           onClick={() => handleDelete(item)}
           className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-          aria-label={`Delete ${item.name}`}
+          aria-label={t('menuCatalog.row.removeAria', { name: item.name })}
         >
           <Trash2 className={iconClass} />
         </button>
@@ -640,12 +642,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
           )}
           <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/40 to-transparent pointer-events-none" />
           <Badge variant={meta.badge} className="absolute top-2 right-2 text-[10px] px-2 py-0.5 shadow-sm backdrop-blur-sm">
-            {meta.label}
+            {t(meta.labelKey)}
           </Badge>
           {!item.isAvailable && (
             <Badge variant="destructive" className="absolute top-2 right-2 text-[10px] px-2 py-0.5 shadow-sm gap-1">
               <EyeOff className="w-3 h-3" />
-              Unavailable
+              {t('menuCatalog.availability.unavailable')}
             </Badge>
           )}
         </div>
@@ -660,7 +662,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             <div className="flex items-center justify-between mt-auto pt-2.5 border-t border-border/40">
               {showAvailability ? (
                 canEdit && !selectMode ? (
-                  <Tooltip label="Toggle availability" side="top">
+                  <Tooltip label={t('menuCatalog.availability.toggleAria')} side="top">
                     {availabilityCluster(item)}
                   </Tooltip>
                 ) : (
@@ -672,7 +674,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               {canEdit && !selectMode && actionButtons(item)}
               {selectMode && (
                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wide">
-                  {selected ? 'Selected' : 'Click card'}
+                  {selected ? t('menuCatalog.card.selected') : t('menuCatalog.card.click')}
                 </span>
               )}
             </div>
@@ -696,12 +698,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               {!item.isAvailable && (
                 <Badge variant="destructive" className="text-[10px] px-1.5 py-0 shrink-0 gap-1">
                   <EyeOff className="w-2.5 h-2.5" />
-                  Unavailable
+                  {t('menuCatalog.availability.unavailable')}
                 </Badge>
               )}
             </div>
             <Badge variant={meta.badge} className="text-[10px] px-1.5 py-0 mt-1.5">
-              {meta.label}
+              {t(meta.labelKey)}
             </Badge>
           </div>
           <p className="text-sm font-mono font-bold text-primary shrink-0">
@@ -710,7 +712,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
           {showAvailability && (
             <div className="hidden sm:flex items-center pl-2 border-l border-border/40">
               {canEdit && !selectMode ? (
-                <Tooltip label="Toggle availability" side="top">
+                <Tooltip label={t('menuCatalog.availability.toggleAria')} side="top">
                   {availabilityCluster(item, 'w-[68px]')}
                 </Tooltip>
               ) : (
@@ -736,7 +738,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       {!item.isAvailable && (
         <div className={cn('absolute inset-0 bg-background/60 backdrop-grayscale flex items-center justify-center gap-1.5', showAvailability && 'opacity-80')}>
           <EyeOff className="w-4 h-4 text-destructive" />
-          {!showAvailability && <span className="text-[10px] font-bold uppercase tracking-wide text-destructive">Unavailable</span>}
+          {!showAvailability && <span className="text-[10px] font-bold uppercase tracking-wide text-destructive">{t('menuCatalog.availability.unavailable')}</span>}
         </div>
       )}
     </div>
@@ -745,24 +747,24 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
   return (
     <div className="space-y-5">
       <div className={cn('grid gap-4', showAvailability ? 'grid-cols-4 max-[767px]:grid-cols-2 max-[419px]:grid-cols-1' : 'grid-cols-2 max-[767px]:grid-cols-1')}>
-        <StatCard icon={Layers} iconClass="bg-primary/10 text-primary" value={stats.total} label="Total Items" />
+        <StatCard icon={Layers} iconClass="bg-primary/10 text-primary" value={stats.total} label={t('menuCatalog.stats.total')} />
         {showAvailability ? (
           <>
             <StatCard
               icon={CircleCheck}
               iconClass="bg-[hsl(var(--success))]/10 text-success"
               value={stats.available}
-              label="Available Now"
+              label={t('menuCatalog.stats.available')}
             />
             <StatCard
               icon={EyeOff}
               iconClass="bg-destructive/10 text-destructive"
               value={stats.hidden}
-              label="Unavailable Items"
+              label={t('menuCatalog.stats.unavailable')}
             />
           </>
         ) : null}
-        <StatCard icon={UtensilsCrossed} iconClass="bg-secondary text-slate-600" value={stats.categories} label="Categories" />
+        <StatCard icon={UtensilsCrossed} iconClass="bg-secondary text-slate-600" value={stats.categories} label={t('menuCatalog.stats.categories')} />
       </div>
 
       <Card className="p-4 sm:p-5 space-y-4">
@@ -773,19 +775,19 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               type="text"
               defaultValue={search}
               onChange={handleSearchChange}
-              placeholder="Search menu items…"
+              placeholder={t('menuCatalog.search.placeholder')}
               leftIcon={<Search className="w-4 h-4" />}
               className="flex-1 min-w-[200px] max-[419px]:min-w-0"
-              aria-label="Search menu items"
+              aria-label={t('menuCatalog.search.aria')}
             />
 
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap ml-auto justify-end">
               <DropdownMenu>
-                <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0 h-11">
+                <DropdownMenuTrigger aria-label={t('menuCatalog.filterCategoryAria')} className="shrink-0 h-11">
                   {categoryFilter === 'All'
                     ? <LayoutGrid className="w-4 h-4 text-muted-foreground" />
                     : React.createElement(CATEGORY_META[categoryFilter as MenuCategory].icon, { className: 'w-4 h-4 text-muted-foreground' })}
-                  <span>{categoryFilter === 'All' ? 'All' : CATEGORY_META[categoryFilter as MenuCategory].label}</span>
+                  <span>{categoryFilter === 'All' ? t('menuCatalog.categories.all') : t(CATEGORY_META[categoryFilter as MenuCategory].labelKey)}</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   {CATEGORIES.map((cat) => {
@@ -797,7 +799,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                         onSelect={() => setCategoryFilter(cat)}
                       >
                         <Icon className="w-4 h-4 shrink-0" />
-                        <span>{cat === 'All' ? 'All' : CATEGORY_META[cat].label}</span>
+                        <span>{cat === 'All' ? t('menuCatalog.categories.all') : t(CATEGORY_META[cat].labelKey)}</span>
                         <span className="ml-auto text-xs text-muted-foreground font-mono">{categoryCounts[cat] ?? 0}</span>
                       </DropdownMenuItem>
                     );
@@ -806,18 +808,18 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               </DropdownMenu>
 
               <DropdownMenu>
-                <DropdownMenuTrigger aria-label="View mode" className="shrink-0 w-[104px] h-11">
+                <DropdownMenuTrigger aria-label={t('menuCatalog.viewModeAria')} className="shrink-0 w-[104px] h-11">
                   {view === 'grid' ? <LayoutGrid className="w-4 h-4 text-muted-foreground" /> : <List className="w-4 h-4 text-muted-foreground" />}
-                  <span>{view === 'grid' ? 'Grid' : 'List'}</span>
+                  <span>{view === 'grid' ? t('menuCatalog.view.grid') : t('menuCatalog.view.list')}</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-36">
                   <DropdownMenuItem selected={view === 'grid'} onSelect={() => setView('grid')}>
                     <LayoutGrid className="w-4 h-4 shrink-0" />
-                    Grid view
+                    {t('menuCatalog.view.gridView')}
                   </DropdownMenuItem>
                   <DropdownMenuItem selected={view === 'list'} onSelect={() => setView('list')}>
                     <List className="w-4 h-4 shrink-0" />
-                    List view
+                    {t('menuCatalog.view.listView')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -831,17 +833,17 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             type="text"
             defaultValue={search}
             onChange={handleSearchChange}
-            placeholder="Search menu items…"
+            placeholder={t('menuCatalog.search.placeholder')}
             leftIcon={<Search className="w-4 h-4" />}
             className="flex-1 min-w-[200px] max-[419px]:min-w-0"
-            aria-label="Search menu items"
+            aria-label={t('menuCatalog.search.aria')}
           />
 
           {canEdit && !selectMode && (
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap lg:flex-nowrap ml-auto shrink-0 justify-end">
               <Button id="add-menu-item-btn" className="h-11" onClick={openAdd}>
                 <Plus className="w-4 h-4" />
-                Add Item
+                {t('menuCatalog.addItem')}
               </Button>
             </div>
           )}
@@ -850,21 +852,21 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             <div className="flex items-center gap-2 flex-wrap ml-auto shrink-0 justify-end">
               <Button variant="outline" size="sm" onClick={selectAllVisible} disabled={visibleItems.length === 0}>
                 <CheckSquare className="w-3.5 h-3.5" />
-                Select All ({visibleItems.length})
+                {t('menuCatalog.selectAll', { count: visibleItems.length })}
               </Button>
               {showAvailability && (
                 <>
                   <Button size="sm" variant="outline" onClick={() => handleBulkAvailability(true)} disabled={selectedIds.size === 0 || bulkAvailabilityMutation.isPending}>
-                    Mark Available
+                    {t('menuCatalog.markAvailable')}
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => handleBulkAvailability(false)} disabled={selectedIds.size === 0 || bulkAvailabilityMutation.isPending}>
-                    Mark Unavailable
+                    {t('menuCatalog.markUnavailable')}
                   </Button>
                 </>
               )}
               {selectedIds.size > 0 && (
                 <Badge variant="default" className="text-xs">
-                  {selectedIds.size} selected
+                  {t('menuCatalog.selectedCount', { count: selectedIds.size })}
                 </Badge>
               )}
             </div>
@@ -877,15 +879,14 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
         {/* Row 2 — result count, category filter, view mode, select */}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-between">
           <p className="text-xs text-muted-foreground font-medium hidden sm:block">
-            Showing <span className="font-bold text-foreground">{visibleItems.length}</span> of{' '}
-            <span className="font-bold text-foreground">{displayItems.length}</span> items
+            {t('menuCatalog.showing', { shown: visibleItems.length, total: displayItems.length })}
           </p>
 
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap ml-auto justify-end">
             <DropdownMenu>
-              <DropdownMenuTrigger aria-label="Sort menu items" className="shrink-0 w-[170px] h-11">
+              <DropdownMenuTrigger aria-label={t('menuCatalog.sortAria')} className="shrink-0 w-[170px] h-11">
                 <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
-                <span>{SORT_OPTIONS.find((opt) => opt.value === sortBy)?.label}</span>
+                <span>{t(SORT_OPTIONS.find((opt) => opt.value === sortBy)!.labelKey)}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 {SORT_OPTIONS.map((opt) => (
@@ -894,18 +895,18 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                     selected={sortBy === opt.value}
                     onSelect={() => setSortBy(opt.value)}
                   >
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
 
             <DropdownMenu>
-              <DropdownMenuTrigger aria-label="Filter by category" className="shrink-0 h-11">
+              <DropdownMenuTrigger aria-label={t('menuCatalog.filterCategoryAria')} className="shrink-0 h-11">
                 {categoryFilter === 'All'
                   ? <LayoutGrid className="w-4 h-4 text-muted-foreground" />
                   : React.createElement(CATEGORY_META[categoryFilter as MenuCategory].icon, { className: 'w-4 h-4 text-muted-foreground' })}
-                <span>{categoryFilter === 'All' ? 'All' : CATEGORY_META[categoryFilter as MenuCategory].label}</span>
+                <span>{categoryFilter === 'All' ? t('menuCatalog.categories.all') : t(CATEGORY_META[categoryFilter as MenuCategory].labelKey)}</span>
                 <span className="text-[10px] font-bold rounded-md bg-background px-1.5 py-0.5 border border-border/60">
                   {categoryCounts[categoryFilter] ?? 0}
                 </span>
@@ -920,7 +921,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                       onSelect={() => setCategoryFilter(cat)}
                     >
                       <Icon className="w-4 h-4 shrink-0" />
-                      <span>{cat === 'All' ? 'All' : CATEGORY_META[cat].label}</span>
+                      <span>{cat === 'All' ? t('menuCatalog.categories.all') : t(CATEGORY_META[cat].labelKey)}</span>
                       <span className="ml-auto text-xs text-muted-foreground font-mono">{categoryCounts[cat] ?? 0}</span>
                     </DropdownMenuItem>
                   );
@@ -929,18 +930,18 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             </DropdownMenu>
 
             <DropdownMenu>
-              <DropdownMenuTrigger aria-label="View mode" className="shrink-0 w-[104px] h-11">
+              <DropdownMenuTrigger aria-label={t('menuCatalog.viewModeAria')} className="shrink-0 w-[104px] h-11">
                 {view === 'grid' ? <LayoutGrid className="w-4 h-4 text-muted-foreground" /> : <List className="w-4 h-4 text-muted-foreground" />}
-                <span>{view === 'grid' ? 'Grid' : 'List'}</span>
+                <span>{view === 'grid' ? t('menuCatalog.view.grid') : t('menuCatalog.view.list')}</span>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-36">
                 <DropdownMenuItem selected={view === 'grid'} onSelect={() => setView('grid')}>
                   <LayoutGrid className="w-4 h-4 shrink-0" />
-                  Grid view
+                  {t('menuCatalog.view.gridView')}
                 </DropdownMenuItem>
                 <DropdownMenuItem selected={view === 'list'} onSelect={() => setView('list')}>
                   <List className="w-4 h-4 shrink-0" />
-                  List view
+                  {t('menuCatalog.view.listView')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -950,7 +951,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                 type="button"
                 role="checkbox"
                 aria-checked={selectMode}
-                aria-label="Select mode"
+                aria-label={t('menuCatalog.selectModeAria')}
                 onClick={() => {
                   if (selectMode) {
                     setSelectMode(false);
@@ -969,7 +970,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                 >
                   {selectMode && <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />}
                 </span>
-                Select
+                {t('menuCatalog.selectLabel')}
               </button>
             )}
           </div>
@@ -994,7 +995,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       ) : error ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <p className="text-destructive font-medium">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => void menuQuery.refetch()}>Retry</Button>
+          <Button variant="outline" size="sm" onClick={() => void menuQuery.refetch()}>{t('menuCatalog.errors.retry')}</Button>
         </div>
       ) : visibleItems.length === 0 ? (
         <Card className="border-2 border-dashed border-border/60 shadow-none hover:shadow-none hover:translate-y-0">
@@ -1009,18 +1010,18 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             </motion.div>
             <div>
               <p className="font-semibold text-foreground text-base">
-                {items.length === 0 ? 'No menu items yet' : 'No matching items found'}
+                {items.length === 0 ? t('menuCatalog.empty.noneTitle') : t('menuCatalog.empty.noMatchTitle')}
               </p>
               <p className="text-sm text-muted-foreground mt-1 max-w-xs">
                 {search
-                  ? `Nothing matches "${search}" in this category. Try a different term.`
-                  : 'Build your catalog with photos, prices, and categories.'}
+                  ? t('menuCatalog.empty.noMatchMsg', { query: search })
+                  : t('menuCatalog.empty.noneMsg')}
               </p>
             </div>
             {canEdit && (
               <Button onClick={openAdd}>
                 <Plus className="w-4 h-4" />
-                Add Item
+                {t('menuCatalog.addItem')}
               </Button>
             )}
           </div>
@@ -1065,20 +1066,20 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       <Sheet
         open={slideOverOpen}
         onClose={() => setSlideOverOpen(false)}
-        title={editingItem ? 'Edit Item' : 'Add Menu Item'}
-        description={editingItem ? 'Update the details of this catalog item.' : 'Fill in the details to add a new item to your catalog.'}
+        title={editingItem ? t('menuCatalog.form.editTitle') : t('menuCatalog.form.addTitle')}
+        description={editingItem ? t('menuCatalog.form.editDesc') : t('menuCatalog.form.addDesc')}
         footer={
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">Cancel</Button>
+            <Button variant="outline" onClick={() => setSlideOverOpen(false)} className="flex-1">{t('menuCatalog.form.cancel')}</Button>
             <Button onClick={handleSave} disabled={isSaving || !isFormValid} className="flex-1">
-              {isSaving ? 'Saving...' : editingItem ? 'Save Changes' : 'Add to Menu'}
+              {isSaving ? t('menuCatalog.form.saving') : editingItem ? t('menuCatalog.form.saveChanges') : t('menuCatalog.form.addToMenu')}
             </Button>
           </div>
         }
       >
         <div className="space-y-5">
           <div>
-            <label className="text-sm font-medium text-foreground block mb-2">Photo</label>
+            <label className="text-sm font-medium text-foreground block mb-2">{t('menuCatalog.form.photo')}</label>
             <div
               onClick={() => !imagePreview && fileInputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
@@ -1096,7 +1097,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             >
               {imagePreview ? (
                 <>
-                  <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
+                  <img src={imagePreview} alt={t('menuCatalog.form.photo')} className="w-full h-full object-cover" />
                   <div className="absolute inset-x-0 bottom-0 p-2 flex justify-end gap-2 bg-gradient-to-t from-black/60 to-transparent">
                     <Button
                       type="button"
@@ -1106,7 +1107,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                       onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                     >
                       <Pencil className="w-3 h-3" />
-                      Change
+                      {t('menuCatalog.form.change')}
                     </Button>
                     <Button
                       type="button"
@@ -1116,7 +1117,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                       onClick={(e) => { e.stopPropagation(); clearImage(); }}
                     >
                       <Trash2 className="w-3 h-3" />
-                      Remove
+                      {t('menuCatalog.form.remove')}
                     </Button>
                   </div>
                 </>
@@ -1125,8 +1126,8 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                   <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center">
                     <Upload className="w-5 h-5 text-primary" />
                   </div>
-                  <span className="text-xs text-muted-foreground font-medium">Click, drag & drop, or paste an image</span>
-                  <span className="text-[10px] text-muted-foreground/70">PNG, JPG, or paste with Ctrl+V</span>
+                  <span className="text-xs text-muted-foreground font-medium">{t('menuCatalog.form.dropHint')}</span>
+                  <span className="text-[10px] text-muted-foreground/70">{t('menuCatalog.form.formatsHint')}</span>
                 </div>
               )}
             </div>
@@ -1139,13 +1140,13 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="form-name" className="text-sm font-medium text-foreground block mb-1.5">
-                Name (English) <span className="text-destructive">*</span>
+                {t('menuCatalog.form.nameEnglish')} <span className="text-destructive">*</span>
               </label>
               <Input
                 id="form-name"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. Wagyu Gourmet Burger"
+                placeholder={t('menuCatalog.form.nameEnPlaceholder')}
                 leftIcon={<UtensilsCrossed className="w-4 h-4" />}
                 invalid={!!formErrors.name}
               />
@@ -1153,13 +1154,13 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
             </div>
             <div>
               <label htmlFor="form-name-amharic" className="text-sm font-medium text-foreground block mb-1.5">
-                Name (Amharic) <span className="text-destructive">*</span>
+                {t('menuCatalog.form.nameAmharic')} <span className="text-destructive">*</span>
               </label>
               <Input
                 id="form-name-amharic"
                 value={form.nameAmharic}
                 onChange={(e) => setForm((f) => ({ ...f, nameAmharic: e.target.value }))}
-                placeholder="ለምሳሌ፦ ዋጉዩ በርገር"
+                placeholder={t('menuCatalog.form.nameAmPlaceholder')}
                 dir="auto"
                 leftIcon={<Languages className="w-4 h-4" />}
                 invalid={!!formErrors.nameAmharic}
@@ -1170,7 +1171,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
           <div>
             <label className="text-sm font-medium text-foreground block mb-1.5">
-              Category <span className="text-destructive">*</span>
+              {t('menuCatalog.form.category')} <span className="text-destructive">*</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               {(Object.keys(CATEGORY_META) as MenuCategory[]).map((cat) => {
@@ -1192,7 +1193,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                     <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center shrink-0', active ? meta.tint : 'bg-background')}>
                       <meta.icon className="w-4 h-4" />
                     </span>
-                    {meta.label}
+                    {t(meta.labelKey)}
                   </button>
                 );
               })}
@@ -1202,7 +1203,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
 
           <div>
             <label htmlFor="form-price" className="text-sm font-medium text-foreground block mb-1.5">
-              Price (ETB) <span className="text-destructive">*</span>
+              {t('menuCatalog.form.price')} <span className="text-destructive">*</span>
             </label>
             <Input
               id="form-price"
@@ -1228,9 +1229,9 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
                 </span>
                 <div>
                   <label htmlFor="form-available" className="text-sm font-medium text-foreground block leading-tight">
-                    Available for sale
+                    {t('menuCatalog.form.availableForSale')}
                   </label>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Turn off to hide this item (unavailable)</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{t('menuCatalog.form.availableHint')}</p>
                 </div>
               </div>
               <Switch
