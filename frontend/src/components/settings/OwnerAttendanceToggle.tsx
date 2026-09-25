@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -8,6 +9,7 @@ import { SettingsRow } from '../ui/SettingsRow';
 import { CalendarCheck } from 'lucide-react';
 
 export const OwnerAttendanceToggle: React.FC = () => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const settingQuery = useSystemSettingQuery('ownerCanEditAttendance');
@@ -30,13 +32,13 @@ export const OwnerAttendanceToggle: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['systemSetting', 'ownerCanEditAttendance'] });
       addToast({
         type: 'success',
-        title: checked ? 'Attendance editing enabled' : 'Attendance editing disabled',
+        title: checked ? t('settings.attendance.enabledTitle') : t('settings.attendance.disabledTitle'),
         message: checked
-          ? 'You can now correct historical attendance records.'
-          : 'Owner attendance editing is off. Managers record attendance for today only.',
+          ? t('settings.attendance.enabledMsg')
+          : t('settings.attendance.disabledMsg'),
       });
     } catch {
-      addToast({ type: 'error', title: 'Could not update setting' });
+      addToast({ type: 'error', title: t('settings.updateFailedGeneric') });
     } finally {
       setIsSaving(false);
     }
@@ -47,14 +49,14 @@ export const OwnerAttendanceToggle: React.FC = () => {
       icon={CalendarCheck}
       iconClassName="text-primary"
       iconBgClassName="bg-primary/10"
-      title="Allow me to edit attendance records"
-      description="When on, you can correct historical attendance for any date. Every edit is audit-logged and requires a written reason. Off by default."
+      title={t('settings.attendance.title')}
+      description={t('settings.attendance.description')}
       control={
         <Switch
           checked={enabled}
           onCheckedChange={handleToggle}
           disabled={isSaving || settingQuery.isLoading}
-          aria-label="Allow owner to edit attendance records"
+          aria-label={t('settings.attendance.title')}
         />
       }
     />
