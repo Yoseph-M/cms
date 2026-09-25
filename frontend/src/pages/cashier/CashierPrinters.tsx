@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { OwnerPrinters } from '../owner/OwnerPrinters';
 import { useHeaderStore } from '../../store/headerStore';
 
@@ -9,15 +10,16 @@ import { useHeaderStore } from '../../store/headerStore';
  */
 export const CashierPrinters: React.FC = () => {
   const { setPageTitle, setShowDateRange } = useHeaderStore();
+  const { t } = useTranslation();
 
   useEffect(() => {
-    setPageTitle({ title: 'Printers', subtitle: 'Set up the printer for this terminal' });
+    setPageTitle({ title: t('printers.title'), subtitle: t('printers.subtitleTerminal') });
     setShowDateRange(false);
     return () => {
-      setPageTitle({ title: 'Overview', subtitle: '' });
+      setPageTitle({ title: t('app.overview'), subtitle: '' });
       setShowDateRange(false);
     };
-  }, [setPageTitle, setShowDateRange]);
+  }, [setPageTitle, setShowDateRange, t]);
 
   return <OwnerPrinters />;
 };
