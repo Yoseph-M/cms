@@ -8,6 +8,31 @@ vi.mock('../api/axiosClient', () => ({
   axiosClient: { get: vi.fn() },
 }));
 
+vi.mock('react-i18next', () => {
+  // Resolve keys against the real catalogues so assertions keep reading the
+  // UI text users see, not translation keys.
+  const en = {
+    ...require('../locales/en/common.json'),
+    ...require('../locales/en/attendance.json'),
+  };
+  const lookup = (key: string): string =>
+    key
+      .split('.')
+      .reduce<any>((node, part) => (node == null ? undefined : node[part]), en);
+  const t = (key: string, options?: any) => {
+    const value = typeof lookup(key) === 'string' ? lookup(key) : options?.defaultValue || key;
+    if (typeof value === 'string' && options && typeof options === 'object') {
+      return value.replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(options[name] ?? ''));
+    }
+    return value;
+  };
+  return {
+    useTranslation: () => ({ t, i18n: { language: 'en' } }),
+    withTranslation: () => (Component: any) => Component,
+    initReactI18next: { type: '3rdParty', init: () => {} },
+  };
+});
+
 const staff = [
   { id: 'u1', name: 'Abebe', role: 'WAITER' },
   { id: 'u2', name: 'Sara', role: 'CASHIER' },
