@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { useToastStore } from '../../store/toastStore';
 import { CheckCircle2, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
@@ -30,6 +31,7 @@ const VARIANT_STYLES: Record<
 };
 
 export const ToastContainer: React.FC = () => {
+  const { t } = useTranslation();
   const { toasts, removeToast } = useToastStore();
 
   return (
@@ -92,7 +94,7 @@ export const ToastContainer: React.FC = () => {
               </div>
               <button
                 onClick={() => removeToast(toast.id)}
-                aria-label="Dismiss"
+                aria-label={t('buttons.dismiss')}
                 className="absolute top-2.5 right-2.5 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
