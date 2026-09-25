@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Bell, CheckCheck } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { axiosClient } from '../../api/axiosClient';
@@ -50,6 +51,7 @@ const severityTone: Record<string, string> = {
 };
 
 export const NotificationBell: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const { socket } = useSocketStore();
   const navigate = useNavigate();
@@ -144,35 +146,35 @@ export const NotificationBell: React.FC = () => {
   };
 
   const typeLabel: Record<string, string> = {
-    MISSING_ATTENDANCE: 'Attendance', PRINTER_FAILURE: 'Printers',
-    PAYROLL_PERIOD_DUE: 'Payroll', MENU_ITEM_UNAVAILABLE: 'Menu', SYSTEM_OVERRIDE: 'System',
-    DAILY_CLOSE_REQUESTED: 'End of Day', DAILY_CLOSE_DECISION: 'End of Day',
+    MISSING_ATTENDANCE: t('notifications.groupAttendance'), PRINTER_FAILURE: t('notifications.groupPrinters'),
+    PAYROLL_PERIOD_DUE: t('notifications.groupPayroll'), MENU_ITEM_UNAVAILABLE: t('notifications.groupMenu'), SYSTEM_OVERRIDE: t('notifications.groupSystem'),
+    DAILY_CLOSE_REQUESTED: t('notifications.groupEndOfDay'), DAILY_CLOSE_DECISION: t('notifications.groupEndOfDay'),
   };
 
   // Short, plain-language headline per type so a glance is enough to know what
   // a notification is about before reading the sentence below it.
   const typeTitle: Record<string, string> = {
-    MISSING_ATTENDANCE: 'Attendance not marked',
-    PRINTER_FAILURE: 'A ticket did not print',
-    PAYROLL_PERIOD_DUE: 'Payroll not recorded',
-    MENU_ITEM_UNAVAILABLE: 'Menu item off for a while',
-    SYSTEM_OVERRIDE: 'System notice',
-    DAILY_CLOSE_REQUESTED: 'End of Day needs approval',
-    DAILY_CLOSE_DECISION: 'End of Day decision',
+    MISSING_ATTENDANCE: t('notifications.titleAttendance'),
+    PRINTER_FAILURE: t('notifications.titlePrinter'),
+    PAYROLL_PERIOD_DUE: t('notifications.titlePayroll'),
+    MENU_ITEM_UNAVAILABLE: t('notifications.titleMenu'),
+    SYSTEM_OVERRIDE: t('notifications.titleSystem'),
+    DAILY_CLOSE_REQUESTED: t('notifications.titleCloseRequested'),
+    DAILY_CLOSE_DECISION: t('notifications.titleCloseDecision'),
   };
   const grouped = visibleItems.reduce<Record<string, NotificationItem[]>>((groups, item) => {
-    const group = typeLabel[item.type] || 'System';
+    const group = typeLabel[item.type] || t('notifications.groupSystem');
     (groups[group] ||= []).push(item);
     return groups;
   }, {});
 
   return (
     <div className="relative" ref={ref}>
-      <Tooltip label="Notifications" side="bottom" align="end">
+      <Tooltip label={t('notifications.title')} side="bottom" align="end">
         <button
           onClick={() => setOpen((o) => !o)}
           className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          aria-label="Notifications"
+          aria-label={t('notifications.title')}
         >
           <Bell className="h-[18px] w-[18px]" />
           {unread > 0 && (
@@ -186,19 +188,19 @@ export const NotificationBell: React.FC = () => {
       {open && (
         <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-[22rem] max-h-[28rem] rounded-xl border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden z-50 flex flex-col">
           <div className="px-3 py-2.5 border-b border-border flex items-center justify-between bg-secondary/30">
-            <p className="text-sm font-semibold">Notifications</p>
+            <p className="text-sm font-semibold">{t('notifications.title')}</p>
             {unread > 0 && (
               <button
                 onClick={() => void markAll()}
                 className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
               >
-                <CheckCheck className="w-3 h-3" /> Mark all read
+                <CheckCheck className="w-3 h-3" /> {t('notifications.markAllRead')}
               </button>
             )}
           </div>
           <div className="overflow-y-auto flex-1">
             {visibleItems.length === 0 ? (
-              <p className="p-6 text-sm text-muted-foreground text-center">No notifications yet.</p>
+              <p className="p-6 text-sm text-muted-foreground text-center">{t('notifications.noneYet')}</p>
             ) : (
               <>
               {Object.entries(grouped).map(([group, groupItems]) => (
