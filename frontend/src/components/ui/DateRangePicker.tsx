@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import {
@@ -22,13 +23,13 @@ interface DateRangePickerProps {
   className?: string;
 }
 
-const PRESETS: { id: DateRangePreset; label: string }[] = [
-  { id: 'today', label: 'Today' },
-  { id: '7d', label: 'Last 7 days' },
-  { id: '30d', label: 'Last 30 days' },
-  { id: 'mtd', label: 'Month to date' },
-  { id: 'qtd', label: 'Quarter to date' },
-  { id: 'ytd', label: 'Year to date' },
+const PRESETS: { id: DateRangePreset; labelKey: string }[] = [
+  { id: 'today', labelKey: 'dateRange.today' },
+  { id: '7d', labelKey: 'dateRange.last7' },
+  { id: '30d', labelKey: 'dateRange.last30' },
+  { id: 'mtd', labelKey: 'dateRange.mtd' },
+  { id: 'qtd', labelKey: 'dateRange.qtd' },
+  { id: 'ytd', labelKey: 'dateRange.ytd' },
 ];
 
 const computeRange = (preset: DateRangePreset, customFrom?: Date, customTo?: Date): DateRange => {
@@ -75,13 +76,16 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   onChange,
   className,
 }) => {
+  const { t } = useTranslation();
   const currentPreset = value.preset ?? '30d';
 
   const handlePreset = (preset: DateRangePreset) => {
     onChange(computeRange(preset));
   };
 
-  const selectedLabel = PRESETS.find((p) => p.id === currentPreset)?.label ?? formatRange(value);
+  const selectedLabel = PRESETS.find((p) => p.id === currentPreset)
+    ? t(PRESETS.find((p) => p.id === currentPreset)!.labelKey)
+    : formatRange(value);
 
   return (
     <DropdownMenu>
@@ -105,7 +109,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
             selected={preset.id === currentPreset}
             onClick={() => handlePreset(preset.id)}
           >
-            {preset.label}
+            {t(preset.labelKey)}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
