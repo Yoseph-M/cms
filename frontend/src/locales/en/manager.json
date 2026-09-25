@@ -110,6 +110,9 @@
   "expenses": {
     "title": "Expenses",
     "addExpense": "Add Expense",
+    "editAria": "Edit expense",
+    "deleteAria": "Delete expense",
+    "monthlyAverage": "Monthly average",
     "editExpense": "Edit Expense",
     "addDescription": "Record a new business expense.",
     "editDescription": "Update this expense record.",
@@ -193,5 +196,8 @@
     "invalidAmount": "Paid amount must be a non-negative number.",
     "payrollRecorded": "Payroll entry recorded",
     "payrollRecordError": "Could not record entry"
+  },
+  "a11y": {
+    "logoAlt": "Logo"
   }
 }
