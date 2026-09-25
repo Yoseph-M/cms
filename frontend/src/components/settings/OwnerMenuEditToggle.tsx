@@ -1,5 +1,6 @@
 import { extractErrorMessage } from '../../utils/errorHandler';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -21,6 +22,7 @@ const SETTING_KEY = 'ownerMenuEditEnabled';
  * menu screen to browse-only mode.
  */
 export const OwnerMenuEditToggle: React.FC = () => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const { fetchSettings } = useSettingsStore();
   const queryClient = useQueryClient();
@@ -51,37 +53,37 @@ export const OwnerMenuEditToggle: React.FC = () => {
       await fetchSettings();
       addToast({
           type: 'success',
-          title: checked ? 'Owner menu editing enabled' : 'Owner menu editing disabled',
+          title: checked ? t('settings.menuEdit.ownerEnabled') : t('settings.menuEdit.ownerDisabled'),
           message: checked
-            ? 'Owners can now add, edit, and hide menu items.'
-            : 'The menu is now read-only for owners.',
+            ? t('settings.menuEdit.ownerEnabledMsg')
+            : t('settings.menuEdit.ownerDisabledMsg'),
         });
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Update failed',
-        message: extractErrorMessage(err) || 'Could not update setting.',
+        title: t('settings.menuEdit.updateFailed'),
+        message: extractErrorMessage(err) || t('settings.menuEdit.updateFailedMsg'),
       });
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (settingQuery.isLoading) return <LoadingState message="Loading setting..." />;
+  if (settingQuery.isLoading) return <LoadingState message={t('loading')} />;
 
   return (
     <SettingsRow
       icon={UtensilsCrossed}
       iconClassName="text-emerald-600 dark:text-emerald-400"
       iconBgClassName="bg-emerald-500/10"
-      title="Allow owner menu editing"
-      description="Off by default — owners can browse the menu but not change it. Turn it on to unlock adding, editing, and hiding menu items for owners."
+      title={t('settings.menuEdit.ownerTitle')}
+      description={t('settings.menuEdit.ownerDescription')}
       control={
         <Switch
           checked={enabled}
           onCheckedChange={handleToggle}
           disabled={isSaving}
-          aria-label="Allow owner and manager menu editing"
+          aria-label={t('settings.menuEdit.ownerTitle')}
         />
       }
     />
