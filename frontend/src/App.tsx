@@ -8,6 +8,7 @@ import { useSettingsStore } from './store/settingsStore';
 import { useThemeStore } from './store/themeStore';
 import { useHardwarePrinter } from './hooks/useHardwarePrinter';
 import { useIdleLogout } from './hooks/useIdleLogout';
+import { purgeCachedServerData, subscribeToDataReset } from './lib/dataReset';
 
 import { ToastContainer } from './components/common/ToastContainer';
 
@@ -186,7 +187,7 @@ const LoginRoute: React.FC = () => {
 /** Router-free app shell — use with MemoryRouter in tests, BrowserRouter in production. */
 export const AppRoutes: React.FC = () => {
   const { isAuthenticated, isLoading, bootstrapSession, user } = useAuthStore();
-  const { connect, disconnect } = useSocketStore();
+  const { connect, disconnect, socket } = useSocketStore();
   const { initListeners } = useOfflineSyncStore();
   const { settings, fetchSettings } = useSettingsStore();
 
@@ -259,6 +260,15 @@ export const AppRoutes: React.FC = () => {
       disconnect();
     }
   }, [isAuthenticated, connect, disconnect, initListeners]);
+
+  // A reset (or a restore) replaces the whole books on the server. This screen
+  // may not be the one that asked for it — every signed-in console drops its
+  // cached figures the moment the backend announces it, so a manager's tablet
+  // can never keep showing tickets that no longer exist.
+  useEffect(
+    () => subscribeToDataReset(socket, () => purgeCachedServerData(queryClient)),
+    [socket],
+  );
 
   return (
     <QueryClientProvider client={queryClient}>
