@@ -194,7 +194,7 @@ const OwnerLayoutInner: React.FC = () => {
             >
               {sidebarCollapsed ? (
                 <>
-                  <img src="/logo.png" alt="Logo" className="absolute inset-0 w-full h-full object-cover scale-110 transition-opacity duration-200 group-hover:opacity-0" />
+                  <img src="/logo.png" alt={t('a11y.logoAlt')} className="absolute inset-0 w-full h-full object-cover scale-110 transition-opacity duration-200 group-hover:opacity-0" />
                   <PanelLeftRounded className="w-5 h-5 absolute opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                 </>
               ) : (
