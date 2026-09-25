@@ -1,10 +1,13 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCcw, ChevronDown, Copy, Check } from 'lucide-react';
+import { withTranslation, WithTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 
-interface Props {
+interface Props extends WithTranslation {
   children?: ReactNode;
 }
+
+
 
 interface State {
   hasError: boolean;
@@ -63,7 +66,7 @@ const rememberReload = () => {
   }
 };
 
-export class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundaryBase extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
@@ -140,14 +143,14 @@ export class ErrorBoundary extends Component<Props, State> {
             <AlertTriangle className="w-8 h-8 text-destructive" />
           </div>
           <h1 className="text-2xl font-display font-semibold text-foreground mb-2 text-center">
-            {autoReloading ? 'Bringing back the latest version' : 'Something went wrong'}
+            {autoReloading ? this.props.t('errorBoundary.recovering') : this.props.t('errorBoundary.title')}
           </h1>
           <p className="text-sm text-muted-foreground mb-6 text-center">
             {autoReloading
-              ? 'This tab was holding an out-of-date copy of the app. Reloading it now…'
+              ? this.props.t('errorBoundary.recoveringMsg')
               : stale
-                ? 'The app is out of date in this tab. Reload to pick up the current version.'
-                : 'A critical error occurred in the application. Reload the page to continue.'}
+                ? this.props.t('errorBoundary.staleMsg')
+                : this.props.t('errorBoundary.criticalMsg')}
           </p>
 
           <div className="bg-secondary/50 border border-border rounded-lg p-3 mb-4 overflow-auto max-h-32 text-left">
@@ -160,7 +163,7 @@ export class ErrorBoundary extends Component<Props, State> {
               captured and kept on screen instead of only in the console. */}
           <details className="group mb-6 rounded-lg border border-border bg-secondary/30">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">
-              <span>Where it happened</span>
+              <span>{this.props.t('errorBoundary.where')}</span>
               <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
             </summary>
             <pre className="max-h-56 overflow-auto border-t border-border px-3 py-2 text-[11px] leading-relaxed text-muted-foreground font-mono whitespace-pre-wrap break-words">
@@ -170,7 +173,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button onClick={this.handleReload} className="flex-1" leftIcon={<RefreshCcw className="w-4 h-4" />}>
-              {autoReloading ? 'Reload now' : 'Reload Application'}
+              {autoReloading ? this.props.t('errorBoundary.reloadNow') : this.props.t('errorBoundary.reloadApp')}
             </Button>
             <Button
               variant="outline"
@@ -178,7 +181,7 @@ export class ErrorBoundary extends Component<Props, State> {
               className="flex-1"
               leftIcon={copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             >
-              {copied ? 'Copied' : 'Copy details'}
+              {copied ? this.props.t('errorBoundary.copied') : this.props.t('errorBoundary.copyDetails')}
             </Button>
           </div>
         </div>
@@ -186,3 +189,5 @@ export class ErrorBoundary extends Component<Props, State> {
     );
   }
 }
+
+export const ErrorBoundary = withTranslation('common')(ErrorBoundaryBase);
