@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../ui/Button';
 
 export interface CancelModalProps {
@@ -12,14 +13,14 @@ export interface CancelModalProps {
   onCancel: () => void;
   onConfirm: (reason: string) => void;
   /** Quick-pick reasons so the cashier doesn't type every time */
-  quickReasons?: string[];
+  quickReasons?: string[] | undefined;
 }
 
-const DEFAULT_QUICK_REASONS = [
-  'Customer walked out',
-  'Wrong order',
-  'Duplicate ticket',
-  'Kitchen out of item',
+const QUICK_REASON_KEYS = [
+  'cancelModal.reasonWalkedOut',
+  'cancelModal.reasonWrongOrder',
+  'cancelModal.reasonDuplicate',
+  'cancelModal.reasonOutOfItem',
 ];
 
 const CUSTOM_REASONS_KEY = 'cms:cancel-reasons';
@@ -66,8 +67,9 @@ export const CancelModal: React.FC<CancelModalProps> = ({
   completed = false,
   onCancel,
   onConfirm,
-  quickReasons = DEFAULT_QUICK_REASONS,
+  quickReasons,
 }) => {
+  const { t } = useTranslation();
   const [reason, setReason] = useState('');
   const [customReasons, setCustomReasons] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,17 +85,18 @@ export const CancelModal: React.FC<CancelModalProps> = ({
 
   // Merge defaults + custom reasons (de-duped)
   const allReasons = useMemo(() => {
-    const seen = new Set(quickReasons.map((r) => r.toLowerCase()));
+    const defaults = quickReasons ?? QUICK_REASON_KEYS.map((k) => t(k));
+    const seen = new Set(defaults.map((r) => r.toLowerCase()));
     const extra = customReasons.filter((r) => !seen.has(r.toLowerCase()));
-    return [...quickReasons, ...extra];
-  }, [quickReasons, customReasons]);
+    return [...defaults, ...extra];
+  }, [quickReasons, customReasons, t]);
 
   const handleConfirm = useCallback(
     (r: string) => {
       const trimmed = r.trim();
       if (!trimmed) return;
       // Persist the reason for future use
-      saveCustomReason(trimmed, quickReasons);
+      saveCustomReason(trimmed, (quickReasons ?? []).map((r) => r.trim().toLowerCase()));
       onConfirm(trimmed);
     },
     [onConfirm, quickReasons],
@@ -131,13 +134,13 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                       <CheckCircle2 className="w-6 h-6" />
                     </div>
                     <h3 id="cancel-modal-title" className="mt-4 font-display text-lg font-bold text-foreground">
-                      Order cancelled
+                      {t('cashier.cancelModal.completedTitle')}
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {orderLabel} has been cancelled and removed from the active queue.
+                      {t('cashier.cancelModal.completedMsg', { order: orderLabel })}
                     </p>
                     <Button className="mt-6 w-full" onClick={onCancel}>
-                      Done
+                      {t('cashier.cancelModal.done')}
                     </Button>
                   </div>
                 ) : (
@@ -148,18 +151,17 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 id="cancel-modal-title" className="font-display text-lg font-bold text-foreground">
-                      Cancel {orderLabel}?
+                      {t('cashier.cancelModal.confirmTitle', { order: orderLabel })}
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
-                      This cancels the order immediately. The reason will be recorded for the
-                      team.
+                      {t('cashier.cancelModal.confirmMsg')}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={onCancel}
                     disabled={busy}
-                    aria-label="Close"
+                    aria-label={t('a11y.close')}
                     className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                   >
                     <X className="w-4 h-4" />
@@ -169,11 +171,11 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                 {/* Quick reasons (defaults + previously used custom reasons) */}
                 <div className="mt-5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                    Quick reason
+                    {t('cashier.cancelModal.quickReason')}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {allReasons.map((q) => {
-                      const isCustom = !quickReasons.includes(q);
+                      const isCustom = !(quickReasons ?? []).includes(q);
                       return (
                         <button
                           key={q}
@@ -201,7 +203,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                     htmlFor="cancel-reason"
                     className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
                   >
-                    Reason
+                    {t('cashier.cancelModal.reason')}
                     <span className="text-rose-500 ml-1">*</span>
                   </label>
                   <input
@@ -213,7 +215,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && reason.trim() && !busy) handleConfirm(reason);
                     }}
-                    placeholder="e.g. Customer walked out"
+                    placeholder={t('cashier.cancelModal.placeholder')}
                     className={cn(
                       'mt-1.5 w-full h-11 px-3.5 rounded-lg',
                       'bg-secondary/50 border border-transparent',
@@ -226,7 +228,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
 
                 <div className="mt-6 flex justify-end gap-2">
                   <Button variant="ghost" onClick={onCancel} disabled={busy}>
-                    Keep order
+                    {t('cashier.cancelModal.keepOrder')}
                   </Button>
                   <Button
                     variant="destructive"
@@ -234,7 +236,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
                     disabled={!reason.trim() || busy}
                     className="shadow-sm"
                   >
-                    {busy ? 'Cancelling…' : 'Cancel order'}
+                    {busy ? t('cashier.cancelModal.cancelling') : t('cashier.cancelModal.cancelOrder')}
                   </Button>
                 </div>
                   </>
