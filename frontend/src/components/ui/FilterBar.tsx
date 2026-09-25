@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { DropdownSelect } from './DropdownSelect';
 
 export interface FilterOption {
@@ -26,15 +27,18 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   value,
   onChange,
   className,
-  ariaLabel = 'Filter',
+  ariaLabel,
   icon,
-}) => (
-  <DropdownSelect
-    ariaLabel={ariaLabel}
-    icon={icon}
-    options={options.map((o) => ({ value: o.value, label: o.label }))}
-    value={value}
-    onChange={onChange}
-    className={className}
-  />
-);
+}) => {
+  const { t } = useTranslation();
+  return (
+    <DropdownSelect
+      ariaLabel={ariaLabel ?? t('buttons.filter')}
+      icon={icon}
+      options={options.map((o) => ({ value: o.value, label: o.label }))}
+      value={value}
+      onChange={onChange}
+      className={className}
+    />
+  );
+};
