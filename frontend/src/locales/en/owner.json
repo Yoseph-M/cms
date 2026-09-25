@@ -1,4 +1,8 @@
 {
+  "a11y": {
+    "logoAlt": "Logo",
+    "administrationSections": "Administration sections"
+  },
   "nav": {
     "overview": "Overview",
     "staff": "Staff Directory",
@@ -28,6 +32,7 @@
   },
   "dashboard": {
     "title": "Analytics Overview",
+    "subtitle": "How the business is doing right now",
     "loading": "Loading analytics…",
     "stats": {
       "todayRevenue": "Today's Revenue",
@@ -55,6 +60,18 @@
       "emptyTitle": "Not enough orders yet to crown a favorite.",
       "emptyMsg": "Once orders are placed, your best-sellers will appear here ranked by volume."
     },
+    "topCount": "Top {{count}}",
+    "categoryWindow": {
+      "This month": "This month",
+      "Last month": "Last month",
+      "This year": "This year"
+    },
+    "recentWindow": {
+      "Today": "Today",
+      "Last 7 days": "Last 7 days",
+      "Last 30 days": "Last 30 days",
+      "Last year": "Last year"
+    },
     "sections": {
       "revenueTrend": "Revenue trend",
       "revenueTrendDesc": "Income vs. operating expenses",
@@ -64,6 +81,10 @@
       "recentOrdersDesc": "The latest activity across all stations",
       "topItems": "Top items",
       "topItemsDesc": "Best sellers in the selected window",
+      "bestSellers": "Best sellers",
+      "bestSellersDesc": "Share of revenue in range",
+      "bestSellersDescUnits": "Share of units sold in range",
+      "bestSellersAria": "Best sellers by share",
       "waiterPerformance": "Waiter performance",
       "waiterPerformanceDesc": "Orders and revenue attributed per waiter in the selected period",
       "waiterPerformanceAria": "Waiter performance by sales"
@@ -76,8 +97,12 @@
     },
     "emptySales": "No sales data for this period.",
     "emptyTopItems": "No top items in this window.",
+    "emptyBestSellers": "No sales in this period.",
     "emptyWaiter": "No waiter data for this period.",
-    "refreshing": "Refreshing…"
+    "refreshing": "Refreshing…",
+    "metricUnits": "Units",
+    "metricRevenue": "Revenue",
+    "rankBy": "Rank by"
   },
   "recentOrders": {
     "col_type": "Type",
@@ -85,6 +110,8 @@
     "col_time": "Time",
     "col_status": "Status",
     "col_price": "Price",
+    "table": "Table {{number}}",
+    "takeaway": "Takeaway",
     "empty": "No recent orders.",
     "status": {
       "paid": "Paid",
@@ -96,6 +123,7 @@
   "finance": {
     "title": "Finance",
     "subtitle": "Analytics & revenue intelligence",
+    "last12Months": "Last 12 months",
     "totalRevenue": "Total Revenue",
     "noData": "No financial data.",
     "overallRevenue": "Overall Revenue",
@@ -107,9 +135,12 @@
     "noRevenueInRange": "No revenue in this date range.",
     "line": "Line",
     "bar": "Bar",
+    "chartStyle": "Chart style",
+    "showing": "Showing",
     "compareAgainst": "Compare against",
     "noOverlay": "No overlay",
     "topItems": "Top Items",
+    "itemsShown": "Items shown",
     "qty": "Qty",
     "staffLeaderboard": "Staff Leaderboard",
     "cancellationAnalysis": "Cancellation Analysis",
@@ -126,13 +157,48 @@
     "last7Days": "Last 7 days",
     "last30Days": "Last 30 days",
     "last90Days": "Last 90 days",
-    "selectedRange": "Selected range"
+    "selectedRange": "Selected range",
+    "dailyRevenue": "Daily takings",
+    "ordersShort": "{{count}} ord.",
+    "totalInRange": "Total in range",
+    "eodDaysClosed": "{{count}} days closed",
+    "eodClosedBy": "Approved at End of Day by the manager",
+    "closedByName": "closed by {{name}}",
+    "noClosedDays": "No closed days in this date range.",
+    "eodReconDiverged": "{{count}} of {{total}} days diverge",
+    "eodReconAllMatch": "Every closed day matches the ledger",
+    "eodReconMore": "signed off {{amount}} more than the ledger shows",
+    "eodReconLate": "{{amount}} landed after the close",
+    "eodReconLedger": "ledger {{amount}}",
+    "eodReconDrift": "Off the ledger",
+    "eodReconHint": "Each closed day is re-read from the paid tickets on it; a day that no longer agrees is flagged.",
+    "busiestDays": "Busiest Days",
+    "marginDial": "Margin Dial",
+    "marginLoss": "Loss",
+    "marginProfit": "Profit",
+    "marginLossZone": "Loss zone",
+    "marginProfitZone": "Profit zone",
+    "marginThin": "Thin margin",
+    "marginHealthy": "Healthy margin",
+    "marginNoRevenueShort": "No revenue",
+    "marginOfRevenue": "of revenue kept as profit",
+    "marginBreakEvenMark": "break-even",
+    "marginKept": "{{amount}} kept out of {{revenue}} collected",
+    "marginOverspend": "{{amount}} more spent than collected this window",
+    "marginNoCosts": "no costs recorded yet",
+    "marginNoRevenue": "No revenue in this date range.",
+    "marginDialAria": "Profit margin dial: {{percent}} percent of revenue kept as profit.",
+    "bestDay": "Best day: {{day}}"
   },
   "itemSales": {
     "subtitle": "Which items are selling, and how often",
     "unitsSold": "Units sold",
     "itemRevenue": "Item revenue",
     "itemsSold": "Items sold",
+    "topSeller": "Top seller",
+    "metricUnits": "Units",
+    "metricRevenue": "Revenue",
+    "noSalesYet": "No sales yet",
     "searchPlaceholder": "Search items…",
     "filterCategory": "Filter by category",
     "filterPeriod": "Filter by period",
@@ -146,10 +212,6 @@
     "leastSold": "Least sold",
     "highestRevenue": "Highest revenue",
     "nameAZ": "Name (A–Z)",
-    "bestSellerEachHour": "Best Seller Each Hour",
-    "bestSellerDesc": "Which item sells most in every hour of the selected period.",
-    "peak": "Peak",
-    "noHourlySales": "No hourly sales in this period yet.",
     "crunching": "Crunching sales…",
     "loadFailedTitle": "Couldn't load sales",
     "noMenuItems": "No menu items",
@@ -204,6 +266,7 @@
       "staff": "Staff",
       "auditLogs": "Audit Logs"
     },
+    "resetAria": "Reset system data",
     "resetConfirmTitle": "Reset all system data?",
     "resetConfirmDesc": "Every operational record is permanently deleted. Download a backup first if you might need this data again — a reset cannot be undone from this screen.",
     "willBeDeleted": "Will be deleted",
@@ -241,6 +304,7 @@
     "toast_restore_failed_msg": "The backup could not be applied. Nothing was changed.",
     "toast_reset_ok_title": "System data reset",
     "toast_reset_ok": "{{total}} operational records removed. Staff accounts, menu, and settings were kept.",
+    "toast_reset_reminders_paused": "Attendance and payroll reminders are paused until tomorrow.",
     "toast_reset_failed_title": "Reset failed",
     "toast_reset_failed_msg": "Could not reset the system data. Nothing was deleted."
   },
@@ -265,6 +329,8 @@
   },
   "settings": {
     "title": "Settings",
+    "managerDescription": "Manage terminal preferences and operational rules shared with Owners.",
+    "cashierDescription": "Personalize appearance, notifications, and language for this terminal.",
     "subtitle": "Manage your business profile, preferences, and what each role can do across the system.",
     "reRunSetup": "Re-run Setup Guide",
     "onThisPage": "On this page",
