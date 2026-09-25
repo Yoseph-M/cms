@@ -93,7 +93,7 @@ export const ManagerSettings: React.FC = () => {
   return (
     <SettingsShell
       title={t('settings.title', { defaultValue: 'Manager Settings' })}
-      description="Manage terminal preferences and operational rules shared with Owners."
+      description={t('settings.managerDescription')}
       categories={categories}
     />
   );
