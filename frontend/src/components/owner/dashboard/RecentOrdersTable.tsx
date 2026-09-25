@@ -6,7 +6,6 @@ import { formatCurrency } from '../../../utils/currency';
 export type OrderStatusKey = 'paid' | 'cancelled' | 'pending' | 'feedback';
 export interface RecentOrder {
   id: string;
-  type: string;
   attendant: string;
   time: string;
   status: OrderStatusKey;
@@ -38,8 +37,7 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            <th className="py-2.5 pr-3 font-semibold">{t('recentOrders.col_type')}</th>
-            <th className="py-2.5 px-3 font-semibold">{t('recentOrders.col_attendant')}</th>
+            <th className="py-2.5 pr-3 font-semibold">{t('recentOrders.col_attendant')}</th>
             <th className="py-2.5 px-3 font-semibold">{t('recentOrders.col_time')}</th>
             <th className="py-2.5 px-3 font-semibold">{t('recentOrders.col_status')}</th>
             <th className="py-2.5 pl-3 text-right font-semibold">{t('recentOrders.col_price')}</th>
@@ -53,10 +51,7 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
                 key={o.id}
                 className="border-t border-border/40 transition-colors hover:bg-secondary/40"
               >
-                <td className="py-3 pr-3 font-semibold text-foreground">
-                  {o.type}
-                </td>
-                <td className="py-3 px-3 text-muted-foreground">
+                <td className="py-3 pr-3 text-muted-foreground">
                   {o.attendant}
                 </td>
                 <td className="py-3 px-3 text-muted-foreground tabular-nums">
@@ -68,7 +63,8 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
                       'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
                       status.className,
                     )}
-                  >                      {t(STATUS_STYLES[o.status].labelKey)}
+                  >
+                    {t(STATUS_STYLES[o.status].labelKey)}
                   </span>
                 </td>
                 <td className="py-3 pl-3 text-right font-mono font-semibold text-foreground tabular-nums">
