@@ -1,11 +1,12 @@
 import React from 'react';
 import { Ghost } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 import { Button, type ButtonProps } from '../ui/Button';
 
 export function EmptyState({
-  title = 'Nothing here yet',
-  message = 'Check back later.',
+  title,
+  message,
   icon,
   className,
   action,
@@ -21,6 +22,7 @@ export function EmptyState({
     icon?: React.ReactNode;
   };
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -32,10 +34,10 @@ export function EmptyState({
         {icon ?? <Ghost className="w-7 h-7" />}
       </div>
       <h3 className="font-display font-semibold text-lg mb-1 text-foreground">
-        {title}
+        {title ?? t('emptyState.title')}
       </h3>
       <p className="text-sm text-muted-foreground max-w-xs text-center">
-        {message}
+        {message ?? t('emptyState.message')}
       </p>
       {action && (
         <Button
