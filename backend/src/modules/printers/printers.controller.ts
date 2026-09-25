@@ -227,18 +227,18 @@ export async function testPrint(req: AuthenticatedRequest, res: Response) {
   }
 
   if (printer.transport === 'BLUETOOTH' || printer.transport === 'USB') {
-    // Both Bluetooth and USB will enqueue jobs for the frontend to pick up
-    await prisma.printJob.create({
-      data: {
-        station: printer.station,
-        transport: printer.transport as any,
-        printerMacAddress: printer.macAddress,
-        printerVendorId: printer.vendorId,
-        printerProductId: printer.productId,
-        payloadBase64: buffer.toString('base64'),
-      },
+    // USB and Bluetooth printers belong to THIS browser: only the tab that has
+    // the device paired can reach it, and pairing needs the user gesture behind
+    // the button that is being clicked right now. Queueing the job instead meant
+    // the click reported success while nothing came out of the printer, so hand
+    // the terminal the encoded slip and let it print (see printTestSlip).
+    return res.json({
+      transport: printer.transport,
+      printerMacAddress: printer.macAddress,
+      printerVendorId: printer.vendorId,
+      printerProductId: printer.productId,
+      payloadBase64: buffer.toString('base64'),
     });
-    return res.json({ message: `Test print job queued for ${printer.transport} printer.` });
   }
 
   return res.status(400).json({ error: 'Unsupported transport.' });
