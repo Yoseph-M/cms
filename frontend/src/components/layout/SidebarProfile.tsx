@@ -1,9 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../store/authStore';
 import { useSidebar } from '../../store/SidebarContext';
 
 export const SidebarProfile: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const { collapsed } = useSidebar();
   const navigate = useNavigate();
@@ -20,7 +22,7 @@ export const SidebarProfile: React.FC = () => {
         className={`w-full flex items-center hover:bg-secondary transition-colors text-left ${
           collapsed ? 'justify-center p-2 rounded-xl' : 'gap-3 px-2 py-2 rounded-lg'
         }`}
-        title={collapsed ? 'Profile & Settings' : undefined}
+        title={collapsed ? t('profileAndSettings') : undefined}
       >
         <div className="w-9 h-9 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center shrink-0 overflow-hidden">
           {avatarUrl ? (
