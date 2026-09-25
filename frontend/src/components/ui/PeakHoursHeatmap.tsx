@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { ResponsiveHeatMap } from '@nivo/heatmap';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 
 export interface PeakHoursHeatmapProps {
@@ -37,6 +38,23 @@ export const PeakHoursHeatmap: React.FC<PeakHoursHeatmapProps> = ({
   className,
   height = 220,
 }) => {
+  const { t } = useTranslation();
+  const resolvedDayLabels = useMemo(
+    () =>
+      dayLabels !== DEFAULT_DAYS
+        ? dayLabels
+        : [
+            t('days.sun'),
+            t('days.mon'),
+            t('days.tue'),
+            t('days.wed'),
+            t('days.thu'),
+            t('days.fri'),
+            t('days.sat'),
+          ],
+    [dayLabels, t],
+  );
+
   const { data, maxValue } = useMemo(() => {
     let max = 0;
     const rows = [1, 2, 3, 4, 5, 6, 7].map((dow) => {
@@ -45,10 +63,10 @@ export const PeakHoursHeatmap: React.FC<PeakHoursHeatmapProps> = ({
         if (v > max) max = v;
         return { x: String(hour), y: v };
       });
-      return { id: dayLabels[dow - 1] ?? `Day ${dow}`, data: cells };
+      return { id: resolvedDayLabels[dow - 1] ?? t('days.dayN', { n: dow }), data: cells };
     });
     return { data: rows, maxValue: max };
-  }, [grid, dayLabels]);
+  }, [grid, resolvedDayLabels, t]);
 
   // Relative ramp: the busiest cell of the visible window is the deepest orange.
   const colorFor = useMemo(() => {
