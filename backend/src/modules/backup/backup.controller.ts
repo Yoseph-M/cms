@@ -66,11 +66,17 @@ export async function exportDatasetCsv(req: AuthenticatedRequest, res: Response,
 export async function downloadSnapshot(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const snapshot = await buildSnapshot();
-    const body = JSON.stringify(snapshot, null, 2);
+    // Compact, not pretty-printed. Indenting a multi-megabyte snapshot cost a
+    // meaningful slice of the download time and inflated the file for no
+    // benefit — the file is machine-restored, never read by eye.
+    const body = JSON.stringify(snapshot);
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="pos-backup-${stamp()}.json"`);
-    res.send(body);
+    res.setHeader('Content-Length', Buffer.byteLength(body, 'utf8'));
+    // `res.end` instead of `res.send`: send() hashes the whole payload to build
+    // an ETag, which is pure overhead for a one-shot file download.
+    res.end(body);
 
     void recordAudit({
       actorId: req.user!.userId,
