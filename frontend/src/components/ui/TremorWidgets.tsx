@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Card,
   Title,
@@ -25,7 +26,13 @@ export interface TremorWidgetProps {
   emptyMsg?: string;
   emptyIcon?: React.ReactNode;
   emptyTitle?: string;
+  /** Control that belongs to the title — e.g. the metric a chart plots. */
+  headerLeft?: React.ReactNode;
+  /** Controls pinned to the far right of the header bar. */
   headerExtra?: React.ReactNode;
+  /** A second bar UNDER the header, for a control that belongs to the chart
+   *  itself rather than to the card — e.g. a Line/Bar switch. */
+  headerToolbar?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
@@ -40,21 +47,37 @@ export const TremorWidget: React.FC<TremorWidgetProps> = ({
   emptyMsg,
   emptyIcon,
   emptyTitle,
+  headerLeft,
   headerExtra,
+  headerToolbar,
   children,
   className,
-}) => (
+}) => {
+  const { t } = useTranslation();
+  return (
   <Card className={cn('rounded-xl ring-1 ring-border/40 bg-card p-0 shadow-sm', className)}>
-    <Flex
-      justifyContent="between"
-      alignItems="center"
-      className="flex-wrap gap-2 border-b border-border/40 px-4 py-3"
-    >
-      <Title className="text-sm font-bold text-foreground">{title}</Title>
-      <Flex alignItems="center" className="flex-wrap gap-2 ml-auto">
+    {/* The header is ALWAYS a two-column grid — title column, control column —
+        with no responsive fallback. The auto column pins everything in
+        `headerExtra` to the right end of the card and `justify-end` keeps it
+        right-aligned even when the controls wrap. Both used to be `sm:`-only,
+        so below the breakpoint the control column became a second grid row and
+        its contents (the Daily takings button) sat flush left under the title —
+        which is why it kept "appearing on the left" however it was reordered. */}
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border/40 px-4 py-3">
+      {/* The title keeps its own controls beside it. */}
+      <div className="flex min-w-0 items-center gap-3">
+        <Title className="text-sm font-bold text-foreground">{title}</Title>
+        {headerLeft}
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2 text-right">
         {headerExtra}
-      </Flex>
-    </Flex>
+      </div>
+    </div>
+    {headerToolbar ? (
+      <div className="flex flex-wrap items-center gap-2 border-b border-border/40 px-4 py-2">
+        {headerToolbar}
+      </div>
+    ) : null}
     <div className="p-4">
       {loading ? (
         <div className="h-48 bg-secondary/40 rounded-lg animate-pulse" />
@@ -63,13 +86,13 @@ export const TremorWidget: React.FC<TremorWidgetProps> = ({
           <AlertCircle className="w-6 h-6 text-destructive" />
           <Text className="text-sm text-destructive">{error}</Text>
           <Button variant="outline" size="sm" onClick={onRetry}>
-            <RotateCcw className="w-3 h-3 mr-1.5" />Retry
+            <RotateCcw className="w-3 h-3 mr-1.5" />{t('buttons.retry')}
           </Button>
         </Flex>
       ) : empty ? (
         <EmptyState
-          title={emptyTitle || 'No data for this period'}
-          message={emptyMsg || 'Try widening the date range or check back once there is activity.'}
+          title={emptyTitle || t('tremor.noDataTitle')}
+          message={emptyMsg || t('tremor.noDataMsg')}
           icon={emptyIcon}
           className="min-h-[10rem] py-8"
         />
@@ -78,7 +101,8 @@ export const TremorWidget: React.FC<TremorWidgetProps> = ({
       )}
     </div>
   </Card>
-);
+  );
+};
 
 export interface ChartToggleProps {
   options: { value: string; label: string }[];
