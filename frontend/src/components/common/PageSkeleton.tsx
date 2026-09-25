@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 
@@ -258,12 +259,13 @@ const RENDERERS: Record<Variant, React.FC> = {
  * than a generic placeholder appearing first.
  */
 export const PageSkeleton: React.FC<{ variant?: Variant }> = ({ variant }) => {
+  const { t } = useTranslation();
   const location = useLocation();
   const resolved = variant ?? variantForPath(location.pathname);
   const Renderer = RENDERERS[resolved] ?? TableSkeleton;
 
   return (
-    <div className="space-y-4 p-1 animate-pulse" aria-busy aria-label="Loading page">
+    <div className="space-y-4 p-1 animate-pulse" aria-busy aria-label={t('a11y.loadingPage')}>
       <Renderer />
     </div>
   );
