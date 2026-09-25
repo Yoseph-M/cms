@@ -8,6 +8,27 @@ vi.mock('../api/axiosClient', () => ({
   axiosClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }));
 vi.mock('../store/toastStore', () => ({ useToastStore: vi.fn() }));
+vi.mock('react-i18next', () => {
+  // Resolve keys against the real English catalogue so assertions keep reading
+  // the UI text users see, not translation keys.
+  const en = require('../locales/en/common.json');
+  const lookup = (key: string): string =>
+    key
+      .split('.')
+      .reduce<any>((node, part) => (node == null ? undefined : node[part]), en);
+  const t = (key: string, options?: any) => {
+    const value = typeof lookup(key) === 'string' ? lookup(key) : options?.defaultValue || key;
+    if (typeof value === 'string' && options && typeof options === 'object') {
+      return value.replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(options[name] ?? ''));
+    }
+    return value;
+  };
+  return {
+    useTranslation: () => ({ t, i18n: { language: 'en' } }),
+    withTranslation: () => (Component: any) => Component,
+    initReactI18next: { type: '3rdParty', init: () => {} },
+  };
+});
 
 import { OwnerAuditLogs } from '../pages/owner/OwnerAuditLogs';
 import { resolveAdminTab } from '../pages/owner/adminTabs';
@@ -90,7 +111,7 @@ describe('audit logs', () => {
     const viewButtons = screen.getAllByRole('button', { name: /View details for/ });
     fireEvent.click(viewButtons[1]);
 
-    const dialog = await screen.findByRole('dialog', { name: /Audit event details/i });
+    const dialog = await screen.findByRole('dialog', { name: /Event details/i });
     expect(dialog).toBeInTheDocument();
     // The raw audit payload is shown verbatim for deeper digging, alongside the
     // record the event targeted.
