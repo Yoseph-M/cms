@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Armchair, ChevronLeft, Plus, ReceiptText } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useTranslation } from 'react-i18next';
 
 export interface TableMapProps {
   tableCount: number;
@@ -31,6 +32,7 @@ export const TableMap: React.FC<TableMapProps> = ({
   onBack,
   className,
 }) => {
+  const { t } = useTranslation();
   const numbers = Array.from({ length: tableCount }, (_, i) => String(i + 1));
   const totalOpen = Object.values(openOrderCounts).reduce((sum, n) => sum + n, 0);
 
@@ -47,14 +49,14 @@ export const TableMap: React.FC<TableMapProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
-            Back to queue
+            {t('nav.backToQueue')}
           </button>
           <span className="w-px h-6 bg-border" />
           <span className="font-display font-semibold text-base text-foreground flex items-center gap-2">
             <span className="w-7 h-7 rounded-lg bg-cyan-500 text-white flex items-center justify-center shadow-cyan">
               <Armchair className="w-3.5 h-3.5" />
             </span>
-            New order
+            {t('cashier:tickets.newOrderCta')}
           </span>
         </div>
       </header>
@@ -64,18 +66,18 @@ export const TableMap: React.FC<TableMapProps> = ({
           <div className="mb-4 flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <h2 className="font-display text-base font-bold leading-tight text-foreground">
-                Pick a table
+                {t('cashier:tables.pickTable')}
               </h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Every tap starts a new ticket — tables already being served just get an extra order.
+                {t('cashier:tables.pickTableHint')}
               </p>
             </div>
             <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground shrink-0">
               <span className="rounded-full border border-border bg-secondary/50 px-2 py-0.5 tabular-nums">
-                {tableCount} tables
+                {t('cashier:tables.count', { count: tableCount })}
               </span>
               <span className="rounded-full border border-border bg-secondary/50 px-2 py-0.5 tabular-nums">
-                {totalOpen} open {totalOpen === 1 ? 'ticket' : 'tickets'}
+                {t('cashier:tables.openTickets', { count: totalOpen })}
               </span>
             </div>
           </div>
@@ -103,6 +105,7 @@ const TableTile: React.FC<{
   onClick: () => void;
   onViewOrders?: () => void;
 }> = ({ number, openCount, onClick, onViewOrders }) => {
+  const { t } = useTranslation();
   const busy = openCount > 0;
 
   return (
@@ -120,12 +123,12 @@ const TableTile: React.FC<{
       <button
         type="button"
         onClick={onClick}
-        aria-label={`Start a new order on table ${number}`}
+        aria-label={t('cashier:tables.startNewAria', { number })}
         className="flex items-center justify-between gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 rounded-md"
       >
         <span className="min-w-0">
           <span className="block text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-            Table
+            {t('cashier:tables.tableLabel')}
           </span>
           <span className="block font-display text-xl font-bold leading-none tabular-nums text-foreground">
             {number}
@@ -145,7 +148,7 @@ const TableTile: React.FC<{
 
       <div className="mt-2 flex items-center justify-between gap-1">
         <span className="text-[10px] font-bold uppercase tracking-wide text-primary">
-          New order
+          {t('cashier:tickets.newOrderCta')}
         </span>
         {busy && onViewOrders && (
           <button
@@ -155,10 +158,10 @@ const TableTile: React.FC<{
               onViewOrders();
             }}
             className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-foreground/80 transition-colors hover:border-primary/40 hover:text-primary"
-            aria-label={`View ${openCount} open order${openCount === 1 ? '' : 's'} on table ${number}`}
+            aria-label={t('cashier:tables.viewOpenAria', { count: openCount, number })}
           >
             <ReceiptText className="h-2.5 w-2.5" />
-            {openCount} open
+            {t('cashier:tables.openCount', { count: openCount })}
           </button>
         )}
       </div>
