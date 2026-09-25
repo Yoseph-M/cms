@@ -1,14 +1,16 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 
 export function LoadingState({
-  message = 'Loading…',
+  message,
   className,
 }: {
   message?: string;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -22,7 +24,7 @@ export function LoadingState({
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
       </div>
-      <p className="text-sm font-medium">{message}</p>
+      <p className="text-sm font-medium">{message ?? t('loading')}</p>
     </div>
   );
 }
