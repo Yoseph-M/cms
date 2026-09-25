@@ -4,6 +4,10 @@
  * Provides consistent error message extraction from API responses.
  * Handles both the new structured error format and legacy string format.
  */
+import i18n from '../i18n';
+
+/** Localised generic fallback for errors that carry no usable message. */
+const genericError = () => i18n.t('error.generic', { ns: 'common' });
 
 interface ApiErrorResponse {
   error?: {
@@ -21,7 +25,7 @@ interface ApiErrorResponse {
  * @param fallback - Default message if extraction fails
  * @returns Human-readable error message
  */
-export function extractErrorMessage(err: any, fallback: string = 'An error occurred'): string {
+export function extractErrorMessage(err: any, fallback: string = genericError()): string {
   // Check if there's a response with error data
   if (err.response?.data?.error) {
     const errorData = err.response.data.error;
@@ -66,7 +70,7 @@ export function extractErrorDetails(err: any): {
     // New structured format
     if (typeof errorData === 'object') {
       return {
-        message: errorData.message || 'An error occurred',
+        message: errorData.message || genericError(),
         code: errorData.code,
         requestId: errorData.requestId,
         field: errorData.field,
@@ -84,7 +88,7 @@ export function extractErrorDetails(err: any): {
   }
   
   return {
-    message: err.message || 'An error occurred',
+    message: err.message || genericError(),
     statusCode,
   };
 }
