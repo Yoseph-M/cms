@@ -55,7 +55,16 @@ export function usePrintersQuery() {
   });
 }
 
-/** Analytics widgets — 90s stale; keep previous range visible while a new one loads */
+/**
+ * Analytics widgets — cached for range switches, but always re-read on mount.
+ *
+ * `staleTime` keeps a range the user toggles back to instant, and
+ * `refetchOnMount: 'always'` overrides it whenever a dashboard is (re)opened:
+ * money figures are the one kind of data that must never be shown from a cache
+ * a destructive action (a reset, a restore, a manager's correction) may have
+ * invalidated. The previous response stays on screen while the fresh one is in
+ * flight, so nothing flashes empty.
+ */
 export function useAnalyticsQuery<T = unknown>(endpoint: string, deps: Record<string, string> = {}) {
   const qs = new URLSearchParams(deps).toString();
   return useQuery<T>({
@@ -65,6 +74,7 @@ export function useAnalyticsQuery<T = unknown>(endpoint: string, deps: Record<st
       return res.data as T;
     },
     staleTime: 90_000,
+    refetchOnMount: 'always',
     placeholderData: keepPreviousData,
   });
 }
@@ -137,6 +147,7 @@ export function useOrdersQuery(params?: { limit?: number; sort?: string; status?
       return res.data;
     },
     staleTime: 30_000, // 30s — orders change frequently
+    refetchOnMount: 'always',
   });
 }
 
@@ -167,6 +178,7 @@ export function useStaffPerformanceQuery(params: { from: string; to: string; rol
       return res.data;
     },
     staleTime: 90_000,
+    refetchOnMount: 'always',
   });
 }
 
@@ -179,6 +191,7 @@ export function useDailySalesQuery() {
       return res.data;
     },
     staleTime: 60_000,
+    refetchOnMount: 'always',
   });
 }
 
@@ -191,6 +204,7 @@ export function useMonthlySalesQuery() {
       return res.data;
     },
     staleTime: 5 * 60_000,
+    refetchOnMount: 'always',
   });
 }
 
@@ -203,6 +217,7 @@ export function useTotalSalesQuery() {
       return res.data;
     },
     staleTime: 60_000,
+    refetchOnMount: 'always',
   });
 }
 
@@ -215,6 +230,7 @@ export function useProfitLossQuery() {
       return res.data;
     },
     staleTime: 5 * 60_000,
+    refetchOnMount: 'always',
   });
 }
 
