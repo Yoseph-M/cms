@@ -15,24 +15,16 @@ import { applyUserLanguage } from '../../i18nUserPrefs';
  */
 const FORGOT_PASSWORD_AFTER_FAILURES = 3;
 
-/** Last user to sign in on this device — pre-filled so shifts change fast. */
-const LAST_USERNAME_KEY = 'pos.lastUsername';
-
-function readLastUsername(): string {
-  try {
-    return localStorage.getItem(LAST_USERNAME_KEY) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function rememberLastUsername(value: string): void {
-  try {
-    localStorage.setItem(LAST_USERNAME_KEY, value);
-  } catch {
-    /* storage unavailable (private mode) — not worth failing the login over */
-  }
-}
+/**
+ * Leftover key from an earlier "remember the last user" behaviour.
+ *
+ * The field used to be pre-filled with whoever signed in last, which is wrong
+ * on a shared till: logging out left the previous person's username sitting in
+ * the box, so the next cashier saw someone else's name (and occasionally typed
+ * their password into it). The form now always starts empty, and the stale key
+ * is deleted the moment the login screen mounts so old devices clean up too.
+ */
+const LEGACY_USERNAME_KEY = 'pos.lastUsername';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -40,7 +32,7 @@ export const LoginPage: React.FC = () => {
   const { addToast } = useToastStore();
   const { t } = useTranslation('auth');
 
-  const [username, setUsername] = useState(readLastUsername);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -61,6 +53,15 @@ export const LoginPage: React.FC = () => {
       redirectByRole(user.role);
     }
   }, [isAuthenticated, user]);
+
+  // One-time cleanup of the pre-fill key older builds wrote on every sign-in.
+  useEffect(() => {
+    try {
+      localStorage.removeItem(LEGACY_USERNAME_KEY);
+    } catch {
+      /* storage unavailable (private mode) — nothing to clean up */
+    }
+  }, []);
 
   const redirectByRole = (role: string) => {
     switch (role) {
@@ -84,7 +85,6 @@ export const LoginPage: React.FC = () => {
     try {
       const res = await axiosClient.post('/auth/login', { username: cleanUsername, password });
       const { user: authUser, accessToken } = res.data;
-      rememberLastUsername(cleanUsername);
       setFailedAttempts(0);
 
       // Restore THIS user's preferred language on login (falls back to the
@@ -152,7 +152,7 @@ export const LoginPage: React.FC = () => {
           {/* Logo/Brand */}
           <div className="text-center mb-12">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary mb-5 overflow-hidden">
-              <img src="/logo.png" alt="CMS Logo" className="w-full h-full object-cover" />
+              <img src="/logo.png" alt={t('logoAlt')} className="w-full h-full object-cover" />
             </div>
             <h1 className="text-2xl font-semibold text-foreground tracking-tight">
               {t('title')}
