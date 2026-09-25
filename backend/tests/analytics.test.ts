@@ -126,6 +126,183 @@ describe('Analytics endpoints', () => {
     }
   });
 
+  /**
+   * The Best sellers card (owner + manager dashboards) and the Item Sales page
+   * read this endpoint, and the money on it has to be explainable from the row
+   * itself: units × the price those units were sold at. Two things used to make
+   * it impossible to check:
+   *
+   *   1. the aggregation counted every non-cancelled ticket, so running and
+   *      never-settled tickets were booked as "revenue" — a dish's figure could
+   *      exceed the shop's takings for the same window;
+   *   2. it reported no price at all, so `today's menu price × units sold` was
+   *      the only arithmetic available to the reader, and the books use the
+   *      price snapshotted on each order line instead.
+   */
+  it('GET /analytics/top-items counts paid tickets only, at the sale-time price', async () => {
+    const owner = await seedTestUser({ role: 'OWNER' as any, email: 'topitems-owner@pos.com' });
+    const p = getPrisma();
+
+    const menuItem = await p.menuItem.create({
+      data: { name: 'Beef Steak', category: 'FOOD', price: 3000, isAvailable: true },
+    });
+
+    // What the owner reads: 17 sold at the price on the menu — 51,000 ETB.
+    await p.order.create({
+      data: {
+        clientOrderId: 'ord-top-paid-1',
+        tableNumber: '1',
+        waiterId: owner.id,
+        items: [{ menuItemId: menuItem.id, name: 'Beef Steak', unitPrice: 3000, quantity: 17, notes: '' }],
+        totalAmount: 51000,
+        status: OrderStatus.PAID,
+        settlementStatus: 'SETTLED',
+      },
+    });
+
+    // A running ticket: real food, no money taken yet — never revenue.
+    await p.order.create({
+      data: {
+        clientOrderId: 'ord-top-served-1',
+        tableNumber: '2',
+        waiterId: owner.id,
+        items: [{ menuItemId: menuItem.id, name: 'Beef Steak', unitPrice: 3000, quantity: 100, notes: '' }],
+        totalAmount: 300000,
+        status: OrderStatus.SERVED,
+      },
+    });
+
+    const from = new Date(Date.now() - 86_400_000).toISOString();
+    const to = new Date(Date.now() + 86_400_000).toISOString();
+    const res = await request(app)
+      .get(`/api/analytics/top-items?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+      .set('Authorization', `Bearer ${owner.accessToken}`);
+
+    expect(res.status).toBe(200);
+    const row = res.body.find((r: { name: string }) => r.name === 'Beef Steak');
+    expect(row).toBeTruthy();
+    expect(Number(row.totalQty)).toBe(17);
+    expect(Number(row.totalRevenue)).toBe(51000);
+    // The price per unit that produced the figure, so the card's own arithmetic
+    // (`units × avgUnitPrice`) reconciles with the money shown.
+    expect(Number(row.avgUnitPrice)).toBe(3000);
+  });
+
+  it('GET /analytics/top-items reports the price the units sold at, not today\u2019s menu price', async () => {
+    const owner = await seedTestUser({ role: 'OWNER' as any, email: 'topitems-snap-owner@pos.com' });
+    const p = getPrisma();
+
+    // Priced at 3,000 on the menu today…
+    const menuItem = await p.menuItem.create({
+      data: { name: 'Beef Steak', category: 'FOOD', price: 3000, isAvailable: true },
+    });
+
+    // …but these three tickets were rung up when it cost 4,000, and the ticket
+    // price is what the books keep.
+    await p.order.create({
+      data: {
+        clientOrderId: 'ord-top-snap-1',
+        tableNumber: '3',
+        waiterId: owner.id,
+        items: [{ menuItemId: menuItem.id, name: 'Beef Steak', unitPrice: 4000, quantity: 3, notes: '' }],
+        totalAmount: 12000,
+        status: OrderStatus.PAID,
+        settlementStatus: 'SETTLED',
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/analytics/top-items')
+      .set('Authorization', `Bearer ${owner.accessToken}`);
+
+    expect(res.status).toBe(200);
+    const row = res.body.find((r: { name: string }) => r.name === 'Beef Steak');
+    expect(Number(row.totalQty)).toBe(3);
+    expect(Number(row.totalRevenue)).toBe(12000);
+    expect(Number(row.avgUnitPrice)).toBe(4000);
+  });
+
+  /**
+   * The rule every money endpoint in the module shares: PAID tickets only.
+   *
+   * A ticket that is still on the floor (or voided) is not revenue. When these
+   * aggregations accepted SERVED / IN_KITCHEN tickets, a waiter who never
+   * closed a table still showed "sales", a category slice outran the till, and
+   * the P&L revenue line disagreed with the headline revenue printed above it
+   * on the same page.
+   */
+  it('counts paid tickets only in every revenue aggregation', async () => {
+    const owner = await seedTestUser({ role: 'OWNER' as any, email: 'paidonly-owner@pos.com' });
+    const waiter = await seedTestUser({ role: 'WAITER' as any, email: 'paidonly-waiter@pos.com' });
+    const p = getPrisma();
+
+    const menuItem = await p.menuItem.create({
+      data: { name: 'Paid Only Dish', category: 'FOOD', price: 1000, isAvailable: true },
+    });
+
+    // Settled: 2 × 1,000 = 2,000 ETB taken in cash.
+    const paid = await p.order.create({
+      data: {
+        clientOrderId: 'ord-paidonly-1',
+        tableNumber: '1',
+        waiterId: waiter.id,
+        items: [{ menuItemId: menuItem.id, name: 'Paid Only Dish', unitPrice: 1000, quantity: 2, notes: '' }],
+        totalAmount: 2000,
+        status: OrderStatus.PAID,
+        settlementStatus: 'SETTLED',
+      },
+    });
+    await p.settlement.create({
+      data: { orderId: paid.id, amountMinor: 2000, method: 'CASH', recordedById: owner.id },
+    });
+
+    // Still in the kitchen: 5 × 1,000 ETB of food that has not been paid for,
+    // plus a 1,000 part payment that is real cash but not a settled ticket.
+    const running = await p.order.create({
+      data: {
+        clientOrderId: 'ord-paidonly-2',
+        tableNumber: '2',
+        waiterId: waiter.id,
+        items: [{ menuItemId: menuItem.id, name: 'Paid Only Dish', unitPrice: 1000, quantity: 5, notes: '' }],
+        totalAmount: 5000,
+        status: OrderStatus.IN_KITCHEN,
+        settlementStatus: 'PARTIALLY_SETTLED',
+      },
+    });
+    await p.settlement.create({
+      data: { orderId: running.id, amountMinor: 1000, method: 'CASH', recordedById: owner.id },
+    });
+
+    const auth = { Authorization: `Bearer ${owner.accessToken}` };
+
+    const category = await request(app).get('/api/analytics/category-split').set(auth);
+    expect(category.status).toBe(200);
+    const food = category.body.find((r: { category: string }) => r.category === 'FOOD');
+    expect(Number(food.revenue)).toBe(2000);
+    expect(Number(food.count)).toBe(2);
+
+    const staff = await request(app).get('/api/analytics/staff-performance').set(auth);
+    expect(staff.status).toBe(200);
+    const salesman = staff.body.find((r: { name: string }) => r.name === waiter.name);
+    expect(Number(salesman.totalSales)).toBe(2000);
+    expect(Number(salesman.orderCount)).toBe(1);
+
+    const peak = await request(app).get('/api/analytics/peak-hours').set(auth);
+    expect(peak.status).toBe(200);
+    const visits = peak.body.reduce((sum: number, r: { count: number }) => sum + Number(r.count), 0);
+    expect(visits).toBe(1);
+
+    const methods = await request(app).get('/api/analytics/payment-methods').set(auth);
+    expect(methods.status).toBe(200);
+    const cash = methods.body.find((r: { method: string }) => r.method === 'CASH');
+    expect(Number(cash.revenue)).toBe(2000);
+    expect(Number(cash.count)).toBe(1);
+
+    const pnl = await request(app).get('/api/analytics/profit-loss').set(auth);
+    expect(pnl.status).toBe(200);
+    expect(Number(pnl.body.revenue)).toBe(2000);
+  });
+
   it('GET /analytics/payment-methods returns method split', async () => {
     const owner = await seedTestUser({ role: 'OWNER' as any, email: 'paymeth-owner@pos.com' });
     const p = getPrisma();
