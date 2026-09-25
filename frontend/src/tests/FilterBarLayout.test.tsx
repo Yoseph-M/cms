@@ -32,9 +32,40 @@ vi.mock('../store/socketStore', () => ({ useSocketStore: vi.fn() }));
 vi.mock('../store/headerStore', () => ({
   useHeaderStore: () => ({ setPageTitle: vi.fn(), setShowDateRange: vi.fn(), title: 'Overview', subtitle: '' }),
 }));
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, options?: any) => options?.defaultValue || key, i18n: { language: 'en' } }),
-}));
+import enCommon from '../locales/en/common.json';
+import enCashier from '../locales/en/cashier.json';
+import enManager from '../locales/en/manager.json';
+import enOwner from '../locales/en/owner.json';
+import enStaff from '../locales/en/staff.json';
+
+// Resolve through the real English catalogue so the assertions below keep
+// checking the copy the user actually sees, not raw i18n keys.
+const CATALOGS: Record<string, unknown> = {
+  common: enCommon,
+  cashier: enCashier,
+  manager: enManager,
+  owner: enOwner,
+  staff: enStaff,
+};
+vi.mock('react-i18next', () => {
+  const resolve = (obj: unknown, path: string): unknown =>
+    path.split('.').reduce<any>((acc, key) => (acc == null ? acc : acc[key]), obj);
+  return {
+    useTranslation: (ns?: string) => ({
+      t: (key: string, options?: Record<string, unknown>) => {
+        const order = [ns, 'common', ...Object.keys(CATALOGS)].filter(Boolean) as string[];
+        for (const name of order) {
+          const value = resolve(CATALOGS[name], key);
+          if (typeof value === 'string') {
+            return value.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(options?.[k] ?? ''));
+          }
+        }
+        return options?.defaultValue || key;
+      },
+      i18n: { language: 'en' },
+    }),
+  };
+});
 
 import { OwnerStaff } from '../pages/owner/OwnerStaff';
 import { ManagerStaff } from '../pages/manager/ManagerStaff';
