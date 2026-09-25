@@ -24,12 +24,20 @@ import { Card, CardContent } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { ChartToggle } from '../../components/ui/TremorWidgets';
 import { LoadingState } from '../../components/common/LoadingState';
 import { EmptyState } from '../../components/common/EmptyState';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useHeaderStore } from '../../store/headerStore';
 import { useMenuQuery } from '../../hooks/useCachedQueries';
+import {
+  displayItemName as displayName,
+  findItemBySnapshot,
+  indexItemsByName,
+  isAmharicLanguage,
+  normalizeItemName as normName,
+} from '../../utils/itemName';
 import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { cn } from '../../lib/utils';
@@ -100,44 +108,21 @@ function rangeToParams(range: RangeKey): Record<string, string> {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-/** "የበሬ ጥብስ (Beef Tibs)" reads best as "Beef Tibs" in a dense report. */
-function readableName(raw: unknown): string {
-  const s = String(raw ?? '').trim();
-  if (!s) return 'Unnamed item';
-  const m = s.match(/\(([^)]+)\)\s*$/);
-  return m ? m[1] : s;
-}
-
-/** "አማርኛ (English)" and "English" must both resolve to the same item key. */
-function normName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\s*\([^)]*\)\s*/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+/* Item labels and snapshot keys come from `utils/itemName`, which the dashboards
+   share: catalogue rows carry both names, order lines only carry the snapshot,
+   and an English user must never see an Amharic-only label (or the reverse). */
 
 /** Menu category for an order-line name, matched against the live catalog. */
 function categoryForName(
   name: string,
   catalogByName: Map<string, MenuItem>,
 ): CategoryKey {
-  const direct = catalogByName.get(name);
-  if (direct) return direct.category;
-  // Bilingual snapshots look like "አማርኛ (English)" — try the English tail.
-  const m = name.match(/\(([^)]+)\)\s*$/);
-  if (m) {
-    const inner = catalogByName.get(m[1]);
-    if (inner) return inner.category;
-    const prefix = catalogByName.get(name.replace(/\s*\([^)]+\)\s*$/, ''));
-    if (prefix) return prefix.category;
-  }
-  return 'OTHER';
+  return findItemBySnapshot(catalogByName, name)?.category ?? 'OTHER';
 }
 
 export const MenuSalesStats: React.FC = () => {
   const { setPageTitle, setShowDateRange } = useHeaderStore();
-  const { t } = useTranslation('owner');
+  const { t, i18n } = useTranslation('owner');
 
   useEffect(() => {
     setPageTitle({
@@ -157,17 +142,16 @@ export const MenuSalesStats: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortKey>('qty-desc');
   const [search, setSearch] = useState('');
 
+  // Menu rows carry both names; the table must speak the language the user
+  // picked instead of always showing Amharic.
+  const preferAmharic = isAmharicLanguage(i18n.resolvedLanguage || i18n.language);
+
   const menuQuery = useMenuQuery();
   const menuItems: MenuItem[] = Array.isArray(menuQuery.data) ? menuQuery.data : [];
 
-  const catalogByName = useMemo(() => {
-    const map = new Map<string, MenuItem>();
-    for (const item of menuItems) {
-      if (item.name) map.set(item.name, item);
-      if (item.nameAmharic) map.set(item.nameAmharic, item);
-    }
-    return map;
-  }, [menuItems]);
+  // Indexed by both names (and their normalised forms) so a bilingual snapshot
+  // resolves to the same catalogue row as the plain one.
+  const catalogByName = useMemo(() => indexItemsByName(menuItems), [menuItems]);
 
   const rangeParams = useMemo(() => rangeToParams(range), [range]);
 
@@ -222,27 +206,6 @@ export const MenuSalesStats: React.FC = () => {
 
   const bestHourFor = (name: string) => bestHourByName.get(normName(name)) ?? null;
 
-  /**
-   * Best-selling item for every hour that saw sales, plus the busiest hour of
-   * the selected period. The API returns rows ordered by hour and, within an
-   * hour, by units sold — so the first row of each hour is its winner. This
-   * report lives on the item-sales page: it is an item-first view of the same
-   * data the table already reads.
-   */
-  const hourlyLeaders = useMemo(() => {
-    const winnerPerHour = new Map<number, { hour: number; name: string; qty: number }>();
-    for (const row of Array.isArray(hourlyQuery.data) ? hourlyQuery.data : []) {
-      const hour = Number(row?.hour);
-      const qty = Number(row?.qty) || 0;
-      const name = String(row?.name ?? '');
-      if (!name || !Number.isFinite(hour) || hour < 0 || hour > 23 || qty <= 0) continue;
-      if (!winnerPerHour.has(hour)) winnerPerHour.set(hour, { hour, name, qty });
-    }
-    const perHour = [...winnerPerHour.values()].sort((a, b) => a.hour - b.hour);
-    const busiest = [...perHour].sort((a, b) => b.qty - a.qty)[0] ?? null;
-    return { perHour, busiest };
-  }, [hourlyQuery.data]);
-
   const rows = useMemo(() => {
     const byName = new Map<string, { name: string; totalQty: number; totalRevenue: number; imageUrl?: string | null }>();
     for (const row of sales) {
@@ -251,13 +214,16 @@ export const MenuSalesStats: React.FC = () => {
     // Every catalog item appears — zero-sale items show as 0 sold.
     const merged: Array<{
       name: string;
+      /** DB name of the order line, kept for best-hour lookups when the display
+       *  label is a different language than the snapshot. */
+      lookupName?: string;
       totalQty: number;
       totalRevenue: number;
       imageUrl?: string | null;
       category: CategoryKey;
     }> = [];
     for (const item of menuItems) {
-      const label = item.nameAmharic || item.name;
+      const label = displayName(item.name, item.nameAmharic, preferAmharic);
       const stat =
         byName.get(item.name) ??
         byName.get(item.nameAmharic ?? '') ??
@@ -266,6 +232,7 @@ export const MenuSalesStats: React.FC = () => {
       if (stat) byName.delete(item.nameAmharic ?? '');
       merged.push({
         name: label,
+        lookupName: stat?.name ?? item.name,
         totalQty: stat?.totalQty ?? 0,
         totalRevenue: stat?.totalRevenue ?? 0,
         imageUrl: item.imageUrl ?? stat?.imageUrl ?? null,
@@ -276,7 +243,8 @@ export const MenuSalesStats: React.FC = () => {
     for (const stat of byName.values()) {
       if (!stat.name) continue;
       merged.push({
-        name: stat.name,
+        name: displayName(stat.name, null, preferAmharic),
+        lookupName: stat.name,
         totalQty: stat.totalQty,
         totalRevenue: stat.totalRevenue,
         imageUrl: stat.imageUrl ?? null,
@@ -306,18 +274,37 @@ export const MenuSalesStats: React.FC = () => {
         sorted.sort((a, b) => b.totalQty - a.totalQty || a.name.localeCompare(b.name));
     }
     return sorted;
-  }, [sales, menuItems, category, sortBy, search, catalogByName]);
+  }, [sales, menuItems, category, sortBy, search, catalogByName, preferAmharic]);
 
   const totals = useMemo(
     () => ({
       units: rows.reduce((sum, r) => sum + r.totalQty, 0),
       revenue: rows.reduce((sum, r) => sum + r.totalRevenue, 0),
-      sold: rows.filter((r) => r.totalQty > 0).length,
     }),
     [rows],
   );
 
   const maxQty = Math.max(1, ...rows.map((r) => r.totalQty));
+
+  /* Which yardstick "top seller" uses — kept in lock-step with the active sort
+     so the headline and the top table row can never name different items. */
+  const metric: 'units' | 'revenue' = sortBy.startsWith('revenue') ? 'revenue' : 'units';
+  const setMetric = (value: string) => setSortBy(value === 'revenue' ? 'revenue-desc' : 'qty-desc');
+
+  /** Best-selling item in the current view — the item-first headline. */
+  const topSeller = useMemo(
+    () =>
+      rows.reduce<{ name: string; totalQty: number; totalRevenue: number } | null>(
+        (best, r) => {
+          if (best === null) return r;
+          const current = metric === 'units' ? r.totalQty : r.totalRevenue;
+          const leader = metric === 'units' ? best.totalQty : best.totalRevenue;
+          return current > leader ? r : best;
+        },
+        null,
+      ),
+    [rows, metric],
+  );
   const activeRangeLabel = RANGE_OPTIONS.find((r) => r.key === range)
     ? t(`itemSales.${RANGE_OPTIONS.find((r) => r.key === range)!.labelKey}`)
     : t('itemSales.allTime');
@@ -362,10 +349,23 @@ export const MenuSalesStats: React.FC = () => {
               <UtensilsCrossed className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t('itemSales.itemsSold')}</p>
-              <p className="font-display text-xl font-bold tabular-nums text-foreground">
-                {totals.sold}
-                <span className="text-sm font-medium text-muted-foreground"> / {menuItems.length}</span>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                {t('itemSales.topSeller')} ·{' '}
+                {t(metric === 'units' ? 'itemSales.metricUnits' : 'itemSales.metricRevenue')}
+              </p>
+              <p
+                className="truncate font-display text-base font-bold text-foreground"
+                title={topSeller?.name ?? undefined}
+              >
+                {topSeller && topSeller.totalQty > 0 ? topSeller.name : '—'}
+              </p>
+              {/* Both numbers, always — the leader by units and the leader by
+                  revenue need not be the same item, so showing only one of
+                  them made the card look wrong next to Best sellers. */}
+              <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                {topSeller && topSeller.totalQty > 0
+                  ? `${t('itemSales.soldCount', { count: topSeller.totalQty })} · ${formatCurrency(topSeller.totalRevenue)}`
+                  : t('itemSales.noSalesYet')}
               </p>
             </div>
           </div>
@@ -429,6 +429,18 @@ export const MenuSalesStats: React.FC = () => {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Metric quick-switch: units or revenue. It writes through to the
+              sort order below, so the headline card, the bars and the table
+              all rank by the same number. */}
+          <ChartToggle
+            options={[
+              { value: 'units', label: t('itemSales.metricUnits') },
+              { value: 'revenue', label: t('itemSales.metricRevenue') },
+            ]}
+            value={metric}
+            onChange={setMetric}
+          />
+
           <DropdownMenu>
             <DropdownMenuTrigger aria-label={t('itemSales.sortItems')} className="shrink-0 h-10">
               <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
@@ -449,70 +461,9 @@ export const MenuSalesStats: React.FC = () => {
         </div>
       </Card>
 
-      {/* Best Seller Each Hour — the hour-first read of the same sales data. */}
-      <Card>
-        <CardContent className="p-4 sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Clock className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <h2 className="text-sm font-bold text-foreground">{t('itemSales.bestSellerEachHour')}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {t('itemSales.bestSellerDesc')}
-                </p>
-              </div>
-            </div>
-            {hourlyLeaders.busiest && (
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {t('itemSales.peak')} {String(hourlyLeaders.busiest.hour).padStart(2, '0')}:00 ·{' '}
-                <span className="text-foreground">{readableName(hourlyLeaders.busiest.name)}</span> (
-                {hourlyLeaders.busiest.qty})
-              </span>
-            )}
-          </div>
-
-          {hourlyQuery.isLoading ? (
-            <div className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-9 animate-pulse rounded-lg bg-secondary/40" />
-              ))}
-            </div>
-          ) : hourlyLeaders.perHour.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              {t('itemSales.noHourlySales')}
-            </p>
-          ) : (
-            <ul className="mt-3 grid max-h-72 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
-              {hourlyLeaders.perHour.map((row) => {
-                const isPeak = hourlyLeaders.busiest?.hour === row.hour;
-                return (
-                  <li
-                    key={row.hour}
-                    className={cn(
-                      'flex items-center gap-3 rounded-lg border px-3 py-2 text-sm',
-                      isPeak ? 'border-primary/40 bg-primary/5' : 'border-border bg-secondary/20',
-                    )}
-                  >
-                    <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                      {String(row.hour).padStart(2, '0')}:00
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-foreground">
-                      {readableName(row.name)}
-                    </span>
-                    <span className="shrink-0 font-mono text-xs font-semibold tabular-nums text-foreground">
-                      {row.qty}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Table */}
+      {/* Table — the item-first report. Best sellers live on the dashboards
+          (owner and manager); this page answers "how often does each item
+          sell, and when". */}
       {isLoading ? (
         <LoadingState message={t('itemSales.crunching')} />
       ) : error ? (
@@ -590,7 +541,11 @@ export const MenuSalesStats: React.FC = () => {
                           the peak-hours heatmap, read per item. */}
                       <td className="px-4 py-3 hidden md:table-cell">
                         {(() => {
-                          const best = bestHourFor(row.name);
+                          const best =
+                            bestHourFor(row.name) ??
+                            (row.lookupName && row.lookupName !== row.name
+                              ? bestHourFor(row.lookupName)
+                              : null);
                           if (!best) return <span className="text-muted-foreground">—</span>;
                           return (
                             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
