@@ -3,6 +3,7 @@ import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, ArrowUpDown, Eye, Filter, Search, ScrollText, Tag, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { getBrowserFromUserAgent } from '../../utils/browserName';
@@ -98,7 +99,9 @@ const FeedRow = React.memo<{
   row: AuditFeedRow;
   isSelected: boolean;
   onSelect: (row: AuditFeedRow) => void;
-}>(({ row, isSelected, onSelect }) => (
+}>(({ row, isSelected, onSelect }) => {
+  const { t } = useTranslation();
+  return (
   <div
     role="row"
     className={`flex items-center border-b border-border/50 px-4 transition-colors ${
@@ -110,7 +113,7 @@ const FeedRow = React.memo<{
       {formatTimestamp(row.timestamp)}
     </div>
     <div className="w-[20%] min-w-0 pr-3">
-      <div className="truncate text-sm font-medium">{row.actor?.name ?? 'Unknown user'}</div>
+      <div className="truncate text-sm font-medium">{row.actor?.name ?? t('audit.unknownUser')}</div>
       <div className="truncate text-xs text-muted-foreground">{row.actor?.subtitle ?? '—'}</div>
     </div>
     <div className="w-[16%] pr-3">
@@ -128,18 +131,20 @@ const FeedRow = React.memo<{
       <button
         type="button"
         onClick={() => onSelect(row)}
-        aria-label={`View details for ${row.description}`}
+        aria-label={t('audit.viewDetailsAria', { description: row.description })}
         className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-secondary"
       >
         <Eye className="h-3.5 w-3.5" />
-        View
+        {t('audit.view')}
       </button>
     </div>
   </div>
-));
+  );
+});
 FeedRow.displayName = 'FeedRow';
 
 export const OwnerAuditLogs: React.FC = () => {
+  const { t } = useTranslation();
   // Rows appended by infinite scroll past the cached first page.
   const [appendedRows, setAppendedRows] = useState<AuditFeedRow[]>([]);
   const [appendCursor, setAppendCursor] = useState<string | null>(null);
@@ -188,7 +193,7 @@ export const OwnerAuditLogs: React.FC = () => {
     staleTime: 60_000,
   });
 
-  const error = queryError ? extractErrorMessage(queryError, 'Failed to load audit logs.') : null;
+  const error = queryError ? extractErrorMessage(queryError, t('audit.loadFailed')) : null;
   const cursor = appendCursor ?? firstPage?.nextCursor ?? null;
   const hasMore = cursor !== null;
   const rows = useMemo<AuditFeedRow[]>(
@@ -248,21 +253,21 @@ export const OwnerAuditLogs: React.FC = () => {
   const detailFields = useMemo(() => {
     if (!selected) return [] as Array<[string, string]>;
     const fields: Array<[string, string]> = [
-      ['Time', formatTimestamp(selected.timestamp)],
-      ['Action', selected.action],
-      ['Entity', selected.entity],
-      ['Staff', selected.actor?.name ?? 'Unknown user'],
+      [t('audit.time'), formatTimestamp(selected.timestamp)],
+      [t('audit.action'), selected.action],
+      [t('audit.entity'), selected.entity],
+      [t('audit.staff'), selected.actor?.name ?? t('audit.unknownUser')],
     ];
-    if (selected.actor?.role) fields.push(['Role', selected.actor.role]);
-    if (selected.targetId) fields.push(['Record ID', selected.targetId]);
-    if (selected.outcome) fields.push(['Outcome', selected.outcome]);
-    if (selected.ip) fields.push(['IP address', selected.ip]);
+    if (selected.actor?.role) fields.push([t('loginHistory.colRole'), selected.actor.role]);
+    if (selected.targetId) fields.push([t('audit.recordId'), selected.targetId]);
+    if (selected.outcome) fields.push([t('loginHistory.colOutcome'), selected.outcome]);
+    if (selected.ip) fields.push([t('loginHistory.colIp'), selected.ip]);
     if (selected.userAgent) {
-      fields.push(['Browser', getBrowserFromUserAgent(selected.userAgent)]);
-      fields.push(['User agent', selected.userAgent]);
+      fields.push([t('loginHistory.colBrowser'), getBrowserFromUserAgent(selected.userAgent)]);
+      fields.push([t('audit.userAgent'), selected.userAgent]);
     }
     return fields;
-  }, [selected]);
+  }, [selected, t]);
 
   const isFiltered = Boolean(search || action || entity);
 
@@ -271,11 +276,11 @@ export const OwnerAuditLogs: React.FC = () => {
       <p className="text-sm text-muted-foreground">
         {firstPage ? (
           <>
-            <span className="font-semibold text-foreground">{firstPage.total}</span> system activities recorded
-            {isFiltered ? ' matching the current filters' : ''}
+            <span className="font-semibold text-foreground">{firstPage.total}</span> {t('audit.recordedLine')}
+            {isFiltered ? ` ${t('audit.matchingFilters')}` : ''}
           </>
         ) : (
-          'Loading system activity…'
+          t('audit.loadingActivity')
         )}
       </p>
 
@@ -288,43 +293,43 @@ export const OwnerAuditLogs: React.FC = () => {
                 id="audit-search"
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}
-                placeholder="Search logs by action or description…"
-                aria-label="Search logs by action or description"
+                placeholder={t('audit.searchPlaceholder')}
+                aria-label={t('audit.searchPlaceholder')}
                 className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-0"
               />
             </div>
             <DropdownSelect
-              ariaLabel="Sort order"
+              ariaLabel={t('audit.sortOrder')}
               size="sm"
               icon={ArrowUpDown}
               value={order}
               onChange={(v) => setOrder(v === 'oldest' ? 'oldest' : 'newest')}
               options={[
-                { value: 'newest', label: 'Newest First' },
-                { value: 'oldest', label: 'Oldest First' },
+                { value: 'newest', label: t('audit.newestFirst') },
+                { value: 'oldest', label: t('audit.oldestFirst') },
               ]}
               contentClassName="w-44"
             />
             <DropdownSelect
-              ariaLabel="Filter by action"
+              ariaLabel={t('audit.filterByAction')}
               size="sm"
               icon={Filter}
               value={action}
               onChange={setAction}
               options={[
-                { value: '', label: 'All Actions' },
+                { value: '', label: t('audit.allActions') },
                 ...facets.actions.map((name) => ({ value: name, label: name })),
               ]}
               contentClassName="w-56 max-h-72 overflow-y-auto"
             />
             <DropdownSelect
-              ariaLabel="Filter by entity"
+              ariaLabel={t('audit.filterByEntity')}
               size="sm"
               icon={Tag}
               value={entity}
               onChange={setEntity}
               options={[
-                { value: '', label: 'All Entities' },
+                { value: '', label: t('audit.allEntities') },
                 ...facets.entities.map((name) => ({ value: name, label: name })),
               ]}
               contentClassName="w-52 max-h-72 overflow-y-auto"
@@ -342,28 +347,28 @@ export const OwnerAuditLogs: React.FC = () => {
               <AlertCircle className="mx-auto mb-3 h-8 w-8 text-destructive" />
               <p className="text-destructive">{error}</p>
               <Button variant="outline" size="sm" className="mt-3" onClick={() => void refetch()}>
-                Retry
+                {t('buttons.retry')}
               </Button>
             </div>
           ) : rows.length === 0 ? (
             <EmptyState
-              title="Nothing to report yet"
+              title={t('audit.emptyTitle')}
               message={
                 isFiltered
-                  ? 'No events match the current filters. Try broadening your search.'
-                  : "It's quiet for now. Logins and system activity will appear here as staff work."
+                  ? t('audit.emptyFilteredMsg')
+                  : t('audit.emptyMsg')
               }
               icon={<ScrollText className="h-7 w-7" />}
             />
           ) : (
             <>
               <div className="flex items-center border-b border-border bg-secondary/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <div className="w-[17%]">Timestamp</div>
-                <div className="w-[20%]">User</div>
-                <div className="w-[16%]">Action</div>
-                <div className="hidden w-[11%] sm:block">Entity</div>
-                <div className="flex-1">Description</div>
-                <div className="w-[86px] shrink-0 text-right">Details</div>
+                <div className="w-[17%]">{t('loginHistory.colTime')}</div>
+                <div className="w-[20%]">{t('loginHistory.colUser')}</div>
+                <div className="w-[16%]">{t('audit.action')}</div>
+                <div className="hidden w-[11%] sm:block">{t('audit.entity')}</div>
+                <div className="flex-1">{t('audit.description')}</div>
+                <div className="w-[86px] shrink-0 text-right">{t('audit.details')}</div>
               </div>
               <FixedSizeList
                 ref={listRef}
@@ -377,8 +382,8 @@ export const OwnerAuditLogs: React.FC = () => {
               </FixedSizeList>
               <div className="border-t border-border py-3 text-center text-xs text-muted-foreground">
                 {isFetchingMore
-                  ? 'Loading more…'
-                  : `Showing ${rows.length} events${hasMore ? ' — scroll for more' : ''}`}
+                  ? t('audit.loadingMore')
+                  : t(hasMore ? 'audit.showingMore' : 'audit.showingAll', { count: rows.length })}
               </div>
             </>
           )}
@@ -405,19 +410,19 @@ export const OwnerAuditLogs: React.FC = () => {
               <div
                 role="dialog"
                 aria-modal="true"
-                aria-label="Audit event details"
+                aria-label={t('audit.eventDetails')}
                 className="pointer-events-auto flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-border bg-card shadow-2xl"
               >
                 <div className="flex items-start justify-between gap-3 border-b border-border p-5">
                   <div className="min-w-0">
-                    <h3 className="truncate text-base font-bold">Event details</h3>
+                    <h3 className="truncate text-base font-bold">{t('audit.eventDetails')}</h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {selected.actor?.name ?? 'Unknown user'} · {formatTimestamp(selected.timestamp)}
+                      {selected.actor?.name ?? t('audit.unknownUser')} · {formatTimestamp(selected.timestamp)}
                     </p>
                   </div>
                   <button
                     onClick={() => setSelected(null)}
-                    aria-label="Close"
+                    aria-label={t('a11y.close')}
                     className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   >
                     <X className="h-4 w-4" />
@@ -444,7 +449,7 @@ export const OwnerAuditLogs: React.FC = () => {
                   ))}
                   {selected.payload && (
                     <div className="pt-1">
-                      <p className="mb-2 font-semibold text-muted-foreground">Stored context</p>
+                      <p className="mb-2 font-semibold text-muted-foreground">{t('audit.storedContext')}</p>
                       <pre className="max-h-48 overflow-x-auto rounded-lg border border-border bg-background p-3 font-mono text-xs">
                         {JSON.stringify(selected.payload, null, 2)}
                       </pre>
@@ -454,7 +459,7 @@ export const OwnerAuditLogs: React.FC = () => {
 
                 <div className="border-t border-border p-4">
                   <Button variant="outline" onClick={() => setSelected(null)} className="w-full">
-                    Close
+                    {t('a11y.close')}
                   </Button>
                 </div>
               </div>
