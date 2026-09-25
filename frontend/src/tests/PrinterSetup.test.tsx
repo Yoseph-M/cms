@@ -9,9 +9,27 @@ vi.mock('../api/axiosClient', () => ({
 }));
 vi.mock('../store/socketStore', () => ({ useSocketStore: vi.fn() }));
 vi.mock('../store/toastStore', () => ({ useToastStore: vi.fn() }));
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, options?: any) => options?.defaultValue || key }),
-}));
+vi.mock('react-i18next', () => {
+  // Resolve keys against the real English catalogue so assertions keep reading
+  // the UI text users see, not translation keys.
+  const en = require('../locales/en/common.json');
+  const lookup = (key: string): string =>
+    key
+      .split('.')
+      .reduce<any>((node, part) => (node == null ? undefined : node[part]), en);
+  const t = (key: string, options?: any) => {
+    const value = typeof lookup(key) === 'string' ? lookup(key) : options?.defaultValue || key;
+    if (typeof value === 'string' && options && typeof options === 'object') {
+      return value.replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(options[name] ?? ''));
+    }
+    return value;
+  };
+  return {
+    useTranslation: () => ({ t }),
+    initReactI18next: { type: '3rdParty', init: () => {} },
+    withTranslation: () => (Component: any) => Component,
+  };
+});
 
 import { OwnerPrinters } from '../pages/owner/OwnerPrinters';
 import { axiosClient } from '../api/axiosClient';
