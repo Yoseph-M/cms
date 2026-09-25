@@ -21,7 +21,10 @@
     "showingRange": "Showing {{from}}–{{to}} of {{total}}",
     "reprintFailedTitle": "Kitchen print failed",
     "reprintFailedBody": "These tickets never reached paper. Check the printer is on and loaded, then send them again.",
-    "reprintAgain": "Reprint {{label}}"
+    "reprintAgain": "Reprint {{label}}",
+    "pageTitle": "Tickets",
+    "pageSubtitle": "Live order queue and payment collection",
+    "overviewTitle": "Overview"
   },
   "orderList": {
     "readyToCollect": "Ready to collect",
@@ -58,7 +61,10 @@
     "searchMenu": "Search menu items",
     "sortMenu": "Sort menu items",
     "filterCategory": "Filter by category",
-    "closeTicket": "Close ticket"
+    "closeTicket": "Close ticket",
+    "navigate": "navigate",
+    "dismiss": "Dismiss",
+    "logoAlt": "Logo"
   },
   "console": "Cashier Console",
   "header": {
@@ -100,9 +106,33 @@
     "cancelOrder": "Cancel Order"
   },
   "payment": {
-    "cash": "CASH",
-    "card": "CARD",
-    "mobile": "MOBILE"
+    "cash": "Cash",
+    "card": "Card",
+    "mobile": "Mobile"
+  },
+  "payBlock": {
+    "receiptPrinted": "Receipt printed.",
+    "settled": "This ticket is settled.",
+    "methodHint": "method",
+    "settleHint": "settle"
+  },
+  "errors": {
+    "fetchQueue": "Failed to fetch active queue",
+    "printerRejected": "The printer did not accept the ticket.",
+    "orderNotFound": "Order not found",
+    "paymentIssue": "Payment Issue",
+    "alreadySettled": "Already Settled",
+    "alreadySettledMsg": "This order has already been fully settled.",
+    "overage": "Overpayment Attempted",
+    "overageMsg": "Settlement amount exceeds the remaining balance.",
+    "sessionExpired": "Session Expired",
+    "sessionExpiredMsg": "Your session has expired. Please log in again.",
+    "concurrent": "Order is being modified by another user or process. Please try again.",
+    "tryAgain": "Please try again in a moment.",
+    "cancelFailedMsg": "Failed to cancel the order."
+  },
+  "notes": {
+    "settlementRecorded": "Settlement recorded via Cashier Dashboard"
   },
   "cancelModal": {
     "title": "Cancel Order",
@@ -121,7 +151,14 @@
     "tableLabel": "Table",
     "empty": "Empty",
     "occupied": "Occupied",
-    "needsPayment": "Needs payment"
+    "needsPayment": "Needs payment",
+    "pickTable": "Pick a table",
+    "pickTableHint": "Every tap starts a new ticket — tables already being served just get an extra order.",
+    "count": "{{count}} tables",
+    "openTickets": "{{count}} open tickets",
+    "startNewAria": "Start a new order on table {{number}}",
+    "viewOpenAria": "View {{count}} open order(s) on table {{number}}",
+    "openCount": "{{count}} open"
   },
   "ordering": {
     "title": "New Order",
@@ -175,11 +212,27 @@
   },
   "toasts": {
     "settled": "Nice — {{tableText}} all settled",
+    "tableN": "Table {{number}}",
+    "takeoutLabel": "Takeout",
+    "takeoutTicket": "The takeout ticket",
     "tableText": "Table {{table}}'s",
     "takeoutText": "Takeout order is",
     "paymentFailed": "Payment Failed",
     "cancelFailed": "Cancel Failed",
-    "cancelRequested": "Cancellation Requested"
+    "cancelRequested": "Cancellation Requested",
+    "reprintFailedAgain": "Reprint failed again",
+    "kitchenTicketFailed": "Kitchen ticket failed",
+    "reprintFailedMsg": "{{label}} did not reach the printer. Check the printer is switched on and loaded, then reprint.",
+    "reprintFailedAgainMsg": "{{label}} did not reach the printer again. Check the printer is switched on and loaded, then reprint.",
+    "kitchenNotPrinted": "Kitchen ticket not printed",
+    "kitchenNotPrintedMsg": "Re-send the ticket to the printer before settling it.",
+    "paymentRecorded": "Payment recorded",
+    "paymentRecordedMsg": "This order was settled while the payment was being confirmed.",
+    "confirmingPayment": "Confirming payment…",
+    "confirmingPaymentMsg": "The order changed while payment was recorded. Checking once more.",
+    "reprintSent": "Reprint sent",
+    "reprintSentMsg": "The kitchen ticket was sent to the printer again.",
+    "reprintFailed": "Could not reprint"
   },
   "shortcuts": {
     "navigate": "↑↓ / J K — Navigate queue",
