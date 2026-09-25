@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Search, Users, UtensilsCrossed, ReceiptText, Zap, Wallet, Coins, CreditCard, Printer } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
@@ -31,6 +32,7 @@ const monthLabel = (month?: number, year?: number) =>
   `${MONTH_SHORT[(Number(month) || 1) - 1] ?? ''} ${year ?? ''}`.trim();
 
 export const CommandPalette: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const { settings } = useSettingsStore();
   const navigate = useNavigate();
@@ -73,51 +75,51 @@ export const CommandPalette: React.FC = () => {
   
   // Build navigation pages array, conditionally including Settings for OWNER
   const ownerPages: [string, string][] = [
-    ['Dashboard', '/owner'],
-    ['Staff', '/owner/admin?tab=staff'],
-    ['Menu', '/owner/menu'],
-    ['Attendance', '/owner/attendance'],
-    ['Payroll', '/owner/payroll'],
-    ['Expenses', '/owner/expenses'],
-    ['Finance', '/owner/finance'],
-    ['Audit logs', '/owner/admin?tab=audit'],
-    ['Printers', '/owner/admin?tab=printers'],
-    ['Backup & restore', '/owner/admin?tab=backup'],
-    ['Settings', '/owner/settings'],
+    ['palette.dashboard', '/owner'],
+    ['palette.staff', '/owner/admin?tab=staff'],
+    ['palette.menu', '/owner/menu'],
+    ['palette.attendance', '/owner/attendance'],
+    ['palette.payroll', '/owner/payroll'],
+    ['palette.expenses', '/owner/expenses'],
+    ['palette.finance', '/owner/finance'],
+    ['palette.auditLogs', '/owner/admin?tab=audit'],
+    ['palette.printers', '/owner/admin?tab=printers'],
+    ['palette.backup', '/owner/admin?tab=backup'],
+    ['palette.settings', '/owner/settings'],
   ];
 
   const pages = user.role === 'OWNER'
     ? ownerPages
-    : [['Dashboard', '/manager'], ['Staff', '/manager/staff'], ['Menu', '/manager/menu'], ['Attendance', '/manager/attendance'], ['Payroll', '/manager/payroll'], ['End of Day', '/manager/reconciliation'], ['Expenses', '/manager/expenses'], ['Settings', '/manager/settings']];
+    : [['palette.dashboard', '/manager'], ['palette.staff', '/manager/staff'], ['palette.menu', '/manager/menu'], ['palette.attendance', '/manager/attendance'], ['palette.payroll', '/manager/payroll'], ['palette.endOfDay', '/manager/reconciliation'], ['palette.expenses', '/manager/expenses'], ['palette.settings', '/manager/settings']];
 
-  return <Command.Dialog open={open} onOpenChange={setOpen} label="Global command palette" className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4 pt-[12vh]">
+  return <Command.Dialog open={open} onOpenChange={setOpen} label={t('palette.dialogLabel')} className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4 pt-[12vh]">
     <div className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-popover shadow-2xl">
       <div className="flex items-center gap-2 border-b border-border px-3">
         <Search className="h-4 w-4 text-muted-foreground" />
-        <Command.Input value={query} onValueChange={setQuery} placeholder="Search staff, orders, expenses, payroll…" className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+        <Command.Input value={query} onValueChange={setQuery} placeholder={t('palette.searchPlaceholder')} className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
         <kbd className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">ESC</kbd>
       </div>
       <Command.List className="max-h-[55vh] overflow-y-auto p-2 text-sm">
-        <Command.Empty className="px-3 py-8 text-center text-muted-foreground">No matching commands or records.</Command.Empty>
+        <Command.Empty className="px-3 py-8 text-center text-muted-foreground">{t('palette.noMatches')}</Command.Empty>
         {!query && <>
-          <Command.Group heading="Quick actions" className="px-2 py-2 text-xs text-muted-foreground">
-            <PaletteItem label="Add Menu Item" icon={<Zap className="h-4 w-4" />} onSelect={() => go(`/${role}/menu?action=add`)} />
-            <PaletteItem label="Record Payroll Entry" icon={<Zap className="h-4 w-4" />} onSelect={() => go(`/${role}/payroll?action=add`)} />
-            <PaletteItem label="Add Expense" icon={<Zap className="h-4 w-4" />} onSelect={() => go(`/${role}/expenses?action=add`)} />
-            <PaletteItem label="Mark Attendance" icon={<Zap className="h-4 w-4" />} onSelect={() => go(`/${role}/attendance?action=mark`)} />
+          <Command.Group heading={t('palette.quickActions')} className="px-2 py-2 text-xs text-muted-foreground">
+            <PaletteItem label={t('palette.addMenuItem')} icon={<Zap className="h-4 w-4" />} onSelect={() => go(`/${role}/menu?action=add`)} />
+            <PaletteItem label={t('palette.recordPayroll')} icon={<Zap className="h-4 w-4" />} onSelect={() => go(`/${role}/payroll?action=add`)} />
+            <PaletteItem label={t('palette.addExpense')} icon={<Zap className="h-4 w-4" />} onSelect={() => go(`/${role}/expenses?action=add`)} />
+            <PaletteItem label={t('palette.markAttendance')} icon={<Zap className="h-4 w-4" />} onSelect={() => go(`/${role}/attendance?action=mark`)} />
           </Command.Group>
-          <Command.Group heading="Navigation" className="px-2 py-2 text-xs text-muted-foreground">
-            {pages.map(([label, path]) => <PaletteItem key={path} label={label} onSelect={() => go(path)} />)}
+          <Command.Group heading={t('palette.navigation')} className="px-2 py-2 text-xs text-muted-foreground">
+            {pages.map(([labelKey, path]) => <PaletteItem key={path} label={t(labelKey)} onSelect={() => go(path)} />)}
           </Command.Group>
         </>}
         {query && <>
-          <ResultGroup heading="Staff" items={results.staff} icon={<Users className="h-4 w-4" />} render={(item) => `${item.name} · ${item.role}`} onSelect={(item) => go(role === 'owner' ? `/owner/admin?tab=staff&highlight=${item.id}` : `/manager/staff?highlight=${item.id}`)} />
-          <ResultGroup heading="Menu items" items={results.menuItems} icon={<UtensilsCrossed className="h-4 w-4" />} render={(item) => `${item.name} · ${formatCurrency(item.price)}`} onSelect={(item) => go(`/${role}/menu?highlight=${item.id}`)} />
-          <ResultGroup heading="Recent orders" items={results.orders} icon={<ReceiptText className="h-4 w-4" />} render={(item) => `Table ${item.tableNumber} · #${item.clientOrderId.slice(0, 8)} · ${item.status}`} onSelect={() => go(`/${role}`)} />
-          <ResultGroup heading="Expenses" items={results.expenses ?? []} icon={<Wallet className="h-4 w-4" />} render={(item) => `${item.description} · ${formatCurrency(item.amount)}`} onSelect={() => go(`/${role}/expenses`)} />
-          <ResultGroup heading="Payroll" items={results.payroll ?? []} icon={<Coins className="h-4 w-4" />} render={(item) => `${item.user?.name ?? 'Payroll'} · ${monthLabel(item.periodMonth, item.periodYear)} · ${formatCurrency(item.paidAmount)}`} onSelect={() => go(`/${role}/payroll`)} />
-          <ResultGroup heading="Settlements" items={results.settlements ?? []} icon={<CreditCard className="h-4 w-4" />} render={(item) => `Table ${item.order?.tableNumber ?? '—'} · ${item.method} · ${formatCurrency(item.amountMinor)}`} onSelect={() => go(`/${role}/settlements`)} />
-          <ResultGroup heading="Printers" items={results.printers ?? []} icon={<Printer className="h-4 w-4" />} render={(item) => `${item.station} · ${item.transport}`} onSelect={() => go('/owner/admin?tab=printers')} />
+          <ResultGroup heading={t('palette.staff')} items={results.staff} icon={<Users className="h-4 w-4" />} render={(item) => `${item.name} · ${item.role}`} onSelect={(item) => go(role === 'owner' ? `/owner/admin?tab=staff&highlight=${item.id}` : `/manager/staff?highlight=${item.id}`)} />
+          <ResultGroup heading={t('palette.menuItems')} items={results.menuItems} icon={<UtensilsCrossed className="h-4 w-4" />} render={(item) => `${item.name} · ${formatCurrency(item.price)}`} onSelect={(item) => go(`/${role}/menu?highlight=${item.id}`)} />
+          <ResultGroup heading={t('palette.recentOrders')} items={results.orders} icon={<ReceiptText className="h-4 w-4" />} render={(item) => `${t('cashier:queue.table')} ${item.tableNumber} · #${item.clientOrderId.slice(0, 8)} · ${item.status}`} onSelect={() => go(`/${role}`)} />
+          <ResultGroup heading={t('palette.expenses')} items={results.expenses ?? []} icon={<Wallet className="h-4 w-4" />} render={(item) => `${item.description} · ${formatCurrency(item.amount)}`} onSelect={() => go(`/${role}/expenses`)} />
+          <ResultGroup heading={t('palette.payroll')} items={results.payroll ?? []} icon={<Coins className="h-4 w-4" />} render={(item) => `${item.user?.name ?? t('palette.payroll')} · ${monthLabel(item.periodMonth, item.periodYear)} · ${formatCurrency(item.paidAmount)}`} onSelect={() => go(`/${role}/payroll`)} />
+          <ResultGroup heading={t('palette.settlements')} items={results.settlements ?? []} icon={<CreditCard className="h-4 w-4" />} render={(item) => `${t('cashier:queue.table')} ${item.order?.tableNumber ?? '—'} · ${item.method} · ${formatCurrency(item.amountMinor)}`} onSelect={() => go(`/${role}/settlements`)} />
+          <ResultGroup heading={t('palette.printers')} items={results.printers ?? []} icon={<Printer className="h-4 w-4" />} render={(item) => `${item.station} · ${item.transport}`} onSelect={() => go('/owner/admin?tab=printers')} />
         </>}
       </Command.List>
     </div>
