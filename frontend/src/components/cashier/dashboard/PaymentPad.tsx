@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useTranslation } from 'react-i18next';
 import { formatCurrency } from '../../../utils/currency';
 import type { PaymentMethod } from '../../../types';
 import { METHOD_HOTKEY, METHOD_LABEL, METHOD_ORDER } from './utils';
@@ -72,6 +73,7 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
   isCancelled = false,
   className,
 }) => {
+  const { t } = useTranslation();
   if (isSettled || isCancelled) {
     return (
       <div
@@ -90,12 +92,12 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
         )}
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-sm">
-            {isSettled ? 'Settled' : 'Cancelled'}
+            {isSettled ? t('settlements.settled') : t('status.cancelled')}
           </p>
           <p className="text-xs opacity-80">
             {isSettled
-              ? 'Receipt printed. Funds captured.'
-              : 'This order has been voided.'}
+              ? t('cashier.pad.settledMsg')
+              : t('cashier.pad.voidedMsg')}
           </p>
         </div>
       </div>
@@ -113,10 +115,10 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
       <div className="flex items-end justify-between gap-2">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-            Total
+            {t('orderDetails.total')}
           </p>
           <p className="text-[10px] text-muted-foreground/80 mt-0.5">
-            Tap a method, then press ↵
+            {t('cashier.pad.tapMethodHint')}
           </p>
         </div>
         <p className="font-display text-3xl font-bold tabular-nums text-foreground leading-none">
@@ -129,7 +131,7 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
       <div
         className="grid grid-cols-3 gap-2 max-h-40 min-h-0 overflow-y-auto pr-1"
         role="radiogroup"
-        aria-label="Payment method"
+        aria-label={t('settlements.paymentMethod')}
       >
         {METHOD_ORDER.map((pm) => {
           const Icon = METHOD_ICON[pm];
@@ -166,7 +168,7 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
               )}
               <Icon className="w-5 h-5" />
               <span className="text-[11px] font-bold uppercase tracking-wider">
-                {METHOD_LABEL[pm]}
+                {t(METHOD_LABEL[pm])}
               </span>
               <kbd
                 className={cn(
@@ -215,7 +217,7 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
                 transition={{ duration: 0.15 }}
                 className="relative inline-flex items-center justify-center gap-2"
               >
-                <span>Collect {formatCurrency(total)}</span>
+                <span>{t('cashier.pad.collect', { total: formatCurrency(total) })}</span>
                 <ChevronRight className="w-4 h-4" />
                 <kbd className="hidden sm:inline-block ml-1 px-1.5 py-0.5 rounded bg-white/25 text-white text-[10px] font-mono">
                   ↵
@@ -232,7 +234,7 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
                 className="relative inline-flex items-center justify-center gap-2"
               >
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Processing…
+                {t('cashier.pad.processing')}
               </motion.span>
             )}
             {phase === 'printed' && (
@@ -244,7 +246,7 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
                 className="relative inline-flex items-center justify-center gap-2"
               >
                 <Printer className="w-4 h-4" />
-                Receipt printed
+                {t('cashier.pad.receiptPrinted')}
                 <Sparkles className="w-4 h-4" />
               </motion.span>
             )}
@@ -259,9 +261,9 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
           <span className="inline-flex items-center gap-0.5">
             <Kbd>1</Kbd><Kbd>2</Kbd><Kbd>3</Kbd>
           </span>
-          <span className="ml-1">method</span>
+          <span className="ml-1">{t('settlements.paymentMethod')}</span>
           <Kbd className="ml-1.5">↵</Kbd>
-          <span className="ml-1">collect</span>
+          <span className="ml-1">{t('cashier.pad.collectShort')}</span>
         </div>
         {showCancel && (
           <button
@@ -270,7 +272,7 @@ export const PaymentPad: React.FC<PaymentPadProps> = ({
             className="text-[11px] font-semibold text-muted-foreground hover:text-rose-600 transition-colors px-2 py-1 rounded-md hover:bg-rose-500/10 inline-flex items-center gap-1"
           >
             <X className="w-3 h-3" />
-            Cancel order
+            {t('cashier.pad.cancelOrder')}
           </button>
         )}
       </div>
