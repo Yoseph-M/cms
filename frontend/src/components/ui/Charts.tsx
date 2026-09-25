@@ -3,6 +3,7 @@ import {
   BarChart as TremorBarChart,
   LineChart as TremorLineChart,
 } from '@tremor/react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 
 /**
@@ -213,13 +214,15 @@ export const LineChart: React.FC<{
   labels,
   className,
 }) => {
+  const { t } = useTranslation();
+  const seriesName = t('app.revenue');
   const data = useMemo(
     () =>
       values.map((v, i) => ({
         date: labels?.[i] ?? String(i),
-        Revenue: v,
+        [seriesName]: v,
       })),
-    [values, labels],
+    [values, labels, seriesName],
   );
 
   return (
@@ -227,7 +230,7 @@ export const LineChart: React.FC<{
       <TremorLineChart
         data={data}
         index="date"
-        categories={['Revenue']}
+        categories={[seriesName]}
         colors={[color]}
         valueFormatter={yTickFormat}
         customTooltip={tooltipFormat ? makeTooltip(tooltipFormat) : undefined}
@@ -239,7 +242,7 @@ export const LineChart: React.FC<{
       <TremorLineChart
         data={data}
         index="date"
-        categories={['Revenue']}
+        categories={[seriesName]}
         colors={[color]}
         valueFormatter={yTickFormat}
         customTooltip={tooltipFormat ? makeTooltip(tooltipFormat) : undefined}
