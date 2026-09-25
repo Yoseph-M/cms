@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import {
   AtSign,
   BadgeCheck,
@@ -35,41 +36,41 @@ import type { Role } from '../../types';
 /* ─── Role presentation metadata ─── */
 const ROLE_META: Record<
   Role,
-  { label: string; description: string; className: string; gradient: string }
+  { labelKey: string; descKey: string; className: string; gradient: string }
 > = {
   OWNER: {
-    label: 'Owner',
-    description: 'Full administrative, financial & operational privileges across all venues.',
+    labelKey: 'roles.owner',
+    descKey: 'profile.roleOwnerDesc',
     className: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30',
     gradient: 'from-amber-500 via-blue-500 to-rose-500',
   },
   MANAGER: {
-    label: 'Manager',
-    description: 'Store operations, staff scheduling & menu catalog management.',
+    labelKey: 'roles.manager',
+    descKey: 'profile.roleManagerDesc',
     className: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-violet-500/30',
     gradient: 'from-violet-500 via-purple-500 to-fuchsia-500',
   },
   CASHIER: {
-    label: 'Cashier',
-    description: 'Front-of-house order management & POS terminal checkout access.',
+    labelKey: 'roles.cashier',
+    descKey: 'profile.roleCashierDesc',
     className: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30',
     gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
   },
   WAITER: {
-    label: 'Waiter',
-    description: 'Table order placement & dining floor guest service.',
+    labelKey: 'roles.waiter',
+    descKey: 'profile.roleWaiterDesc',
     className: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-sky-500/30',
     gradient: 'from-sky-500 via-blue-500 to-indigo-500',
   },
   COOKER: {
-    label: 'Cook',
-    description: 'Kitchen order fulfillment & food preparation status tracking.',
+    labelKey: 'roles.cook',
+    descKey: 'profile.roleCookDesc',
     className: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 ring-rose-500/30',
     gradient: 'from-rose-500 via-red-500 to-indigo-500',
   },
   BARISTA: {
-    label: 'Barista',
-    description: 'Beverage bar orders & drink preparation fulfillment.',
+    labelKey: 'roles.barista',
+    descKey: 'profile.roleBaristaDesc',
     className: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 ring-blue-500/30',
     gradient: 'from-blue-500 via-sky-500 to-cyan-500',
   },
@@ -108,32 +109,33 @@ const evaluatePassword = (pw: string) => {
   if (hasMixedCase) score++;
   if (hasSpecialOrDigit) score++;
 
-  let label = 'Weak';
+  let labelKey = 'profile.pwWeak';
   let color = 'bg-destructive';
   if (score === 2) {
-    label = 'Fair';
+    labelKey = 'profile.pwFair';
     color = 'bg-warning';
   } else if (score === 3) {
-    label = 'Good';
+    labelKey = 'profile.pwGood';
     color = 'bg-primary';
   } else if (score >= 4) {
-    label = 'Strong';
+    labelKey = 'profile.pwStrong';
     color = 'bg-[hsl(var(--success))]';
   }
 
   return {
     score,
-    label,
+    labelKey,
     color,
     criteria: [
-      { met: hasMinLength, label: 'At least 6 characters' },
-      { met: hasMixedCase, label: 'Uppercase & lowercase letters' },
-      { met: hasSpecialOrDigit, label: 'Includes number or symbol' },
+      { met: hasMinLength, labelKey: 'profile.pwSixChars' },
+      { met: hasMixedCase, labelKey: 'profile.pwMixedCase' },
+      { met: hasSpecialOrDigit, labelKey: 'profile.pwNumberOrSymbol' },
     ],
   };
 };
 
 export const ProfilePage: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
@@ -141,13 +143,13 @@ export const ProfilePage: React.FC = () => {
   const { setPageTitle, setShowDateRange } = useHeaderStore();
 
   useEffect(() => {
-    setPageTitle({ title: 'Account Profile', subtitle: 'Manage your credentials, personal identity, and security' });
+    setPageTitle({ title: t('profile.title'), subtitle: t('profile.subtitle') });
     setShowDateRange(false);
     return () => {
-      setPageTitle({ title: 'Overview', subtitle: '' });
+      setPageTitle({ title: t('app.overview'), subtitle: '' });
       setShowDateRange(false);
     };
-  }, [setPageTitle, setShowDateRange]);
+  }, [setPageTitle, setShowDateRange, t]);
 
   const me = meQuery.data;
 
@@ -179,8 +181,8 @@ export const ProfilePage: React.FC = () => {
 
   const role = user.role as Role;
   const meta = ROLE_META[role] ?? {
-    label: role,
-    description: 'System user profile.',
+    labelKey: '',
+    descKey: 'profile.roleSystemDesc',
     className: 'bg-secondary text-foreground ring-border',
     gradient: 'from-brand-600 via-brand-500 to-cyan-400',
   };
@@ -204,7 +206,7 @@ export const ProfilePage: React.FC = () => {
   const handleAvatarFile = async (file?: File | null) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      addToast({ type: 'error', title: 'Invalid file', message: 'Please choose an image file.' });
+      addToast({ type: 'error', title: t('profile.invalidFileTitle'), message: t('profile.chooseImage') });
       return;
     }
     try {
@@ -213,8 +215,8 @@ export const ProfilePage: React.FC = () => {
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Could not read image',
-        message: extractErrorMessage(err, 'Please try a different image.'),
+        title: t('profile.couldNotReadImage'),
+        message: extractErrorMessage(err, t('profile.tryDifferentImage')),
       });
     }
   };
@@ -224,11 +226,11 @@ export const ProfilePage: React.FC = () => {
     const name = draftName.trim();
     const phone = draftPhone ? `${ET_PHONE_PREFIX}${draftPhone}` : '';
     if (name.length < 2) {
-      addToast({ type: 'error', title: 'Invalid name', message: 'Full name must be at least 2 characters.' });
+      addToast({ type: 'error', title: t('profile.invalidNameTitle'), message: t('profile.nameMinChars') });
       return;
     }
     if (draftPhone.length !== ET_PHONE_DIGITS) {
-      addToast({ type: 'error', title: 'Invalid phone', message: `Phone number must be ${ET_PHONE_DIGITS} digits.` });
+      addToast({ type: 'error', title: t('profile.invalidPhoneTitle'), message: t('profile.phoneDigits', { count: ET_PHONE_DIGITS }) });
       return;
     }
     setIsSavingProfile(true);
@@ -242,9 +244,9 @@ export const ProfilePage: React.FC = () => {
       const updated = res.data;
       queryClient.setQueryData(['me'], updated);
       useAuthStore.getState().setUser({ ...user, ...updated });
-      addToast({ type: 'success', title: 'Profile updated', message: 'Your personal changes have been saved.' });
+      addToast({ type: 'success', title: t('profile.profileUpdated'), message: t('profile.changesSaved') });
     } catch (err: any) {
-      addToast({ type: 'error', title: 'Update failed', message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: t('profile.updateFailed'), message: extractErrorMessage(err) });
     } finally {
       setIsSavingProfile(false);
     }
@@ -253,20 +255,20 @@ export const ProfilePage: React.FC = () => {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 6) {
-      addToast({ type: 'error', title: 'Too short', message: 'Password must be at least 6 characters.' });
+      addToast({ type: 'error', title: t('profile.tooShort'), message: t('profile.passwordMinChars') });
       return;
     }
     setIsSavingPassword(true);
     try {
       await axiosClient.patch('/users/me/password', { currentPassword, newPassword });
-      addToast({ type: 'success', title: 'Password updated', message: 'Your password has been changed successfully.' });
+      addToast({ type: 'success', title: t('profile.passwordUpdated'), message: t('profile.passwordChangedSuccess') });
       setCurrentPassword('');
       setNewPassword('');
     } catch (err: any) {
       addToast({
         type: 'error',
-        title: 'Update failed',
-        message: extractErrorMessage(err) || 'Could not update password.',
+        title: t('profile.updateFailed'),
+        message: extractErrorMessage(err) || t('profile.couldNotUpdatePassword'),
       });
     } finally {
       setIsSavingPassword(false);
@@ -314,7 +316,7 @@ export const ProfilePage: React.FC = () => {
                 </h1>
                 <span className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 text-xs font-bold ring-1 ring-inset', meta.className)}>
                   <BadgeCheck className="h-3.5 w-3.5" />
-                  {meta.label}
+                  {meta.labelKey ? t(meta.labelKey) : role}
                 </span>
               </div>
 
@@ -328,7 +330,7 @@ export const ProfilePage: React.FC = () => {
                 {joined && (
                   <span className="hidden sm:inline-flex items-center gap-1 text-muted-foreground">
                     <CalendarDays className="h-3.5 w-3.5" />
-                    Member since {joined}
+                    {t('profile.memberSince', { date: joined })}
                   </span>
                 )}
               </p>
@@ -340,7 +342,7 @@ export const ProfilePage: React.FC = () => {
             {hasDirtyFields && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/15 px-3 py-1 text-xs font-bold text-warning ring-1 ring-inset ring-warning/30 animate-pulse">
                 <Sparkles className="h-3 w-3" />
-                Unsaved modifications
+                {t('profile.unsavedChanges')}
               </span>
             )}
           </div>
@@ -366,30 +368,30 @@ export const ProfilePage: React.FC = () => {
           <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm space-y-4">
             <div className="flex items-center gap-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               <Shield className="h-4 w-4 text-primary" />
-              <span>Role & Privileges</span>
+              <span>{t('profile.roleAndPrivileges')}</span>
             </div>
 
             <div className="rounded-xl bg-secondary/40 p-4 border border-border/40 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-foreground">{meta.label} Access</span>
-                <span className="text-[11px] font-bold text-primary">Level 1</span>
+                <span className="text-sm font-bold text-foreground">{t('profile.accessLevel', { role: meta.labelKey ? t(meta.labelKey) : role })}</span>
+                <span className="text-[11px] font-bold text-primary">{t('profile.level1')}</span>
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                {meta.description}
+                {t(meta.descKey)}
               </p>
             </div>
 
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Identity status</span>
+                <span className="text-muted-foreground">{t('profile.identityStatus')}</span>
                 <span className="font-semibold text-foreground flex items-center gap-1">
                   <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--success))]" />
-                  Verified
+                  {t('profile.verified')}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Country format</span>
-                <span className="font-semibold text-foreground">Ethiopia (+251)</span>
+                <span className="text-muted-foreground">{t('profile.countryFormat')}</span>
+                <span className="font-semibold text-foreground">{t('profile.ethiopiaFormat')}</span>
               </div>
             </div>
           </div>
@@ -398,10 +400,10 @@ export const ProfilePage: React.FC = () => {
           <div className="rounded-2xl border border-border/60 bg-secondary/30 p-5 space-y-3">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-foreground">
               <ShieldCheck className="h-4 w-4 text-[hsl(var(--success))]" />
-              <span>Security Standards</span>
+              <span>{t('profile.securityStandards')}</span>
             </div>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Your password protects critical restaurant operations, orders, and financial data. Always use a strong, unique passkey.
+              {t('profile.securityStandardsDesc')}
             </p>
           </div>
         </aside>
@@ -417,16 +419,16 @@ export const ProfilePage: React.FC = () => {
                 </span>
                 <div>
                   <h2 className="text-lg font-bold tracking-tight text-foreground">
-                    Personal Details
+                    {t('profile.personalDetails')}
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Update your public display name, username, and Ethiopian mobile number.
+                    {t('profile.personalDetailsDesc')}
                   </p>
                 </div>
               </div>
 
               {isSavingProfile && (
-                <span className="text-xs font-medium text-primary animate-pulse">Saving changes...</span>
+                <span className="text-xs font-medium text-primary animate-pulse">{t('profile.savingChanges')}</span>
               )}
             </div>
 
@@ -447,9 +449,9 @@ export const ProfilePage: React.FC = () => {
                     )}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-foreground">Profile Picture</p>
+                    <p className="text-sm font-semibold text-foreground">{t('profile.profilePicture')}</p>
                     <p className="text-xs text-muted-foreground">
-                      Visible to team members across orders and shifts.
+                      {t('profile.profilePictureDesc')}
                     </p>
                   </div>
                 </div>
@@ -462,7 +464,7 @@ export const ProfilePage: React.FC = () => {
                     onClick={() => avatarInputRef.current?.click()}
                     leftIcon={<Pencil className="h-3.5 w-3.5" />}
                   >
-                    Upload photo
+                    {t('profile.uploadPhoto')}
                   </Button>
                   {avatarSrc && (
                     <Button
@@ -473,7 +475,7 @@ export const ProfilePage: React.FC = () => {
                       onClick={() => setDraftAvatar(null)}
                       leftIcon={<Trash2 className="h-3.5 w-3.5" />}
                     >
-                      Remove
+                      {t('buttons.remove')}
                     </Button>
                   )}
                 </div>
@@ -485,11 +487,11 @@ export const ProfilePage: React.FC = () => {
                   <label className="mb-1.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <UserRound className="h-3.5 w-3.5 text-primary" />
-                      Full Name
+                      {t('profile.fullName')}
                     </span>
                     {isNameDirty && (
                       <span className="rounded-full bg-warning/15 px-2 py-0.2 text-[10px] font-bold uppercase tracking-wide text-warning">
-                        Edited
+                        {t('profile.edited')}
                       </span>
                     )}
                   </label>
@@ -498,7 +500,7 @@ export const ProfilePage: React.FC = () => {
                     id="full-name"
                     value={draftName}
                     onChange={(e) => setDraftName(e.target.value)}
-                    placeholder="e.g. Abebe Bikila"
+                    placeholder={t('profile.namePlaceholder')}
                     minLength={2}
                     required
                     leftIcon={<UserRound className="h-4 w-4 text-muted-foreground" />}
@@ -509,11 +511,11 @@ export const ProfilePage: React.FC = () => {
                   <label className="mb-1.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <AtSign className="h-3.5 w-3.5 text-primary" />
-                      Username Handle
+                      {t('profile.usernameHandle')}
                     </span>
                     {isUsernameDirty && (
                       <span className="rounded-full bg-warning/15 px-2 py-0.2 text-[10px] font-bold uppercase tracking-wide text-warning">
-                        Edited
+                        {t('profile.edited')}
                       </span>
                     )}
                   </label>
@@ -522,17 +524,17 @@ export const ProfilePage: React.FC = () => {
                     id="username"
                     value={draftUsername}
                     onChange={(e) => setDraftUsername(e.target.value)}
-                    placeholder="e.g. abebe@cafeflow.com"
+                    placeholder={t('profile.usernamePlaceholder')}
                     leftIcon={<AtSign className="h-4 w-4 text-muted-foreground" />}
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground">Used for workspace mentions.</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{t('profile.usernameHint')}</p>
                 </div>
 
                 <div>
                   <label className="mb-1.5 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <Phone className="h-3.5 w-3.5 text-primary" />
-                      Phone Number (+251)
+                      {t('profile.phoneNumber')}
                     </span>
                     <span className="text-[10px] font-semibold text-muted-foreground">
                       {draftPhone.length}/{ET_PHONE_DIGITS}
@@ -553,7 +555,7 @@ export const ProfilePage: React.FC = () => {
                       leftIcon={<Phone className="h-4 w-4 text-muted-foreground" />}
                     />
                   </div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">9 digits following the Ethiopian +251 country code.</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{t('profile.phoneHint')}</p>
                 </div>
               </div>
 
@@ -564,7 +566,7 @@ export const ProfilePage: React.FC = () => {
                   disabled={!profileFormValid || isSavingProfile || !hasDirtyFields}
                   leftIcon={<Save className="h-4 w-4" />}
                 >
-                  {isSavingProfile ? 'Saving…' : 'Save changes'}
+                  {isSavingProfile ? t('profile.saving') : t('profile.saveChanges')}
                 </Button>
               </div>
             </form>
@@ -579,10 +581,10 @@ export const ProfilePage: React.FC = () => {
                 </span>
                 <div>
                   <h2 className="text-lg font-bold tracking-tight text-foreground">
-                    Password & Security
+                    {t('profile.passwordSecurity')}
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Change your sign-in password and view password strength metrics.
+                    {t('profile.passwordSecurityDesc')}
                   </p>
                 </div>
               </div>
@@ -593,7 +595,7 @@ export const ProfilePage: React.FC = () => {
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     <Lock className="h-3.5 w-3.5 text-primary" />
-                    Current Password
+                    {t('profile.currentPassword')}
                   </label>
                   <Input
                     type={showCurrentPw ? 'text' : 'password'}
@@ -608,7 +610,7 @@ export const ProfilePage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setShowCurrentPw((v) => !v)}
-                        aria-label={showCurrentPw ? 'Hide password' : 'Show password'}
+                        aria-label={showCurrentPw ? t('profile.hidePassword') : t('profile.showPassword')}
                         className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
                       >
                         {showCurrentPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -620,7 +622,7 @@ export const ProfilePage: React.FC = () => {
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     <KeyRound className="h-3.5 w-3.5 text-primary" />
-                    New Password
+                    {t('profile.newPassword')}
                   </label>
                   <Input
                     type={showNewPw ? 'text' : 'password'}
@@ -636,7 +638,7 @@ export const ProfilePage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setShowNewPw((v) => !v)}
-                        aria-label={showNewPw ? 'Hide password' : 'Show password'}
+                        aria-label={showNewPw ? t('profile.hidePassword') : t('profile.showPassword')}
                         className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
                       >
                         {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -650,7 +652,7 @@ export const ProfilePage: React.FC = () => {
               {newPassword.length > 0 && (
                 <div className="rounded-xl border border-border/60 bg-secondary/30 p-4 space-y-3">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-muted-foreground">Password strength</span>
+                    <span className="font-semibold text-muted-foreground">{t('profile.passwordStrength')}</span>
                     <span
                       className={cn(
                         'font-bold',
@@ -660,7 +662,7 @@ export const ProfilePage: React.FC = () => {
                         pwEvaluation.score >= 4 && 'text-[hsl(var(--success))]',
                       )}
                     >
-                      {pwEvaluation.label}
+                      {t(pwEvaluation.labelKey)}
                     </span>
                   </div>
 
@@ -692,7 +694,7 @@ export const ProfilePage: React.FC = () => {
                           {c.met ? <Check className="h-2.5 w-2.5 stroke-[3]" /> : '•'}
                         </span>
                         <span className={c.met ? 'font-medium text-foreground' : 'text-muted-foreground'}>
-                          {c.label}
+                          {t(c.labelKey)}
                         </span>
                       </div>
                     ))}
@@ -708,7 +710,7 @@ export const ProfilePage: React.FC = () => {
                   disabled={!passwordFormValid || isSavingPassword}
                   leftIcon={<ShieldCheck className="h-4 w-4" />}
                 >
-                  {isSavingPassword ? 'Updating…' : 'Update password'}
+                  {isSavingPassword ? t('profile.updating') : t('profile.updatePassword')}
                 </Button>
               </div>
             </form>
