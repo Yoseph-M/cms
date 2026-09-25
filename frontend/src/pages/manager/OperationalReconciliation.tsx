@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { dailyCloseApi } from '../../api/phase9Api';
 import { axiosClient } from '../../api/axiosClient';
@@ -91,26 +92,33 @@ const MoneyStat: React.FC<{ label: string; value: string; tone?: 'default' | 'pr
 );
 
 /** Today's live totals — the current business date's own sales, nothing older. */
-const TodayFigures: React.FC<{ figures: DayFigures }> = ({ figures }) => (
+const TodayFigures: React.FC<{ figures: DayFigures }> = ({ figures }) => {
+  const { t } = useTranslation();
+  return (
   <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-        Today so far
+        {t('cashier.eod.todaySoFar')}
       </p>
       <p className="font-mono text-xs text-muted-foreground">{figures.businessDate}</p>
     </div>
     <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <MoneyStat label="Total sales" value={formatCurrency(figures.totalSalesMinor)} />
-      <MoneyStat label="Cash" value={formatCurrency(figures.cashSettledMinor)} tone="primary" />
-      <MoneyStat label="Card" value={formatCurrency(figures.cardSettledMinor)} />
-      <MoneyStat label="Mobile" value={formatCurrency(figures.mobileSettledMinor)} />
+      <MoneyStat label={t('cashier.eod.totalSales')} value={formatCurrency(figures.totalSalesMinor)} />
+      <MoneyStat label={t('cashier.method.cash')} value={formatCurrency(figures.cashSettledMinor)} tone="primary" />
+      <MoneyStat label={t('cashier.method.card')} value={formatCurrency(figures.cardSettledMinor)} />
+      <MoneyStat label={t('cashier.method.mobile')} value={formatCurrency(figures.mobileSettledMinor)} />
     </div>
     <p className="mt-2 text-xs text-muted-foreground">
-      {figures.unsettledOrderCount} unsettled · {figures.partialSettlementCount} partially settled ·{' '}
-      {figures.cancelledOrderCount} cancelled tickets
+      {t('cashier.eod.summaryLine', {
+        unsettled: figures.unsettledOrderCount,
+        cancelled: figures.cancelledOrderCount,
+        partial: figures.partialSettlementCount,
+        total: figures.totalSettledMinor,
+      })}
     </p>
   </div>
-);
+  );
+};
 
 function formatMoment(iso?: string | null): string {
   if (!iso) return '';
@@ -133,6 +141,7 @@ function formatMoment(iso?: string | null): string {
  * variance in this flow.
  */
 export const OperationalReconciliation: React.FC = () => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const { socket } = useSocketStore();
   const { setPageTitle, setShowDateRange } = useHeaderStore();
@@ -141,13 +150,13 @@ export const OperationalReconciliation: React.FC = () => {
 
   // Reflect the current section in the global header.
   useEffect(() => {
-    setPageTitle({ title: 'End of Day', subtitle: 'Approve or disapprove the close request' });
+    setPageTitle({ title: t('cashier.endOfDay'), subtitle: t('managerDash.approveOrDisapprove') });
     setShowDateRange(false);
     return () => {
-      setPageTitle({ title: 'Overview', subtitle: '' });
+      setPageTitle({ title: t('app.overview'), subtitle: '' });
       setShowDateRange(false);
     };
-  }, [setPageTitle, setShowDateRange]);
+  }, [setPageTitle, setShowDateRange, t]);
 
   const closeQuery = useQuery<DailyCloseRecord | null>({
     queryKey: ['dailyClose', 'current', 'manager'],
@@ -207,13 +216,21 @@ export const OperationalReconciliation: React.FC = () => {
     return rows;
   }, [history, historyMonthOffset, historyMonth, historyCutoffDays]);
 
-  const historyTotals = useMemo(
-    () => ({
-      revenue: filteredHistory.reduce((s, r) => s + (r.totalSalesMinor || 0), 0),
-      closed: filteredHistory.filter((r) => r.status === 'CLOSED').length,
-    }),
-    [filteredHistory],
-  );
+  /**
+   * The window's takings — only the days a manager actually approved.
+   *
+   * A day still waiting for a decision, and a day that was disapproved, are
+   * both in the history (the approver has to be able to see them) but neither
+   * is a closed day's revenue: the figure beside "N closed" has to be the money
+   * of those N days, not of everything the floor happened to send in.
+   */
+  const historyTotals = useMemo(() => {
+    const closedRows = filteredHistory.filter((r) => r.status === 'CLOSED');
+    return {
+      revenue: closedRows.reduce((s, r) => s + (r.totalSalesMinor || 0), 0),
+      closed: closedRows.length,
+    };
+  }, [filteredHistory]);
 
   // A request from the till should appear without a manual refresh — and the
   // history must re-list the day as soon as a decision lands.
@@ -238,8 +255,8 @@ export const OperationalReconciliation: React.FC = () => {
     onSuccess: () => {
       addToast({
         type: 'success',
-        title: 'Day approved',
-        message: 'The business day is closed and the cashier has been told.',
+        title: t('recon.dayApproved'),
+        message: t('recon.dayApprovedMsg'),
       });
       setReviewNotes('');
       invalidate();
@@ -247,8 +264,8 @@ export const OperationalReconciliation: React.FC = () => {
     onError: (err: unknown) => {
       addToast({
         type: 'error',
-        title: 'Unable to approve',
-        message: extractErrorMessage(err, 'Something went wrong. Please try again.'),
+        title: t('recon.unableToApprove'),
+        message: extractErrorMessage(err, t('error.tryAgain')),
       });
     },
   });
@@ -259,8 +276,8 @@ export const OperationalReconciliation: React.FC = () => {
     onSuccess: () => {
       addToast({
         type: 'info',
-        title: 'Request disapproved',
-        message: 'The cashier has been told, and the day stays open for a new request.',
+        title: t('recon.requestDisapproved'),
+        message: t('recon.requestDisapprovedMsg'),
       });
       setReviewNotes('');
       invalidate();
@@ -268,8 +285,8 @@ export const OperationalReconciliation: React.FC = () => {
     onError: (err: unknown) => {
       addToast({
         type: 'error',
-        title: 'Unable to disapprove',
-        message: extractErrorMessage(err, 'Something went wrong. Please try again.'),
+        title: t('recon.unableToDisapprove'),
+        message: extractErrorMessage(err, t('error.tryAgain')),
       });
     },
   });
@@ -283,16 +300,16 @@ export const OperationalReconciliation: React.FC = () => {
     onSuccess: () => {
       addToast({
         type: 'success',
-        title: 'Close request sent',
-        message: 'The request is now waiting for a manager decision.',
+        title: t('cashier.eod.sentToast'),
+        message: t('recon.requestSentMsg'),
       });
       invalidate();
     },
     onError: (err: unknown) => {
       addToast({
         type: 'error',
-        title: 'Unable to send the request',
-        message: extractErrorMessage(err, 'Please try again in a moment.'),
+        title: t('cashier.eod.sendFailed'),
+        message: extractErrorMessage(err, t('cashier.eod.tryAgain')),
       });
     },
   });
@@ -307,7 +324,7 @@ export const OperationalReconciliation: React.FC = () => {
   );
 
   if (closeQuery.isLoading) {
-    return <LoadingState message="Loading the close request..." />;
+    return <LoadingState message={t('recon.loadingRequest')} />;
   }
 
   const isPending = status === 'PENDING_REVIEW';
@@ -319,8 +336,8 @@ export const OperationalReconciliation: React.FC = () => {
     if (!reviewNotes.trim()) {
       addToast({
         type: 'warning',
-        title: 'Tell the cashier why',
-        message: 'Add a short reason before disapproving — the request goes back with it.',
+        title: t('recon.tellCashierWhy'),
+        message: t('recon.tellCashierWhyMsg'),
       });
       return;
     }
@@ -332,17 +349,17 @@ export const OperationalReconciliation: React.FC = () => {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-            Operations
+            {t('managerDash.operationsControl')}
           </p>
           <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-foreground">
-            End of Day
+            {t('cashier.endOfDay')}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {isPending
-              ? 'A close request is waiting for your decision.'
+              ? t('recon.subtitlePending')
               : isClosed
-                ? 'Today’s business day has already been approved.'
-                : 'The cashier sends the close request; you decide.'}
+                ? t('recon.subtitleClosed')
+                : t('recon.subtitleOpen')}
           </p>
         </div>
         <Badge
@@ -350,12 +367,12 @@ export const OperationalReconciliation: React.FC = () => {
           className="px-3 py-1 text-[11px] uppercase tracking-wide"
         >
           {isPending
-            ? 'Awaiting approval'
+            ? t('cashier.close.awaitingApproval')
             : isClosed
-              ? 'Closed'
+              ? t('recon.closedWord')
               : isRejected
-                ? 'Disapproved'
-                : 'No request yet'}
+                ? t('cashier.close.disapproved')
+                : t('cashier.close.notRequested')}
         </Badge>
       </div>
 
@@ -369,14 +386,14 @@ export const OperationalReconciliation: React.FC = () => {
               </span>
               <div>
                 <h2 className="font-display text-[15px] font-semibold text-foreground">
-                  Daily revenue history
+                  {t('recon.historyTitle')}
                 </h2>
                 <p className="text-xs text-muted-foreground">
                   {historyMonthOffset === 0
-                    ? `Last ${historyCutoffDays} days · ${historyTotals.closed} closed`
+                    ? t('recon.historyRecentLine', { days: historyCutoffDays, closed: historyTotals.closed })
                     : historyMonth.label}
                   {filteredHistory.length > 0 &&
-                    ` · ${formatCurrency(historyTotals.revenue)} total`}
+                    ` · ${t('recon.totalWord', { total: formatCurrency(historyTotals.revenue) })}`}
                 </p>
               </div>
             </div>
@@ -397,7 +414,7 @@ export const OperationalReconciliation: React.FC = () => {
                           : 'text-muted-foreground hover:text-foreground',
                       )}
                     >
-                      {m === '30d' ? '30 days' : m === '60d' ? '60 days' : '90 days'}
+                      {t(m === '30d' ? 'settlementsFilter.last30' : m === '60d' ? 'recon.days60' : 'recon.days90')}
                     </button>
                   ))}
                 </div>
@@ -408,19 +425,19 @@ export const OperationalReconciliation: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setHistoryMonthOffset((o) => o + 1)}
-                  aria-label="Previous month"
+                  aria-label={t('recon.prevMonth')}
                   className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <span className="min-w-[7.5rem] text-center text-xs font-semibold text-foreground">
-                  {historyMonthOffset === 0 ? 'Recent days' : historyMonth.label}
+                  {historyMonthOffset === 0 ? t('recon.recentDays') : historyMonth.label}
                 </span>
                 <button
                   type="button"
                   onClick={() => setHistoryMonthOffset((o) => Math.max(0, o - 1))}
                   disabled={historyMonthOffset === 0}
-                  aria-label="Next month"
+                  aria-label={t('recon.nextMonth')}
                   className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-card hover:text-foreground disabled:opacity-40"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -430,25 +447,25 @@ export const OperationalReconciliation: React.FC = () => {
           </div>
 
           {historyQuery.isLoading ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Loading history…</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">{t('recon.loadingHistory')}</p>
           ) : filteredHistory.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               {historyMonthOffset === 0
-                ? 'No close requests in the last 90 days.'
-                : `No close requests in ${historyMonth.label}.`}
+                ? t('recon.noRequests90')
+                : t('recon.noRequestsMonth', { month: historyMonth.label })}
             </p>
           ) : (
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                    <th className="py-2.5 pr-3">Business date</th>
-                    <th className="py-2.5 pr-3">Total revenue</th>
-                    <th className="py-2.5 pr-3 hidden sm:table-cell">Cash</th>
-                    <th className="py-2.5 pr-3 hidden md:table-cell">Card</th>
-                    <th className="py-2.5 pr-3 hidden lg:table-cell">Mobile</th>
-                    <th className="py-2.5 pr-3 hidden lg:table-cell">Status</th>
-                    <th className="py-2.5 pr-3 hidden xl:table-cell">Decided by</th>
+                    <th className="py-2.5 pr-3">{t('recon.colBusinessDate')}</th>
+                    <th className="py-2.5 pr-3">{t('recon.colTotalRevenue')}</th>
+                    <th className="py-2.5 pr-3 hidden sm:table-cell">{t('cashier.method.cash')}</th>
+                    <th className="py-2.5 pr-3 hidden md:table-cell">{t('cashier.method.card')}</th>
+                    <th className="py-2.5 pr-3 hidden lg:table-cell">{t('cashier.method.mobile')}</th>
+                    <th className="py-2.5 pr-3 hidden lg:table-cell">{t('settlements.statusLabel')}</th>
+                    <th className="py-2.5 pr-3 hidden xl:table-cell">{t('recon.colDecidedBy')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -480,7 +497,7 @@ export const OperationalReconciliation: React.FC = () => {
                           }
                           className="text-[10px] px-2 py-0"
                         >
-                          {HISTORY_STATUS_LABEL[row.status] ?? row.status}
+                          {t(HISTORY_STATUS_KEY[row.status] ?? '', { defaultValue: row.status })}
                         </Badge>
                       </td>
                       <td className="py-2.5 pr-3 text-xs text-muted-foreground hidden xl:table-cell">
@@ -518,20 +535,22 @@ export const OperationalReconciliation: React.FC = () => {
                 <span className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/25">
                   <BadgeCheck className="h-10 w-10" />
                 </span>
-                <h2 className="mt-6 font-display text-2xl font-bold">Business day closed</h2>
+                <h2 className="mt-6 font-display text-2xl font-bold">{t('cashier.eod.dayClosed')}</h2>
                 <p className="mt-2 max-w-lg text-sm text-muted-foreground">
-                  {record?.closedBy?.name ? `${record.closedBy.name} approved` : 'Approved'} the close
-                  {record?.closedAt ? ` on ${formatMoment(record.closedAt)}` : ''}. Records are locked.
+                  {record?.closedBy?.name
+                    ? t('recon.approvedByOn', { name: record.closedBy.name, date: record?.closedAt ? formatMoment(record.closedAt) : '' })
+                    : t('recon.approvedOn', { date: record?.closedAt ? formatMoment(record.closedAt) : '' })}
+                  {' '}{t('recon.recordsLocked')}
                 </p>
                 <div className="mt-8 grid w-full grid-cols-2 gap-3 sm:grid-cols-4">
-                  <MoneyStat label="Total sales" value={formatCurrency(record?.totalSalesMinor ?? 0)} />
-                  <MoneyStat label="Cash" value={formatCurrency(totals.cash)} tone="primary" />
-                  <MoneyStat label="Card" value={formatCurrency(totals.card)} />
-                  <MoneyStat label="Mobile" value={formatCurrency(totals.mobile)} />
+                  <MoneyStat label={t('cashier.eod.totalSales')} value={formatCurrency(record?.totalSalesMinor ?? 0)} />
+                  <MoneyStat label={t('cashier.method.cash')} value={formatCurrency(totals.cash)} tone="primary" />
+                  <MoneyStat label={t('cashier.method.card')} value={formatCurrency(totals.card)} />
+                  <MoneyStat label={t('cashier.method.mobile')} value={formatCurrency(totals.mobile)} />
                 </div>
                 {record?.reviewNotes && (
                   <p className="mt-6 w-full rounded-xl border border-border bg-secondary/30 px-3.5 py-3 text-sm text-muted-foreground">
-                    Note: {record.reviewNotes}
+                    {t('orderDetails.note')}: {record.reviewNotes}
                   </p>
                 )}
               </div>
@@ -541,11 +560,12 @@ export const OperationalReconciliation: React.FC = () => {
                   <span className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-500/10 text-rose-600">
                     <Ban className="h-7 w-7" />
                   </span>
-                  <h2 className="mt-4 font-display text-lg font-bold">Request disapproved</h2>
+                  <h2 className="mt-4 font-display text-lg font-bold">{t('cashier.close.disapproved')}</h2>
                   <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    {record?.closedBy?.name ? `${record.closedBy.name} disapproved` : 'Disapproved'} the
-                    last request{record?.closedAt ? ` on ${formatMoment(record.closedAt)}` : ''}. The day
-                    stays open until the cashier sends a new one.
+                    {record?.closedBy?.name
+                      ? t('recon.disapprovedByOn', { name: record.closedBy.name, date: record?.closedAt ? formatMoment(record.closedAt) : '' })
+                      : t('recon.disapprovedOn', { date: record?.closedAt ? formatMoment(record.closedAt) : '' })}
+                    {' '}{t('recon.dayStaysOpen')}
                   </p>
                   {record?.reviewNotes && (
                     <p className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-2.5 text-sm text-foreground">
@@ -561,7 +581,7 @@ export const OperationalReconciliation: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] px-4 py-3">
                   <p className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
                     <UserRound className="h-4 w-4 text-amber-600" />
-                    {record?.requestedBy?.name ?? 'The floor'} sent this request
+                    {record?.requestedBy?.name ?? t('recon.theFloor')} {t('recon.sentThisRequest')}
                   </p>
                   {record?.requestedAt && (
                     <p className="inline-flex items-center gap-2 text-xs text-muted-foreground">
@@ -570,29 +590,32 @@ export const OperationalReconciliation: React.FC = () => {
                     </p>
                   )}
                   <p className="ml-auto text-xs font-medium text-amber-700 dark:text-amber-400">
-                    Review the day, then approve or disapprove.
+                    {t('recon.reviewThenDecide')}
                   </p>
                 </div>
 
                 {/* What the day produced. */}
                 <div>
                   <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Recorded for {record?.businessDate}
+                    {t('recon.recordedFor', { date: record?.businessDate })}
                   </p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                    <MoneyStat label="Total sales" value={formatCurrency(record?.totalSalesMinor ?? 0)} />
-                    <MoneyStat label="Cash" value={formatCurrency(totals.cash)} tone="primary" />
-                    <MoneyStat label="Card" value={formatCurrency(totals.card)} />
-                    <MoneyStat label="Mobile" value={formatCurrency(totals.mobile)} />
+                    <MoneyStat label={t('cashier.eod.totalSales')} value={formatCurrency(record?.totalSalesMinor ?? 0)} />
+                    <MoneyStat label={t('cashier.method.cash')} value={formatCurrency(totals.cash)} tone="primary" />
+                    <MoneyStat label={t('cashier.method.card')} value={formatCurrency(totals.card)} />
+                    <MoneyStat label={t('cashier.method.mobile')} value={formatCurrency(totals.mobile)} />
                     <MoneyStat
-                      label="Total settled"
+                      label={t('settlements.totalSettled')}
                       value={formatCurrency(record?.totalSettledMinor ?? 0)}
                     />
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {record?.unsettledOrderCount || 0} unsettled ·{' '}
-                    {record?.partialSettlementCount || 0} partially settled ·{' '}
-                    {record?.cancelledOrderCount || 0} cancelled tickets
+                    {t('cashier.eod.summaryLine', {
+                      unsettled: record?.unsettledOrderCount || 0,
+                      cancelled: record?.cancelledOrderCount || 0,
+                      partial: record?.partialSettlementCount || 0,
+                      total: record?.totalSettledMinor || 0,
+                    })}
                   </p>
                 </div>
 
@@ -601,14 +624,14 @@ export const OperationalReconciliation: React.FC = () => {
                     htmlFor="review-notes"
                     className="mb-1.5 block text-sm font-medium text-foreground"
                   >
-                    Note for the cashier{' '}
+                    {t('recon.noteForCashier')}{' '}
                     <span className="font-normal text-muted-foreground">
-                      (required to disapprove)
+                      {t('recon.requiredToDisapprove')}
                     </span>
                   </label>
                   <Input
                     id="review-notes"
-                    placeholder="Anything they should check or fix before a new request..."
+                    placeholder={t('recon.notePlaceholder')}
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
                   />
@@ -620,10 +643,9 @@ export const OperationalReconciliation: React.FC = () => {
                   <span className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary/60 text-muted-foreground">
                     <Inbox className="h-7 w-7" />
                   </span>
-                  <h2 className="mt-4 font-display text-lg font-bold">No close request yet</h2>
+                  <h2 className="mt-4 font-display text-lg font-bold">{t('cashier.close.notRequested')}</h2>
                   <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    The cashier sends the request from the till at the end of service. If the counter is
-                    already closed, you can raise it yourself.
+                    {t('recon.noRequestMsg')}
                   </p>
                   <Button
                     variant="outline"
@@ -632,7 +654,7 @@ export const OperationalReconciliation: React.FC = () => {
                     onClick={() => requestMutation.mutate()}
                   >
                     <Send className="mr-2 h-4 w-4" />
-                    {requestMutation.isPending ? 'Sending…' : 'Send close request'}
+                    {requestMutation.isPending ? t('cashier.eod.sending') : t('cashier.eod.sendBtn')}
                   </Button>
                 </div>
                 {live && <TodayFigures figures={live} />}
@@ -648,7 +670,7 @@ export const OperationalReconciliation: React.FC = () => {
                   className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
                 >
                   <Ban className="mr-2 h-4 w-4" />
-                  {rejectMutation.isPending ? 'Disapproving…' : 'Disapprove'}
+                  {rejectMutation.isPending ? t('recon.disapproving') : t('recon.disapproveWord')}
                 </Button>
                 <Button
                   size="lg"
@@ -657,7 +679,7 @@ export const OperationalReconciliation: React.FC = () => {
                   onClick={() => approveMutation.mutate()}
                 >
                   <CheckCircle2 className="mr-2 h-4 w-4" />
-                  {approveMutation.isPending ? 'Approving…' : 'Approve & close day'}
+                  {approveMutation.isPending ? t('recon.approving') : t('recon.approveAndClose')}
                 </Button>
               </div>
             )}
@@ -665,7 +687,7 @@ export const OperationalReconciliation: React.FC = () => {
             {!isPending && !isClosed && !isRejected && (
               <p className="flex items-center gap-2 border-t border-border/60 pt-5 text-xs text-muted-foreground">
                 <ClipboardCheck className="h-3.5 w-3.5" />
-                Approving locks the day; disapproving sends it back with your note.
+                {t('recon.approveLocksHint')}
               </p>
             )}
           </CardContent>
@@ -691,11 +713,11 @@ function formatBusinessDateLabel(iso: string): string {
   });
 }
 
-const HISTORY_STATUS_LABEL: Record<string, string> = {
-  OPEN: 'Snapshot',
-  PENDING_REVIEW: 'Awaiting decision',
-  CLOSED: 'Closed',
-  REJECTED: 'Disapproved',
+const HISTORY_STATUS_KEY: Record<string, string> = {
+  OPEN: 'recon.statusSnapshot',
+  PENDING_REVIEW: 'recon.statusAwaitingDecision',
+  CLOSED: 'recon.closedWord',
+  REJECTED: 'cashier.close.disapproved',
 };
 
 export default OperationalReconciliation;
