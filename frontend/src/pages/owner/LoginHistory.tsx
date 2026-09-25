@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { RefreshCw, Shield, CheckCircle, XCircle, Lock, User, Clock, Monitor } from 'lucide-react';
@@ -41,10 +42,10 @@ const OUTCOME_ICONS: Record<string, React.ReactNode> = {
   LOCKED: <Lock className="w-4 h-4 text-blue-600" />,
 };
 
-const OUTCOME_LABELS: Record<string, string> = {
-  SUCCESS: 'Success',
-  FAILURE: 'Failed',
-  LOCKED: 'Locked',
+const OUTCOME_KEYS: Record<string, string> = {
+  SUCCESS: 'loginHistory.outcomeSuccess',
+  FAILURE: 'loginHistory.outcomeFailed',
+  LOCKED: 'loginHistory.outcomeLocked',
 };
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -54,6 +55,7 @@ const OUTCOME_COLORS: Record<string, string> = {
 };
 
 export const LoginHistory: React.FC = () => {
+  const { t } = useTranslation();
   const [loginRecords, setLoginRecords] = useState<LoginRecord[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
@@ -112,15 +114,15 @@ export const LoginHistory: React.FC = () => {
         <div>
           <h3 className="text-lg font-bold flex items-center gap-2">
             <Shield className="w-5 h-5" />
-            Login History & Security Monitoring
+            {t('loginHistory.title')}
           </h3>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Track all login attempts and security events across the system.
+            {t('loginHistory.subtitle')}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => { fetchLoginHistory(pagination.page); fetchStats(); }} className="gap-1.5">
           <RefreshCw className="w-3.5 h-3.5" />
-          Refresh
+          {t('settlements.refresh')}
         </Button>
       </header>
 
@@ -131,7 +133,7 @@ export const LoginHistory: React.FC = () => {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Today's Logins</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t('loginHistory.todayLogins')}</p>
                   <p className="text-2xl font-bold">{stats.todayLogins}</p>
                 </div>
                 <CheckCircle className="w-8 h-8 text-green-600 opacity-80" />
@@ -143,7 +145,7 @@ export const LoginHistory: React.FC = () => {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Total Logins</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t('loginHistory.totalLogins')}</p>
                   <p className="text-2xl font-bold">{stats.totalLogins}</p>
                 </div>
                 <User className="w-8 h-8 text-blue-600 opacity-80" />
@@ -155,7 +157,7 @@ export const LoginHistory: React.FC = () => {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Failed Today</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t('loginHistory.failedToday')}</p>
                   <p className="text-2xl font-bold">{stats.failedToday}</p>
                 </div>
                 <XCircle className="w-8 h-8 text-red-600 opacity-80" />
@@ -167,7 +169,7 @@ export const LoginHistory: React.FC = () => {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Locked Today</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t('loginHistory.lockedToday')}</p>
                   <p className="text-2xl font-bold">{stats.lockedToday}</p>
                 </div>
                 <Lock className="w-8 h-8 text-blue-600 opacity-80" />
@@ -182,16 +184,16 @@ export const LoginHistory: React.FC = () => {
         <CardContent className="p-4">
           <div className="flex items-center gap-4">
             <DropdownSelect
-              ariaLabel="Filter login records by outcome"
+              ariaLabel={t('loginHistory.filterAria')}
               icon={Shield}
               size="sm"
               value={outcomeFilter}
               onChange={setOutcomeFilter}
               options={[
-                { value: '', label: 'All Outcomes', icon: Shield },
-                { value: 'SUCCESS', label: 'Success', icon: CheckCircle },
-                { value: 'FAILURE', label: 'Failed', icon: XCircle },
-                { value: 'LOCKED', label: 'Locked', icon: Lock },
+                { value: '', label: t('loginHistory.allOutcomes'), icon: Shield },
+                { value: 'SUCCESS', label: t('loginHistory.outcomeSuccess'), icon: CheckCircle },
+                { value: 'FAILURE', label: t('loginHistory.outcomeFailed'), icon: XCircle },
+                { value: 'LOCKED', label: t('loginHistory.outcomeLocked'), icon: Lock },
               ]}
               contentClassName="w-44"
             />
@@ -209,20 +211,20 @@ export const LoginHistory: React.FC = () => {
           ) : loginRecords.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Shield className="w-10 h-10 mb-3 opacity-40" />
-              <p className="font-medium">No login records found</p>
-              <p className="text-sm mt-1">Login history will appear here once users log in.</p>
+              <p className="font-medium">{t('loginHistory.empty')}</p>
+              <p className="text-sm mt-1">{t('loginHistory.emptyMsg')}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Time</th>
-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">User</th>
-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Role</th>
-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Outcome</th>
-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">IP Address</th>
-                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">Browser</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t('loginHistory.colTime')}</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t('loginHistory.colUser')}</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t('loginHistory.colRole')}</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t('loginHistory.colOutcome')}</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t('loginHistory.colIp')}</th>
+                    <th className="text-left px-4 py-3 font-semibold text-muted-foreground">{t('loginHistory.colBrowser')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -235,17 +237,17 @@ export const LoginHistory: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3 font-medium">
-                        {record.user?.name || 'Unknown'}
+                        {record.user?.name || t('loginHistory.unknown')}
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
-                          {record.user?.role || 'N/A'}
+                          {record.user?.role || t('settlements.na')}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${OUTCOME_COLORS[record.outcome]}`}>
                           {OUTCOME_ICONS[record.outcome]}
-                          {OUTCOME_LABELS[record.outcome]}
+                          {t(OUTCOME_KEYS[record.outcome] ?? '') || record.outcome}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
@@ -270,7 +272,7 @@ export const LoginHistory: React.FC = () => {
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Page {pagination.page} of {pagination.totalPages} ({pagination.total} total records)
+            {t('loginHistory.pageOf', { page: pagination.page, total: pagination.totalPages, records: pagination.total })}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -279,7 +281,7 @@ export const LoginHistory: React.FC = () => {
               disabled={pagination.page <= 1}
               onClick={() => fetchLoginHistory(pagination.page - 1)}
             >
-              Previous
+              {t('a11y.previousPage')}
             </Button>
             <Button
               variant="outline"
@@ -287,7 +289,7 @@ export const LoginHistory: React.FC = () => {
               disabled={pagination.page >= pagination.totalPages}
               onClick={() => fetchLoginHistory(pagination.page + 1)}
             >
-              Next
+              {t('a11y.nextPage')}
             </Button>
           </div>
         </div>
