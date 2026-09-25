@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import i18n from '../i18n';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
 
@@ -52,8 +53,11 @@ export function useIdleLogout(timeoutMs: number = IDLE_TIMEOUT_MS) {
       clear();
       addToast({
         type: 'info',
-        title: 'Signed out due to inactivity',
-        message: `You were inactive for ${Math.round(timeoutMs / 60_000)} minutes. Sign in again to continue.`,
+        // `auth.idleLogout*` is not a path into the default `common` bundle —
+        // the copy lives in the `auth` namespace, so it has to be qualified
+        // ("auth:key") or the toast shows the raw key.
+        title: i18n.t('auth:idleLogoutTitle'),
+        message: i18n.t('auth:idleLogoutMsg', { minutes: Math.round(timeoutMs / 60_000) }),
       });
       void useAuthStore.getState().logout();
     };
