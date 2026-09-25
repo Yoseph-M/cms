@@ -1,6 +1,7 @@
 {
   "dashboard": {
     "title": "የትንታኔ አጠቃላይ እይታ",
+    "subtitle": "ንግዱ አሁን እንዴት እንደሚገኝ",
     "loading": "ትንታኔዎችን በማምጣት ላይ...",
     "stats": {
       "todayRevenue": "የዛሬ ገቢ",
@@ -23,10 +24,22 @@
     },
     "topItems": {
       "title": "በብዛት የተሸጡ",
-      "lastDays": "ያለፉት ቀናት",
-      "sold": "ተሽጧል",
+      "lastDays": "ያለፉት {{count}} ቀናት",
+      "sold": "{{count}} ተሽጧል",
       "emptyTitle": "ምንም ትዕዛዞች የሉም",
       "emptyMsg": "ትዕዛዞች ሲገቡ፣ በብዛት የተሸጡ ዕቃዎችዎን እዚህ ያያሉ።"
+    },
+    "topCount": "ከፍተኛ {{count}}",
+    "categoryWindow": {
+      "This month": "ይህ ወር",
+      "Last month": "ያለፈው ወር",
+      "This year": "ይህ ዓመት"
+    },
+    "recentWindow": {
+      "Today": "ዛሬ",
+      "Last 7 days": "ያለፉት 7 ቀናት",
+      "Last 30 days": "ያለፉት 30 ቀናት",
+      "Last year": "ያለፈው ዓመት"
     },
     "sections": {
       "revenueTrend": "የገቢ አዝማሚያ",
@@ -37,6 +50,10 @@
       "recentOrdersDesc": "በሁሉም ክፍሎች የቅርብ ጊዜ እንቅስቃሴ",
       "topItems": "ከፍተኛ ዕቃዎች",
       "topItemsDesc": "በተመረጠው ጊዜ ውስጥ በብዛት የተሸጡ",
+      "bestSellers": "በብዛት የሚሸጡ ዕቃዎች",
+      "bestSellersDesc": "በተመረጠው ጊዜ ውስጥ ያለው የገቢ ድርሻ",
+      "bestSellersDescUnits": "በተመረጠው ጊዜ ውስጥ በተሸጠ ብዛት ድርሻ",
+      "bestSellersAria": "በድርሻ የተደረደሩ በብዛት የሚሸጡ ዕቃዎች",
       "waiterPerformance": "የአስተናጋጅ አፈጻጸም",
       "waiterPerformanceDesc": "በተመረጠው ጊዜ ውስጥ በየአስተናጋጁ የተመዘገቡ ትዕዛዞች እና ገቢ",
       "waiterPerformanceAria": "የአስተናጋጅ አፈጻጸም በሽያጭ"
@@ -49,8 +66,12 @@
     },
     "emptySales": "በዚህ ጊዜ የሽያጭ ውሂብ የለም።",
     "emptyTopItems": "በዚህ ጊዜ ውስጥ ከፍተኛ ሽያጭ ያላቸው ዕቃዎች የሉም።",
+    "emptyBestSellers": "በዚህ ጊዜ ውስጥ ሽያጭ የለም።",
     "emptyWaiter": "በዚህ ጊዜ የአስተናጋጅ ውሂብ የለም።",
-    "refreshing": "በማደስ ላይ…"
+    "refreshing": "በማደስ ላይ…",
+    "metricUnits": "ብዛት",
+    "metricRevenue": "ገቢ",
+    "rankBy": "የደረጃ መለኪያ"
   },
   "recentOrders": {
     "col_type": "ዓይነት",
@@ -58,6 +79,8 @@
     "col_time": "ጊዜ",
     "col_status": "ሁኔታ",
     "col_price": "ዋጋ",
+    "table": "ጠረጴዛ {{number}}",
+    "takeaway": "ውሰድ ወጪ",
     "empty": "የቅርብ ጊዜ ትዕዛዞች የሉም።",
     "status": {
       "paid": "ተከፍሏል",
@@ -65,6 +88,10 @@
       "cancelled": "ተሰርዟል",
       "feedback": "ግብረመልስ"
     }
+  },
+  "a11y": {
+    "logoAlt": "አርማ",
+    "administrationSections": "የአስተዳደር ክፍሎች"
   },
   "nav": {
     "overview": "አጠቃላይ እይታ",
@@ -96,6 +123,7 @@
   "finance": {
     "title": "ፋይናንስ",
     "subtitle": "ትንታኔ እና የገቢ ጥናት",
+    "last12Months": "ያለፉት 12 ወራት",
     "totalRevenue": "ጠቅላላ ገቢ",
     "noData": "ምንም የፋይናንስ ውሂብ የለም።",
     "overallRevenue": "አጠቃላይ ገቢ",
@@ -107,9 +135,12 @@
     "noRevenueInRange": "በዚህ የቀን ክልል ውስጥ ገቢ የለም።",
     "line": "መስመር",
     "bar": "አምድ",
+    "chartStyle": "የገበታ ዓይነት",
+    "showing": "የሚያሳየው",
     "compareAgainst": "አወዳድር ከ",
     "noOverlay": "ያለ ማነጻጸር",
     "topItems": "ከፍተኛ ዕቃዎች",
+    "itemsShown": "የሚታዩ ዕቃዎች",
     "qty": "ብዛት",
     "staffLeaderboard": "የሠራተኞች ደረጃ",
     "cancellationAnalysis": "የተሰረዙ ትዕዛዞች ትንተና",
@@ -126,13 +157,48 @@
     "last7Days": "ያለፉት 7 ቀናት",
     "last30Days": "ያለፉት 30 ቀናት",
     "last90Days": "ያለፉት 90 ቀናት",
-    "selectedRange": "የተመረጠ ክልል"
+    "selectedRange": "የተመረጠ ክልል",
+    "dailyRevenue": "የቀን ገቢ",
+    "ordersShort": "{{count}} ትዕዛዝ",
+    "totalInRange": "በክልሉ ጠቅላላ",
+    "eodDaysClosed": "{{count}} ቀናት ተዘግተዋል",
+    "eodClosedBy": "በአስተዳዳሪው በቀን መጨረሻ ገጽ ጸድቋል",
+    "closedByName": "በ{{name}} ተዘግቷል",
+    "noClosedDays": "በዚህ የቀን ክልል የተዘጋ ቀን የለም።",
+    "eodReconDiverged": "ከ{{total}} ቀናት {{count}} ይለያያሉ",
+    "eodReconAllMatch": "ሁሉም የተዘጉ ቀናት ከመዝገቡ ጋር ይስማማሉ",
+    "eodReconMore": "ከመዝገቡ የሚያሳየው በላይ {{amount}} ተፈርሟል",
+    "eodReconLate": "{{amount}} ከተዘጋ በኋላ ገብቷል",
+    "eodReconLedger": "መዝገብ {{amount}}",
+    "eodReconDrift": "ከመዝገቡ ውጪ",
+    "eodReconHint": "እያንዳንዱ የተዘጋ ቀን በዚያ ቀን ከተከፈሉት ትዕዛዞች እንደገና ይነበባል፤ የማይስማማ ቀን ምልክት ያገኛል።",
+    "busiestDays": "በብዛት የሚሠሩ ቀናት",
+    "marginDial": "የትርፍ መጠን መለኪያ",
+    "marginLoss": "ኪሳራ",
+    "marginProfit": "ትርፍ",
+    "marginLossZone": "የኪሳራ ክልል",
+    "marginProfitZone": "የትርፍ ክልል",
+    "marginThin": "አነስተኛ ትርፍ",
+    "marginHealthy": "ጤናማ ትርፍ",
+    "marginNoRevenueShort": "ገቢ የለም",
+    "marginOfRevenue": "ከገቢው የተቀረ ትርፍ",
+    "marginBreakEvenMark": "የትርፍ ገደብ",
+    "marginKept": "ከ{{revenue}} ገቢ ውስጥ {{amount}} ተቀምጧል",
+    "marginOverspend": "በዚህ ወቅት ከተሰበሰበው በላይ {{amount}} ተወጭቷል",
+    "marginNoCosts": "እስካሁን የተመዘገበ ወጪ የለም",
+    "marginNoRevenue": "በዚህ የቀን ክልል ውስጥ ገቢ የለም።",
+    "marginDialAria": "የትርፍ መጠን መለኪያ፦ ከገቢው {{percent}} በመቶ ትርፍ ሆኖ ተቀምጧል።",
+    "bestDay": "ምርጥ ቀን፦ {{day}}"
   },
   "itemSales": {
     "subtitle": "ማንኛዎቹ ዕቃዎች እንደሚሸጡ እና ይህ ምን ያህል በየጊዜው እንደሚሆን",
     "unitsSold": "የተሸጡ ክፍሎች",
     "itemRevenue": "የዕቃ ገቢ",
     "itemsSold": "የተሸጡ ዕቃዎች",
+    "topSeller": "በብዛት የተሸጠ",
+    "metricUnits": "ብዛት",
+    "metricRevenue": "ገቢ",
+    "noSalesYet": "እስካሁን ሽያጭ የለም",
     "searchPlaceholder": "ዕቃዎችን ፈልግ…",
     "filterCategory": "በምድብ አጣራ",
     "filterPeriod": "በጊዜ አጣራ",
@@ -146,10 +212,6 @@
     "leastSold": "በአነስተኛ የተሸጡ",
     "highestRevenue": "ከፍተኛ ገቢ",
     "nameAZ": "ስም (A–Z)",
-    "bestSellerEachHour": "በየሰዓቱ በብዛት የሚሸጠው",
-    "bestSellerDesc": "በተመረጠው ጊዜ ውስጥ በየሰዓቱ የበለጠ የሚሸጠው ዕቃ።",
-    "peak": "መሟላት",
-    "noHourlySales": "በዚህ ጊዜ ውስጥ የሰዓት ሽያጭ የለም።",
     "crunching": "ሽያጩን በማሰብ ላይ…",
     "loadFailedTitle": "ሽያጩን መጫን አልተቻለም",
     "noMenuItems": "የምናሌ ዕቃዎች የሉም",
@@ -204,6 +266,7 @@
       "staff": "ሰራተኞች",
       "auditLogs": "የኦዲት መዝገቦች"
     },
+    "resetAria": "የስርዓት ውሂብን ዳግም አስጀምር",
     "resetConfirmTitle": "ሁሉንም የስርዓት ውሂብ ዳግም ይጀምሩ?",
     "resetConfirmDesc": "እያንዳንዱ የሥራ መዝገብ በቋሚነት ይሰረዛል። ይህን ውሂብ እንደገና ሊያስፈልግ ከሆነ በፊት መጠባበቂያ ያውርዱ — ከዚህ ስክሪን ዳግም መጀመር ሊቀለበስ አይችልም።",
     "willBeDeleted": "የሚሰረዙ",
@@ -241,6 +304,7 @@
     "toast_restore_failed_msg": "መጠባበቂያው መተግበር አልተቻለም። ምንም ነገር አልተቀየረም።",
     "toast_reset_ok_title": "የስርዓት ውሂብ ተደምስሷል",
     "toast_reset_ok": "{{total}} የሥራ መዝገቦች ተወግደዋል። የሰራተኞች መለያዎች፣ ምናሌ እና ቅንብሮች ተቀምጠዋል።",
+    "toast_reset_reminders_paused": "የመገኘት እና የደመወዝ ማስታወሻዎች እስከ ነገ ድረስ ቆመዋል።",
     "toast_reset_failed_title": "መደምሰስ አልተሳካም",
     "toast_reset_failed_msg": "የስርዓት ውሂብ ማደስ አልተቻለም። ምንም ነገር አልተሰረዘም።"
   },
@@ -265,6 +329,8 @@
   },
   "settings": {
     "title": "ቅንብሮች",
+    "managerDescription": "ከባለቤቶች ጋር የሚጋሩትን የመሳሪያ ምርጫዎች እና የሥራ ደንቦች ያስተዳድሩ።",
+    "cashierDescription": "ለዚህ መሳሪያ ገጽታን፣ ማሳወቂያዎችን እና ቋንቋን ያበጁ።",
     "subtitle": "የንግድ መገለጫ፣ ምርጫዎች እና እያንዳንዱ ሚና በስርዓቱ ላይ ምን ማድረግ እንደሚችል ያስተዳድሩ።",
     "reRunSetup": "የማዋቀር መመሪያን እንደገና ያሂዱ",
     "onThisPage": "በዚህ ገጽ ላይ",
