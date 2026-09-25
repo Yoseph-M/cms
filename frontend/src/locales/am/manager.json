@@ -99,6 +99,9 @@
   "expenses": {
     "title": "ወጪዎች",
     "addExpense": "ወጪ ያክሉ",
+    "editAria": "ወጪ አርትዕ",
+    "deleteAria": "ወጪ ሰርዝ",
+    "monthlyAverage": "ወርሃዊ አማካይ",
     "editExpense": "ወጪ ያርትዑ",
     "addDescription": "አዲስ የንግድ ወጪ ይመዝግቡ።",
     "editDescription": "ይህን የወጪ መዝገብ ያዘምኑ።",
@@ -182,5 +185,8 @@
     "invalidAmount": "የተከፈለው መጠን አዎንታዊ ቁጥር መሆን አለበት።",
     "payrollRecorded": "የደመወዝ ክፍያ ተመዝግቧል",
     "payrollRecordError": "መመዝገብ አልተቻለም"
+  },
+  "a11y": {
+    "logoAlt": "አርማ"
   }
 }
