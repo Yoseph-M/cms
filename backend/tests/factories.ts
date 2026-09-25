@@ -153,7 +153,8 @@ export async function createOrder(
 export interface CreateSettlementOptions {
   orderId: string;
   amountMinor?: number;
-  method?: 'CASH' | 'CARD' | 'MOBILE';
+  /** NONE is the VOID audit row a cancellation writes — never a real payment. */
+  method?: 'CASH' | 'CARD' | 'MOBILE' | 'NONE';
   reference?: string;
   note?: string;
   recordedById: string;
