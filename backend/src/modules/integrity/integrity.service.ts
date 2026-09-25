@@ -50,7 +50,30 @@ export async function runIntegrityChecks() {
     const overSettledRaw = await prisma.order.aggregateRaw({
       pipeline: [
         { $lookup: { from: 'settlements', localField: '_id', foreignField: 'orderId', as: 'settlements' } },
-        { $addFields: { settledAmount: { $sum: '$settlements.amountMinor' } } },
+        // Only collection rows are money. The cancellation paths write a VOID
+        // row (method NONE) carrying the cancelled ticket's whole value so the
+        // void is visible in the settlement history; summing that in reported
+        // every cancelled ticket as "over-settled" — a false ERROR on a ticket
+        // where nothing was ever collected.
+        {
+          $addFields: {
+            settledAmount: {
+              $sum: {
+                $map: {
+                  input: {
+                    $filter: {
+                      input: '$settlements',
+                      as: 's',
+                      cond: { $ne: ['$$s.method', 'NONE'] },
+                    },
+                  },
+                  as: 's',
+                  in: '$$s.amountMinor',
+                },
+              },
+            },
+          },
+        },
         { $match: { $expr: { $gt: ['$settledAmount', '$totalAmount'] } } },
         { $project: { _id: 1, totalAmount: 1, settledAmount: 1 } },
       ],
