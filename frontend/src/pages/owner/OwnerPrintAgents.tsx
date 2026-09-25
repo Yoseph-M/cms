@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -19,6 +20,7 @@ interface PrintAgent {
 }
 
 export const OwnerPrintAgents: React.FC = () => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState(false);
@@ -41,22 +43,22 @@ export const OwnerPrintAgents: React.FC = () => {
       setNewToken({ name: data.agent.name, token: data.token });
       setNewName('');
       queryClient.invalidateQueries({ queryKey: ['print-agents'] });
-      addToast({ type: 'success', title: 'Agent registered' });
+      addToast({ type: 'success', title: t('printAgents.registered') });
     } catch (err) {
-      addToast({ type: 'error', title: 'Failed to register agent', message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: t('printAgents.registerFailed'), message: extractErrorMessage(err) });
     } finally {
       setIsCreating(false);
     }
   };
 
   const handleRevoke = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to revoke access for ${name}?`)) return;
+    if (!confirm(t('printAgents.revokeConfirm', { name }))) return;
     try {
       await axiosClient.post(`/print-agents/${id}/revoke`);
       queryClient.invalidateQueries({ queryKey: ['print-agents'] });
-      addToast({ type: 'success', title: 'Agent revoked' });
+      addToast({ type: 'success', title: t('printAgents.revoked') });
     } catch (err) {
-      addToast({ type: 'error', title: 'Failed to revoke', message: extractErrorMessage(err) });
+      addToast({ type: 'error', title: t('printAgents.revokeFailed'), message: extractErrorMessage(err) });
     }
   };
 
@@ -64,8 +66,8 @@ export const OwnerPrintAgents: React.FC = () => {
     <div className="max-w-7xl mx-auto space-y-6 mt-12">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-bold">Print Agents</h3>
-          <p className="text-sm text-muted-foreground mt-0.5">Manage connected Windows Print Agents.</p>
+          <h3 className="text-lg font-bold">{t('printAgents.title')}</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">{t('printAgents.subtitle')}</p>
         </div>
       </div>
 
@@ -73,14 +75,14 @@ export const OwnerPrintAgents: React.FC = () => {
         <CardContent className="p-6">
           <div className="flex gap-3 mb-6">
             <Input
-              placeholder="E.g. Cashier Computer 1"
+              placeholder={t('printAgents.namePlaceholder')}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               className="max-w-sm"
             />
             <Button onClick={handleCreate} disabled={!newName.trim() || isCreating}>
               <Plus className="w-4 h-4 mr-2" />
-              Register Agent
+              {t('printAgents.register')}
             </Button>
           </div>
 
@@ -89,13 +91,13 @@ export const OwnerPrintAgents: React.FC = () => {
               <div className="flex gap-2 items-start text-success-foreground">
                 <KeyRound className="w-5 h-5 mt-0.5" />
                 <div>
-                  <h4 className="font-bold">Agent Token Generated: {newToken.name}</h4>
-                  <p className="text-sm mt-1 mb-3">Copy this token and paste it into your agent's .env file. <strong>You will not be able to see it again!</strong></p>
+                  <h4 className="font-bold">{t('printAgents.tokenGenerated', { name: newToken.name })}</h4>
+                  <p className="text-sm mt-1 mb-3">{t('printAgents.tokenHint')} <strong>{t('printAgents.tokenWarning')}</strong></p>
                   <code className="block p-3 bg-black/10 rounded-md font-mono text-sm break-all select-all">
                     {newToken.token}
                   </code>
                   <Button size="sm" variant="outline" className="mt-4" onClick={() => setNewToken(null)}>
-                    I have copied it
+                    {t('printAgents.copied')}
                   </Button>
                 </div>
               </div>
@@ -106,7 +108,7 @@ export const OwnerPrintAgents: React.FC = () => {
             <div className="h-20 bg-secondary/40 animate-pulse rounded-lg" />
           ) : agents.length === 0 ? (
             <div className="text-center py-6 text-muted-foreground">
-              No agents registered yet.
+              {t('printAgents.empty')}
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -123,20 +125,20 @@ export const OwnerPrintAgents: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <p className="font-medium">{agent.name}</p>
                           {agent.isRevoked ? (
-                            <Badge variant="error" className="text-[10px]">Revoked</Badge>
+                            <Badge variant="error" className="text-[10px]">{t('printAgents.revokedBadge')}</Badge>
                           ) : isOnline ? (
-                            <Badge variant="success" className="text-[10px]">Online</Badge>
+                            <Badge variant="success" className="text-[10px]">{t('printAgents.onlineBadge')}</Badge>
                           ) : (
-                            <Badge variant="neutral" className="text-[10px]">Offline</Badge>
+                            <Badge variant="neutral" className="text-[10px]">{t('printAgents.offlineBadge')}</Badge>
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Last active: {agent.lastHeartbeat ? new Date(agent.lastHeartbeat).toLocaleString() : 'Never'}
+                          {t('printAgents.lastActive')}: {agent.lastHeartbeat ? new Date(agent.lastHeartbeat).toLocaleString() : t('printAgents.never')}
                         </p>
                       </div>
                     </div>
                     {!agent.isRevoked && (
-                      <Tooltip label="Revoke access">
+                      <Tooltip label={t('printAgents.revokeTooltip')}>
                         <button
                           onClick={() => handleRevoke(agent.id, agent.name)}
                           className="p-2 text-muted-foreground hover:text-destructive transition-colors"
