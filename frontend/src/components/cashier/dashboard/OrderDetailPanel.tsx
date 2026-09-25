@@ -111,7 +111,7 @@ const DetailBody: React.FC<{
               </span>
             </div>
             <h2 className="font-display text-3xl font-bold tracking-tight text-slate-950 leading-none">
-              {order.tableNumber ? `Table ${order.tableNumber}` : 'Takeout'}
+              {order.tableNumber ? t('toasts.tableN', { number: order.tableNumber }) : t('toasts.takeoutLabel')}
             </h2>
             {order.waiter && (
               <p className="text-xs text-slate-400 mt-2">
@@ -143,7 +143,7 @@ const DetailBody: React.FC<{
                 accent.badge,
               )}
             >
-              {STATUS_LABEL[status]}
+              {t(`queue.status.${status}`)}
             </span>
           </div>
         </div>
@@ -282,7 +282,7 @@ const EmptyDetail: React.FC = () => {
       <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
         <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border font-mono">↑</kbd>
         <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border font-mono">↓</kbd>
-        <span>navigate</span>
+        <span>{t('a11y.navigate')}</span>
       </div>
     </motion.div>
   );
