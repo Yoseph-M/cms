@@ -16,6 +16,7 @@ import {
   CreditCard,
   Printer,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
 import { formatCurrency } from '../../utils/currency';
@@ -68,6 +69,16 @@ const GROUP_ICONS: Record<GroupKey, React.FC<{ className?: string }>> = {
   Printers: Printer,
 };
 
+const GROUP_LABEL_KEYS: Record<GroupKey, string> = {
+  Staff: 'palette.staff',
+  'Menu items': 'palette.menuItems',
+  Orders: 'palette.orders',
+  Expenses: 'palette.expenses',
+  Payroll: 'palette.payroll',
+  Settlements: 'palette.settlements',
+  Printers: 'palette.printers',
+};
+
 const MONTH_SHORT = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -86,12 +97,12 @@ const shortDate = (value?: string | null): string => {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-const STATUS_META: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-  SUBMITTED: { label: 'New', className: 'bg-sky-500/10 text-sky-700 dark:text-sky-400', icon: <Clock className="h-3 w-3" /> },
-  IN_KITCHEN: { label: 'In kitchen', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-400', icon: <Clock className="h-3 w-3" /> },
-  SERVED: { label: 'Served', className: 'bg-violet-500/10 text-violet-700 dark:text-violet-400', icon: <CheckCircle2 className="h-3 w-3" /> },
-  PAID: { label: 'Paid', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400', icon: <CheckCircle2 className="h-3 w-3" /> },
-  CANCELLED: { label: 'Cancelled', className: 'bg-destructive/10 text-destructive', icon: <Ban className="h-3 w-3" /> },
+const STATUS_META: Record<string, { labelKey: string; className: string; icon: React.ReactNode }> = {
+  SUBMITTED: { labelKey: 'app.statusNew', className: 'bg-sky-500/10 text-sky-700 dark:text-sky-400', icon: <Clock className="h-3 w-3" /> },
+  IN_KITCHEN: { labelKey: 'orderStatus.inKitchen', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-400', icon: <Clock className="h-3 w-3" /> },
+  SERVED: { labelKey: 'orderStatus.served', className: 'bg-violet-500/10 text-violet-700 dark:text-violet-400', icon: <CheckCircle2 className="h-3 w-3" /> },
+  PAID: { labelKey: 'status.paid', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400', icon: <CheckCircle2 className="h-3 w-3" /> },
+  CANCELLED: { labelKey: 'status.cancelled', className: 'bg-destructive/10 text-destructive', icon: <Ban className="h-3 w-3" /> },
 };
 
 /**
@@ -105,6 +116,7 @@ const STATUS_META: Record<string, { label: string; className: string; icon: Reac
  * on outside click, Escape, or navigation.
  */
 export const GlobalSearch: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -194,7 +206,7 @@ export const GlobalSearch: React.FC = () => {
         key: `menu-${item.id}`,
         group: 'Menu items',
         label: item.name,
-        detail: `${formatCurrency(item.price)}${item.isAvailable === false ? ' · unavailable' : ''}`,
+        detail: `${formatCurrency(item.price)}${item.isAvailable === false ? ` · ${t('menu.unavailable')}` : ''}`,
         // A cashier lands in the order builder with the item already filtered.
         path: isCashier ? '/cashier/tickets' : `/${role}/menu?highlight=${item.id}`,
         state: isCashier ? { newOrderItemSearch: item.name } : undefined,
@@ -224,7 +236,7 @@ export const GlobalSearch: React.FC = () => {
         key: `payroll-${item.id}`,
         group: 'Payroll',
         label: `${item.user?.name ?? 'Payroll'} — ${monthLabel(item.periodMonth, item.periodYear)}`,
-        detail: `${formatCurrency(item.paidAmount)} paid${item.note ? ` · ${item.note}` : ''}`,
+        detail: `${formatCurrency(item.paidAmount)} ${t('globalSearch.paidWord')}${item.note ? ` · ${item.note}` : ''}`,
         path: `/${role}/payroll`,
       }),
     );
@@ -232,7 +244,7 @@ export const GlobalSearch: React.FC = () => {
       items.push({
         key: `settlement-${item.id}`,
         group: 'Settlements',
-        label: `Table ${item.order?.tableNumber ?? '—'} · ${formatCurrency(item.amountMinor)}`,
+        label: `${t('globalSearch.tableWord')} ${item.order?.tableNumber ?? '—'} · ${formatCurrency(item.amountMinor)}`,
         detail: `${String(item.method ?? '').toLowerCase()}${item.order?.clientOrderId ? ` · #${String(item.order.clientOrderId).slice(0, 8)}` : ''}${shortDate(item.createdAt) ? ` · ${shortDate(item.createdAt)}` : ''}`,
         path: `/${role}/settlements`,
         state: item.orderId ? { orderFilter: item.orderId } : undefined,
@@ -243,7 +255,7 @@ export const GlobalSearch: React.FC = () => {
         items.push({
           key: `printer-${item.id}`,
           group: 'Printers',
-          label: item.station === 'kitchen' ? 'Ticket printer' : String(item.station ?? 'Printer'),
+          label: item.station === 'kitchen' ? t('globalSearch.ticketPrinter') : String(item.station ?? t('palette.printers')),
           detail: [item.transport, item.ip, item.macAddress].filter(Boolean).join(' · '),
           path: '/owner/admin?tab=printers',
         }),
@@ -251,14 +263,15 @@ export const GlobalSearch: React.FC = () => {
     }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, role, user?.role, isCashier, ownerOnly]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, role, user?.role, isCashier, ownerOnly, t]);
 
   // Module-level map would leak between renders; a plain Map recreated per
   // render is fine at this size.
   const statusByKey = useMemo(() => {
-    const map = new Map<string, { label: string; className: string; icon: React.ReactNode }>();
+    const map = new Map<string, { labelKey: string; className: string; icon: React.ReactNode }>();
     results.orders.forEach((item) => {
-      map.set(`order-${item.id}`, STATUS_META[item.status] ?? { label: item.status, className: 'bg-secondary/60 text-muted-foreground', icon: null });
+      map.set(`order-${item.id}`, STATUS_META[item.status] ?? { labelKey: '', className: 'bg-secondary/60 text-muted-foreground', icon: null });
     });
     return map;
   }, [results.orders]);
@@ -329,8 +342,8 @@ export const GlobalSearch: React.FC = () => {
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
-        placeholder={isCashier ? 'Search menu, tables…' : 'Search anything — staff, orders, expenses…'}
-        aria-label="Search"
+        placeholder={isCashier ? t('globalSearch.placeholderCashier') : t('globalSearch.placeholder')}
+        aria-label={t('globalSearch.searchAria')}
         aria-expanded={showDropdown}
         aria-controls="global-search-results"
         className={cn(
@@ -346,7 +359,7 @@ export const GlobalSearch: React.FC = () => {
             setResults(EMPTY);
             inputRef.current?.focus();
           }}
-          aria-label="Clear search"
+          aria-label={t('a11y.clearSearch')}
           className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
           <X className="h-3.5 w-3.5" />
@@ -367,7 +380,7 @@ export const GlobalSearch: React.FC = () => {
           className="absolute right-0 top-full mt-2 z-50 w-[22rem] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl animate-fade-in"
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            <span>Results</span>
+            <span>{t('globalSearch.results')}</span>
             {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />}
           </div>
 
@@ -375,7 +388,7 @@ export const GlobalSearch: React.FC = () => {
             {flat.length === 0 && !loading ? (
               <div className="flex flex-col items-center gap-2 px-3 py-8 text-center text-sm text-muted-foreground">
                 <SearchX className="h-6 w-6" />
-                No results for “{trimmed}”.
+                {t('globalSearch.noResults', { query: trimmed })}
               </div>
             ) : (
               groupOrder.map((group) => {
@@ -385,7 +398,7 @@ export const GlobalSearch: React.FC = () => {
                 return (
                   <div key={group} className="mb-1 last:mb-0">
                     <p className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {group}
+                      {t(GROUP_LABEL_KEYS[group])}
                     </p>
                     {items.map((item) => {
                       const index = flat.indexOf(item);
@@ -414,7 +427,7 @@ export const GlobalSearch: React.FC = () => {
                           {status && (
                             <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold', status.className)}>
                               {status.icon}
-                              {status.label}
+                              {status.labelKey && t(status.labelKey)}
                             </span>
                           )}
                         </button>
