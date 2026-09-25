@@ -10,17 +10,17 @@ export function getOrderStatus(order: Order): OrderDisplayStatus {
 }
 
 export const STATUS_LABEL: Record<OrderDisplayStatus, string> = {
-  ready: 'Ready to pay',
-  cooking: 'In kitchen',
-  paid: 'Settled',
-  cancelled: 'Cancelled',
+  ready: 'app.statusReady',
+  cooking: 'app.statusCooking',
+  paid: 'app.statusPaid',
+  cancelled: 'app.statusCancelled',
 };
 
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
-  CASH: 'Cash',
-  CARD: 'Card',
-  MOBILE: 'Mobile',
-  NONE: 'Other',
+  CASH: 'cashier.method.cash',
+  CARD: 'cashier.method.card',
+  MOBILE: 'cashier.method.mobile',
+  NONE: 'cashier.method.other',
 };
 
 export const METHOD_HOTKEY: Record<PaymentMethod, string> = {
