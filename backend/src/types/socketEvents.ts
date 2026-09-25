@@ -194,7 +194,11 @@ export type SocketEventName =
   | 'integrity:alert'
   | 'daily-close:requested'
   | 'daily-close:completed'
-  | 'finance:updated';
+  | 'finance:updated'
+  /** The business books were replaced wholesale (a reset or a restore).
+   *  Clients must drop every cached server fact rather than keep painting
+   *  figures that no longer exist. */
+  | 'data:reset';
 
 // Room names
 export type SocketRoom = 
