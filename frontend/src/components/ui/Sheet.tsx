@@ -2,6 +2,7 @@ import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 
 interface SheetProps {
@@ -35,6 +36,7 @@ export const Sheet: React.FC<SheetProps> = ({
   side = 'right',
   className,
 }) => {
+  const { t } = useTranslation();
   // Close on ESC
   React.useEffect(() => {
     if (!open) return;
@@ -85,7 +87,7 @@ export const Sheet: React.FC<SheetProps> = ({
                 </div>
                 <button
                   onClick={onClose}
-                  aria-label="Close"
+                  aria-label={t('a11y.close')}
                   className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
                 >
                   <X className="w-4 h-4" />
