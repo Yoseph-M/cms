@@ -24,6 +24,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { AlertDialog } from '../../components/ui/AlertDialog';
 import { cn } from '../../lib/utils';
+import { purgeCachedServerData } from '../../lib/dataReset';
 
 /**
  * Backup & restore.
@@ -301,6 +302,8 @@ export const OwnerBackup: React.FC = () => {
       });
       setPendingRestore(null);
       void refetch();
+      // The restore just replaced the books underneath every cached page.
+      await purgeCachedServerData(queryClient);
     } catch (err) {
       addToast({
         type: 'error',
@@ -310,21 +313,26 @@ export const OwnerBackup: React.FC = () => {
     } finally {
       setIsRestoring(false);
     }
-  }, [pendingRestore, addToast, refetch, t]);
+  }, [pendingRestore, addToast, refetch, queryClient, t]);
 
   const performReset = useCallback(async () => {
     if (resetConfirm.trim().toUpperCase() !== 'RESET') return;
     setIsResetting(true);
     try {
       const res = await axiosClient.post('/backup/reset', { confirm: 'RESET' });
-      const result = res.data as { deleted: number };
+      const result = res.data as { deleted: number; remindersPausedUntil?: string | null };
       addToast({
         type: 'success',
         title: t('backup.toast_reset_ok_title'),
-        message: t('backup.toast_reset_ok', { total: result.deleted.toLocaleString() }),
+        message: `${t('backup.toast_reset_ok', { total: result.deleted.toLocaleString() })}${
+          result.remindersPausedUntil ? ` ${t('backup.toast_reset_reminders_paused')}` : ''
+        }`,
       });
       setResetOpen(false);
       setResetConfirm('');
+      // Every dashboard still holds the deleted rows in its cache — drop them
+      // before the operator walks to the page expecting an empty one.
+      await purgeCachedServerData(queryClient);
       void refetch();
       void queryClient.invalidateQueries({ queryKey: ['backupResetPreview'] });
     } catch (err) {
@@ -564,7 +572,7 @@ export const OwnerBackup: React.FC = () => {
           <div
             role="alertdialog"
             aria-modal="true"
-            aria-label="Reset system data"
+            aria-label={t('backup.resetAria')}
             className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-2xl"
           >
             <div className="flex items-start gap-3">
