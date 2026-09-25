@@ -10,6 +10,7 @@
 import request from 'supertest';
 import crypto from 'crypto';
 import { getTestApp, getPrisma, seedTestUser, cleanDb, disconnectPrisma } from './helpers';
+import { settledMoneyOn } from '../src/services/settlement.service';
 import { Role } from '@prisma/client';
 
 const app = getTestApp();
@@ -229,6 +230,39 @@ describe('Settlement Production Tests', () => {
 
       expect(totalSettled).toBeLessThanOrEqual(orderRes.body.totalAmount);
       expect(orderRes.body.settlementStatus).toBe('SETTLED');
+    });
+
+    it('should count only collection rows, never the VOID row a cancellation writes', async () => {
+      // An unpaid ticket the guest walked out on: the cancellation writes a VOID
+      // row (method NONE) carrying the ticket's whole value, so the void is
+      // visible in the settlement history.
+      await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ reason: 'Guest left before paying' })
+        .expect(200);
+
+      const rows = await request(app)
+        .get(`/api/orders/${orderId}/settlements`)
+        .set('Authorization', `Bearer ${cashierToken}`);
+
+      expect(rows.body).toHaveLength(1);
+      expect(rows.body[0].method).toBe('NONE');
+      expect(rows.body[0].amountMinor).toBe(10000);
+
+      // The audit row is not money: it contributes nothing to what the ticket
+      // collected, so a cancelled ticket can never read as settled in full.
+      expect(settledMoneyOn(rows.body)).toBe(0);
+      // A part payment plus a void row cannot push "settled" over the total.
+      expect(
+        settledMoneyOn([{ amountMinor: 4000, method: 'CASH' }, ...rows.body]),
+      ).toBe(4000);
+
+      // And nothing is left to collect on a voided ticket.
+      const remaining = await request(app)
+        .get(`/api/orders/${orderId}/remaining-amount`)
+        .set('Authorization', `Bearer ${cashierToken}`);
+      expect(remaining.body.remainingAmount).toBe(0);
     });
 
     it('should prevent settlement of cancelled orders', async () => {
