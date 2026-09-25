@@ -14,7 +14,10 @@
     "showingRange": "ከጠቅላላ {{total}} ውስጥ {{from}}–{{to}} በማሳየት ላይ",
     "reprintFailedTitle": "የኩሽና ህትመት አልተሳካም",
     "reprintFailedBody": "እነዚህ ቲኬቶች ወረቀት ላይ አልደረሱም። አታሚው በርቶና ወረቀት እንዳለው አረጋግጠው እንደገና ይላኩ።",
-    "reprintAgain": "{{label}} እንደገና አትም"
+    "reprintAgain": "{{label}} እንደገና አትም",
+    "pageTitle": "ቲኬቶች",
+    "pageSubtitle": "ቀጥታ የትዕዛዝ ወረፋ እና ክፍያ መሰብሰብ",
+    "overviewTitle": "አጠቃላይ እይታ"
   },
   "orderList": {
     "readyToCollect": "ለመውሰድ ዝግጁ",
@@ -51,7 +54,10 @@
     "searchMenu": "የምናሌ ዕቃዎችን ፈልግ",
     "sortMenu": "የምናሌ ዕቃዎችን ደርድር",
     "filterCategory": "በምድብ አጣራ",
-    "closeTicket": "ቲኬቱን ዝጋ"
+    "closeTicket": "ቲኬቱን ዝጋ",
+    "navigate": "ዳስስ",
+    "dismiss": "አስወግድ",
+    "logoAlt": "አርማ"
   },
   "console": "የጥሬ ገንዘብ ሠራተኛ ኮንሶል",
   "header": {
@@ -94,6 +100,30 @@
     "card": "ካርድ",
     "mobile": "ሞባይል"
   },
+  "payBlock": {
+    "receiptPrinted": "ደረሰኝ ታትሟል።",
+    "settled": "ይህ ቲኬት ተሟልቷል።",
+    "methodHint": "የክፍያ ዘዴ",
+    "settleHint": "ክፍያ ፈጽም"
+  },
+  "errors": {
+    "fetchQueue": "ንቁ ወረፋን ማምጣት አልተቻለም",
+    "printerRejected": "አታሚው ቲኬቱን አልተቀበለም።",
+    "orderNotFound": "ትዕዛዙ አልተገኘም",
+    "paymentIssue": "የክፍያ ችግር",
+    "alreadySettled": "አስቀድሞ ተሟልቷል",
+    "alreadySettledMsg": "ይህ ትዕዛዝ አስቀድሞ ሙሉ በሙሉ ተሟልቷል።",
+    "overage": "ከመጠን በላይ ክፍያ ተሞክሯል",
+    "overageMsg": "የክፍያ መጠኑ ከቀረው ሂሳብ ይበልጣል።",
+    "sessionExpired": "ክፍለ ጊዜ አልቋል",
+    "sessionExpiredMsg": "የእርስዎ ክፍለ ጊዜ አልቋል። እባክዎ እንደገና ይግቡ።",
+    "concurrent": "ትዕዛዙ በሌላ ተጠቃሚ ወይም ሂደት በመቀየር ላይ ነው። እባክዎ እንደገና ይሞክሩ።",
+    "tryAgain": "እባክዎ በአጭር ጊዜ ውስጥ እንደገና ይሞክሩ።",
+    "cancelFailedMsg": "ትዕዛዙን መሰረዝ አልተቻለም።"
+  },
+  "notes": {
+    "settlementRecorded": "ክፍያ የተመዘገበው በጥሬ ገንዘብ ሠራተኛ ዳሽቦርድ ነው"
+  },
   "cancelModal": {
     "title": "ትዕዛዝ ሰርዝ",
     "description": "ይህን ትዕዛዝ ለምን እንደሚሰርዙ ምክንያት ያስቀምጡ።",
@@ -111,7 +141,14 @@
     "tableLabel": "ጠረጴዛ",
     "empty": "ባዶ",
     "occupied": "ተይዟል",
-    "needsPayment": "ክፍያ ያስፈልጋል"
+    "needsPayment": "ክፍያ ያስፈልጋል",
+    "pickTable": "ጠረጴዛ ምረጥ",
+    "pickTableHint": "እያንዳንዱ ንካ አዲስ ቲኬት ይጀምራል — በአገልግሎት ላይ ያሉ ጠረጴዛዎች ተጨማሪ ትዕዛዝ ብቻ ያገኛሉ።",
+    "count": "{{count}} ጠረጴዛዎች",
+    "openTickets": "{{count}} ክፍት ቲኬቶች",
+    "startNewAria": "በጠረጴዛ {{number}} ላይ አዲስ ትዕዛዝ ጀምር",
+    "viewOpenAria": "በጠረጴዛ {{number}} ላይ {{count}} ክፍት ትዕዛዝ አይ",
+    "openCount": "{{count}} ክፍት"
   },
   "ordering": {
     "title": "አዲስ ትዕዛዝ",
@@ -165,11 +202,27 @@
   },
   "toasts": {
     "settled": "ጥሩ — {{tableText}} ተሟልቷል",
+    "tableN": "ጠረጴዛ {{number}}",
+    "takeoutLabel": "ለወጭ",
+    "takeoutTicket": "የለወጭ ትእዛዝ",
     "tableText": "የጠረጴዛ {{table}}",
     "takeoutText": "ለወጭ ትዕዛዝ",
     "paymentFailed": "ክፍያ አልተሳካም",
     "cancelFailed": "መሰረዝ አልተሳካም",
-    "cancelRequested": "የመሰረዝ ጥያቄ ተልኳል"
+    "cancelRequested": "የመሰረዝ ጥያቄ ተልኳል",
+    "reprintFailedAgain": "እንደገና ማተም አልተሳካም",
+    "kitchenTicketFailed": "የኩሽና ቲኬት አልተሳካም",
+    "reprintFailedMsg": "{{label}} ወደ አታሚው አልደረሰም። አታሚው በርቶና ወረቀት እንዳለው አረጋግጠው እንደገና ያትሙ።",
+    "reprintFailedAgainMsg": "{{label}} እንደገና ወደ አታሚው አልደረሰም። አታሚው በርቶና ወረቀት እንዳለው አረጋግጠው እንደገና ያትሙ።",
+    "kitchenNotPrinted": "የኩሽና ቲኬት አልታተመም",
+    "kitchenNotPrintedMsg": "ከመክፈልዎ በፊት ቲኬቱን ወደ አታሚው እንደገና ይላኩ።",
+    "paymentRecorded": "ክፍያ ተመዝግቧል",
+    "paymentRecordedMsg": "ክፍያው በሚረጋገጥበት ጊዜ ይህ ትዕዛዝ ተሟልቷል።",
+    "confirmingPayment": "ክፍያ በማረጋገጥ ላይ…",
+    "confirmingPaymentMsg": "ክፍያው በተመዘገበበት ጊዜ ትዕዛዙ ተቀይሯል። አንድ ጊዜ ተጨማሪ በመፈተሽ ላይ።",
+    "reprintSent": "እንደገና ተልኳል",
+    "reprintSentMsg": "የኩሽና ቲኬቱ እንደገና ወደ አታሚው ተልኳል።",
+    "reprintFailed": "እንደገና ማተም አልተቻለም"
   },
   "shortcuts": {
     "navigate": "↑↓ / J K — ወረፋ ዳስስ",
