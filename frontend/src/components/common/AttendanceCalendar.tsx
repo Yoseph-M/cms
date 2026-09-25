@@ -125,9 +125,9 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
 
   const isLoading = usersQuery.isLoading || attendanceLoading;
   const error = attendanceError
-    ? extractErrorMessage(attendanceError, 'Failed to load attendance data.')
+    ? extractErrorMessage(attendanceError, t('loadFailedAttendance', { defaultValue: 'Failed to load attendance data.' }))
     : usersQuery.error
-      ? extractErrorMessage(usersQuery.error, 'Failed to load staff.')
+      ? extractErrorMessage(usersQuery.error, t('loadFailedStaff', { defaultValue: 'Failed to load staff.' }))
       : null;
 
   // Roster comes from the shared cached user list (same cache as staff/payroll).
@@ -189,6 +189,9 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
 
   const selectedDateStr = `${year}-${String(month).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
 
+  /** Note written onto every record the bulk action touches. */
+  const bulkNote = t('bulkNote', { defaultValue: 'Bulk mark all present' });
+
   const handleMarkAllPresent = async () => {
     if (filteredStaff.length === 0) return;
     setMarkingAll(true);
@@ -208,7 +211,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
             try {
               const res = await axiosClient.patch(`/attendance/${existing.id}`, {
                 status: 'PRESENT',
-                note: existing.note || 'Bulk mark all present',
+                note: existing.note || bulkNote,
               });
               updatedIds[existing.id] = res.data;
               successCount++;
@@ -221,7 +224,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
                 userId: s.id,
                 date,
                 status: 'PRESENT',
-                note: 'Bulk mark all present',
+                note: bulkNote,
               });
               newRecords.push(res.data);
               successCount++;
@@ -339,7 +342,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
               void refetchAttendance();
               void usersQuery.refetch();
             }}
-          >Retry</Button>
+          >{t('retry')}</Button>
         </div>
       ) : view === 'history' ? (
         /* The history card reads the SAME month as the calendar: the chevrons
@@ -347,7 +350,9 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
            own "Sep 2026" select. */
         <AttendanceHistory isOwner={isOwner} year={year} month={month} />
       ) : filteredStaff.length === 0 ? (
-        <div className="py-12 text-center text-muted-foreground">No staff to display.</div>
+        <div className="py-12 text-center text-muted-foreground">
+          {t('noStaffToDisplay', { defaultValue: 'No staff to display.' })}
+        </div>
       ) : (
         <>
         {/* Analytics Summary (always shown, but prominent when read-only) */}
