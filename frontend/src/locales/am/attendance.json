@@ -2,6 +2,10 @@
   "title": "የስራ ክትትል",
   "subtitleOwner": "የሁሉም ሠራተኞች መገኘት",
   "subtitleManager": "የቡድን መገኘት እና የሹፍታ መዝገብ",
+  "loadFailedAttendance": "የመገኘት መረጃን መጫን አልተቻለም።",
+  "loadFailedStaff": "ሠራተኞችን መጫን አልተቻለም።",
+  "bulkNote": "ሁሉም ተገኝቷል ተብሎ በአንድ ላይ ተመዝግቧል",
+  "noStaffToDisplay": "የሚታይ ሠራተኛ የለም።",
   "status": {
     "present": "ተገኝቷል",
     "absent": "ስለለውም",
@@ -37,6 +41,7 @@
     "markedAllPresent": "ሁሉም ተገኝቷል ተብሎ ተምልክቷል",
     "markedAllPresentMsg": "ለ{{date}} {{total}} ሠራተኞች ውስጥ {{done}} ተገኝቷል ተብለው ተምልክተዋል። እያንዳንዱ ፍርግርግ ሊስተካከል ይችላል።"
   },
+  "retry": "እንደገና ሞክር",
   "history": {
     "title": "የመገኘት መዝገብ",
     "filterByMonth": "መገኘትን በወር አጣራ",
