@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Coffee, GlassWater, CupSoda, type LucideIcon } from 'lucide-react';
+import { Coffee, GlassWater, CupSoda, TrendingUp, type LucideIcon } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useHeaderStore } from '../../store/headerStore';
 import { cn } from '../../lib/utils';
@@ -13,6 +13,7 @@ import {
   useStaffPerformanceQuery,
   useOrdersQuery,
   useAnalyticsQuery,
+  useMenuQuery,
 } from '../../hooks/useCachedQueries';
 
 // New dashboard module
@@ -29,7 +30,14 @@ import {
   OrderTypeBars,
   type OrderTypeEntry,
 } from '../../components/owner/dashboard/OrderTypeBars';
+import { FilterBar } from '../../components/ui/FilterBar';
 import { formatCurrency } from '../../utils/currency';
+import {
+  findItemBySnapshot,
+  indexItemsByName,
+  isAmharicLanguage,
+  labelForSnapshot,
+} from '../../utils/itemName';
 import { Users } from 'lucide-react';
 
 /* ─── API response shapes ─── */
@@ -47,7 +55,12 @@ interface DailySales {
   };
 }
 interface MonthlyRow { month: string; revenue: number; orderCount: number; }
-interface TopItem { name: string; totalQty: number; totalRevenue: number; imageUrl?: string; }
+interface TopItem {
+  name: string;
+  totalQty: number;
+  totalRevenue: number;
+  imageUrl?: string;
+}
 interface CategoryRow { category: string; revenue: number; count: number; }
 interface RecentOrderRow {
   id: string;
@@ -78,10 +91,11 @@ interface WaiterPerfRow {
 }
 
 /* ─── Helpers ─── */
-const CATEGORY_LABEL: Record<string, string> = {
-  FOOD: 'Food',
-  DRINK: 'Drink',
-  DESSERT: 'Dessert',
+/** i18n keys per menu category; labels resolve through the common namespace. */
+const CATEGORY_KEY: Record<string, string> = {
+  FOOD: 'categories.food',
+  DRINK: 'categories.drink',
+  DESSERT: 'categories.dessert',
 };
 // Category ring uses the same warm family as every other pie chart.
 const CATEGORY_COLOR: Record<string, string> = {
@@ -116,15 +130,22 @@ const ICON_COLOR: Array<string> = [
 
 type TrendRange = '7d' | '30d' | '90d' | '12m';
 
-const TREND_OPTIONS: Array<{ key: TrendRange; label: string; months: number }> = [
-  { key: '7d',   label: 'Last 7 days',  months: 0 },   // handled as days in the loader
-  { key: '30d',  label: 'Last 30 days', months: 0 },
-  { key: '90d',  label: 'Last 90 days', months: 0 },
-  { key: '12m',  label: 'Last 12 months', months: 12 },
+/** Label keys resolve through the owner namespace's finance block. */
+const TREND_OPTIONS: Array<{ key: TrendRange; labelKey: string; months: number }> = [
+  { key: '7d',   labelKey: 'finance.last7Days',  months: 0 },   // handled as days in the loader
+  { key: '30d',  labelKey: 'finance.last30Days', months: 0 },
+  { key: '90d',  labelKey: 'finance.last90Days', months: 0 },
+  { key: '12m',  labelKey: 'finance.last12Months', months: 12 },
 ];
 
+const CATEGORY_WINDOWS = ['This month', 'Last month', 'This year'] as const;
+type CategoryWindow = (typeof CATEGORY_WINDOWS)[number];
+const RECENT_WINDOWS = ['Today', 'Last 7 days', 'Last 30 days', 'Last year'] as const;
+type RecentWindow = (typeof RECENT_WINDOWS)[number];
+
 export const OwnerDashboard: React.FC = () => {
-  const { t } = useTranslation('owner');
+  const { t, i18n } = useTranslation('owner');
+  const { t: tc } = useTranslation('common');
   const { user } = useAuthStore();
   const {
     dateRange: headerDateRange,
@@ -135,9 +156,12 @@ export const OwnerDashboard: React.FC = () => {
 
   // Set the page title in the global header
   useEffect(() => {
-    setPageTitle({ title: 'Analytics Overview', subtitle: 'How the business is doing right now' });
-    return () => setPageTitle({ title: 'Overview', subtitle: '' });
-  }, [setPageTitle]);
+    setPageTitle({
+      title: t('dashboard.title', { defaultValue: 'Analytics Overview' }),
+      subtitle: t('dashboard.subtitle', { defaultValue: 'How the business is doing right now' }),
+    });
+    return () => setPageTitle({ title: tc('app.overview', { defaultValue: 'Overview' }), subtitle: '' });
+  }, [setPageTitle, t, tc]);
 
   // Date range — defaults to last 30 days.
   const today = new Date();
@@ -174,8 +198,9 @@ export const OwnerDashboard: React.FC = () => {
 
   /* ── Working filters — previously these dropdowns were decorative; they now
         actually drive the data they label. ── */
-  // Category mix window
-  const [categoryWindow, setCategoryWindow] = useState<'This month' | 'Last month' | 'This year'>('This month');
+  // Category mix window — the option list is stored as its key so the UI
+  // language can translate the labels without losing the selection.
+  const [categoryWindow, setCategoryWindow] = useState<CategoryWindow>('This month');
   const categoryFromTo = useMemo(() => {
     const now = new Date();
     if (categoryWindow === 'This month') {
@@ -196,8 +221,8 @@ export const OwnerDashboard: React.FC = () => {
     };
   }, [categoryWindow]);
 
-  // Recent orders window
-  const [recentWindow, setRecentWindow] = useState<'Today' | 'Last 7 days' | 'Last 30 days' | 'Last year'>('Last 7 days');
+  // Recent orders window — keyed like the category window above.
+  const [recentWindow, setRecentWindow] = useState<RecentWindow>('Last 7 days');
   const recentFrom = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -209,16 +234,31 @@ export const OwnerDashboard: React.FC = () => {
   // Top items depth
   const [topCount, setTopCount] = useState(5);
 
+  /* Which metric "best seller" ranks by. Both numbers ship in the same API
+     response, so switching is a pure client-side re-rank — the card and the
+     Item Sales page can be read on the same footing. */
+  const [bestSellerMetric, setBestSellerMetric] = useState<'revenue' | 'units'>('revenue');
+
   /* ── Data (React Query — cached across navigations) ── */
   const fromIso = useMemo(() => new Date(dateRange.from).toISOString(), [dateRange.from]);
   const toIso = useMemo(() => new Date(`${dateRange.to}T23:59:59.999`).toISOString(), [dateRange.to]);
 
+  /* The catalogue carries both names per item; order lines only carry the
+     snapshot, so it is what turns a mixed-language best-seller list into one
+     language. */
+  const menuQuery = useMenuQuery();
+  const menuItems = Array.isArray(menuQuery.data) ? menuQuery.data : [];
+  const catalogueByName = useMemo(() => indexItemsByName(menuItems), [menuItems]);
+  const preferAmharic = isAmharicLanguage(i18n.resolvedLanguage || i18n.language);
+
   const dailyQuery = useDailySalesQuery();
   const monthlyQuery = useMonthlySalesQuery();
-  // Fetch enough depth for the "Top 20" filter option; slicing happens below.
+  // Fetch headroom for the "Top 20" filter option: rows are grouped by the
+  // order-line snapshot name, so the same dish can arrive more than once and the
+  // dedupe below still has to be able to fill twenty rows. Slicing happens here.
   const topItemsQuery = useAnalyticsQuery<TopItem[]>(
     '/analytics/top-items',
-    { from: fromIso, to: toIso, limit: '20' },
+    { from: fromIso, to: toIso, limit: '40' },
   );
   const categoriesQuery = useAnalyticsQuery<CategoryRow[]>(
     '/analytics/category-split',
@@ -279,7 +319,10 @@ export const OwnerDashboard: React.FC = () => {
     return { labels, income, expenses };
   }, [monthly, profitLoss, trendRange]);
 
-  const trendLabel = TREND_OPTIONS.find((o) => o.key === trendRange)?.label ?? 'This year';
+  const trendLabel = t(
+    TREND_OPTIONS.find((o) => o.key === trendRange)?.labelKey ?? 'finance.last12Months',
+    { defaultValue: 'Last 12 months' },
+  );
 
   /* Totals strip above the revenue trend: one tile per series, so the chart
      reads at a glance without hovering. No net/margin tiles — the card is the
@@ -296,32 +339,87 @@ export const OwnerDashboard: React.FC = () => {
   const donutSegments = useMemo(() => {
     const FALLBACK_COLORS = ['#F97316', '#F59E0B', '#DC2626'];
     return categories.map((c, i) => ({
-      label: CATEGORY_LABEL[c.category] ?? c.category,
+      label: CATEGORY_KEY[c.category]
+        ? tc(CATEGORY_KEY[c.category], { defaultValue: c.category })
+        : c.category,
       value: c.revenue,
       color: CATEGORY_COLOR[c.category] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
     }));
-  }, [categories]);
+  }, [categories, tc]);
 
   const totalCategoryRevenue = useMemo(
     () => categories.reduce((s, c) => s + c.revenue, 0),
     [categories],
   );
 
-  /* ── Order type bars: top N items by share, N from the "Top 5/10/20" filter ── */
-  const orderTypeEntries = useMemo<OrderTypeEntry[]>(() => {
-    const visible = topItems.slice(0, topCount);
-    const total = visible.reduce((s, x) => s + x.totalRevenue, 0) || 1;
+  /* ── Best sellers: top N items by the selected metric, N from the "Top
+        5/10/20" filter. Ranked highest-to-lowest so the bars descend top to
+        bottom.
+
+        The API groups rows by the order-line snapshot name, which is written
+        in the language the item was saved in — so the same dish can arrive
+        twice (once Amharic, once English) and an Amharic label could sit in the
+        middle of an English list. Each snapshot is resolved back to its
+        catalogue item here, both to label it in the active language and to fold
+        the duplicate rows into one entry. ── */
+  const bestSellerEntries = useMemo<OrderTypeEntry[]>(() => {
+    const byUnits = bestSellerMetric === 'units';
+    const folded = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        snapshot: string;
+        totalQty: number;
+        totalRevenue: number;
+        imageUrl?: string;
+      }
+    >();
+    for (const item of topItems) {
+      // Normalises the snapshot first, so "ዶሮ ወጥ (Doro Wat)" and "Doro Wat"
+      // resolve to the same catalogue row and fold together.
+      const catalogue = findItemBySnapshot(catalogueByName, item.name);
+      const label = labelForSnapshot(item.name, catalogue, preferAmharic);
+      const key = catalogue?.id ?? `snapshot:${label}`;
+      const current = folded.get(key);
+      if (current) {
+        current.totalQty += item.totalQty || 0;
+        current.totalRevenue += item.totalRevenue || 0;
+        if (!current.imageUrl && item.imageUrl) current.imageUrl = item.imageUrl;
+      } else {
+        folded.set(key, {
+          key,
+          label,
+          snapshot: item.name,
+          totalQty: item.totalQty || 0,
+          totalRevenue: item.totalRevenue || 0,
+          imageUrl: item.imageUrl,
+        });
+      }
+    }
+
+    const rows = [...folded.values()];
+    const valueFor = (row: { totalQty: number; totalRevenue: number }) =>
+      (byUnits ? row.totalQty : row.totalRevenue) || 0;
+    const ranked = rows.sort(
+      (a, b) => valueFor(b) - valueFor(a) || (b.totalQty || 0) - (a.totalQty || 0),
+    );
+    const visible = ranked.slice(0, topCount);
+    const total = visible.reduce((s, x) => s + valueFor(x), 0) || 1;
     return visible.map((it, i) => ({
-      id: it.name,
-      name: it.name,
-      percent: Math.round((it.totalRevenue / total) * 100),
+      id: it.key,
+      name: it.label,
+      percent: Math.round((valueFor(it) / total) * 100),
       total: it.totalRevenue,
+      // Units sold, so the card reads like the manager's Best sellers list.
+      qty: it.totalQty,
+      metric: bestSellerMetric,
       imageUrl: it.imageUrl,
-      icon: pickIconForName(it.name),
+      icon: pickIconForName(it.label),
       iconBg: ICON_BG[i % ICON_BG.length],
       iconColor: ICON_COLOR[i % ICON_COLOR.length],
     }));
-  }, [topItems, topCount]);
+  }, [topItems, topCount, bestSellerMetric, catalogueByName, preferAmharic]);
 
   /* ── Recent orders (table) — honours the "Today / Last 7 days / …" filter ── */
   const recentRows = useMemo<RecentOrder[]>(() => {
@@ -342,10 +440,8 @@ export const OwnerDashboard: React.FC = () => {
         o.cashier?.name ??
         user?.name ??
         '—';
-      const orderType = o.tableNumber ? `Dine-in · T${o.tableNumber}` : 'Takeaway';
       return {
         id: o.id,
-        type: orderType,
         attendant,
         time: o.createdAt,
         status: STATUS_MAP[o.status] ?? 'pending',
@@ -382,12 +478,12 @@ export const OwnerDashboard: React.FC = () => {
             filterAlign="right"
             filter={{
               label: trendLabel,
-              options: TREND_OPTIONS.map((o) => o.label),
-              value: trendLabel,
-              onChange: (v) => {
-                const found = TREND_OPTIONS.find((o) => o.label === v);
-                if (found) setTrendRange(found.key);
-              },
+              options: TREND_OPTIONS.map((o) => ({
+                value: o.key,
+                label: t(o.labelKey, { defaultValue: o.key }),
+              })),
+              value: trendRange,
+              onChange: (v) => setTrendRange(v as TrendRange),
             }}
           >
             <RevenueLineChart
@@ -431,10 +527,13 @@ export const OwnerDashboard: React.FC = () => {
             })}
             filterAlign="right"
             filter={{
-              label: categoryWindow,
-              options: ['This month', 'Last month', 'This year'],
+              label: tc(`dashboard.categoryWindow.${categoryWindow}`, { ns: 'owner', defaultValue: categoryWindow }),
+              options: CATEGORY_WINDOWS.map((w) => ({
+                value: w,
+                label: tc(`dashboard.categoryWindow.${w}`, { ns: 'owner', defaultValue: w }),
+              })),
               value: categoryWindow,
-              onChange: (v) => setCategoryWindow(v as typeof categoryWindow),
+              onChange: (v) => setCategoryWindow(v as CategoryWindow),
             }}
           >
             {donutSegments.length > 0 ? (
@@ -458,10 +557,13 @@ export const OwnerDashboard: React.FC = () => {
             })}
             filterAlign="right"
             filter={{
-              label: recentWindow,
-              options: ['Today', 'Last 7 days', 'Last 30 days', 'Last year'],
+              label: tc(`dashboard.recentWindow.${recentWindow}`, { ns: 'owner', defaultValue: recentWindow }),
+              options: RECENT_WINDOWS.map((w) => ({
+                value: w,
+                label: tc(`dashboard.recentWindow.${w}`, { ns: 'owner', defaultValue: w }),
+              })),
               value: recentWindow,
-              onChange: (v) => setRecentWindow(v as typeof recentWindow),
+              onChange: (v) => setRecentWindow(v as RecentWindow),
             }}
             className="lg:col-span-2"
             flush
@@ -472,22 +574,49 @@ export const OwnerDashboard: React.FC = () => {
           </SectionCard>
 
           <SectionCard
-            title={t('dashboard.sections.topItems')}
-            description={t('dashboard.sections.topItemsDesc', {
-              defaultValue: 'Best sellers in the selected window',
-            })}
+            title={t('dashboard.sections.bestSellers', { defaultValue: 'Best sellers' })}
+            description={
+              bestSellerMetric === 'units'
+                ? t('dashboard.sections.bestSellersDescUnits', {
+                    defaultValue: 'Share of units sold in range',
+                  })
+                : t('dashboard.sections.bestSellersDesc', {
+                    defaultValue: 'Share of revenue in range',
+                  })
+            }
+            // Ranking metric and depth selector share the card's filter bar so
+            // the header row stays a single, always-visible control — and both
+            // are dropdowns, the same filter control the rest of the app uses.
+            toolbar={
+              <FilterBar
+                ariaLabel={t('dashboard.rankBy', { ns: 'owner', defaultValue: 'Rank by' })}
+                icon={TrendingUp}
+                options={[
+                  { value: 'revenue', label: t('dashboard.metricRevenue', { defaultValue: 'Revenue' }) },
+                  { value: 'units', label: t('dashboard.metricUnits', { defaultValue: 'Units' }) },
+                ]}
+                value={bestSellerMetric}
+                onChange={(v) => setBestSellerMetric(v === 'units' ? 'units' : 'revenue')}
+                className="w-auto"
+              />
+            }
             filter={{
-              label: `Top ${topCount}`,
-              options: ['Top 5', 'Top 10', 'Top 20'],
-              value: `Top ${topCount}`,
-              onChange: (v) => setTopCount(Number(v.replace('Top ', '')) || 5),
+              label: t('dashboard.topCount', { ns: 'owner', count: topCount, defaultValue: 'Top {{count}}' }),
+              options: [5, 10, 20].map((n) => ({
+                value: String(n),
+                label: t('dashboard.topCount', { ns: 'owner', count: n, defaultValue: 'Top {{count}}' }),
+              })),
+              value: String(topCount),
+              onChange: (v) => setTopCount(Number(v) || 5),
+              // Compact pill: it shares the header row with the metric switch.
+              className: 'w-auto',
             }}
           >
-            {orderTypeEntries.length > 0 ? (
-              <OrderTypeBars entries={orderTypeEntries} />
+            {bestSellerEntries.length > 0 ? (
+              <OrderTypeBars entries={bestSellerEntries} />
             ) : (
               <div className="py-10 text-center text-sm text-muted-foreground">
-                {t('dashboard.emptyTopItems')}
+                {t('dashboard.emptyBestSellers', { defaultValue: 'No sales in this period.' })}
               </div>
             )}
           </SectionCard>
@@ -515,9 +644,6 @@ export const OwnerDashboard: React.FC = () => {
                       <div className="mb-1.5 flex items-baseline justify-between">
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="truncate text-[14px] font-semibold text-foreground">{w.name}</span>
-                          <span className="text-[12px] font-medium text-muted-foreground tabular-nums">
-                            {w.role}
-                          </span>
                         </div>
                         <span className="shrink-0 text-[14px] font-semibold text-foreground tabular-nums">
                           {formatCurrency(w.totalSales)}
@@ -531,7 +657,10 @@ export const OwnerDashboard: React.FC = () => {
                           />
                         </div>
                         <span className="shrink-0 text-[12px] font-medium text-muted-foreground tabular-nums">
-                          {w.orderCount} orders
+                          {/* A key without a placeholder swallows the count, so
+                              `app.orders` alone rendered "orders" with no
+                              number — `app.orderCount` carries the count. */}
+                          {tc('app.orderCount', { count: w.orderCount, defaultValue: '{{count}} orders' })}
                         </span>
                       </div>
                     </div>
