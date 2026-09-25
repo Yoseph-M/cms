@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -8,6 +9,7 @@ import { SettingsRow } from '../ui/SettingsRow';
 import { CalendarCheck } from 'lucide-react';
 
 export const WorkOnSundaysToggle: React.FC = () => {
+  const { t } = useTranslation();
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
   const settingQuery = useSystemSettingQuery('workOnSundays');
@@ -30,13 +32,13 @@ export const WorkOnSundaysToggle: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['systemSetting', 'workOnSundays'] });
       addToast({
         type: 'success',
-        title: checked ? 'Sundays are working days' : 'Sundays are not working days',
+        title: checked ? t('settings.sundays.enabledTitle') : t('settings.sundays.disabledTitle'),
         message: checked
-          ? 'Sundays will be treated as a regular working day in the attendance calendar.'
-          : 'Sundays will be treated as a weekend in the attendance calendar.',
+          ? t('settings.sundays.enabledMsg')
+          : t('settings.sundays.disabledMsg'),
       });
     } catch {
-      addToast({ type: 'error', title: 'Could not update setting' });
+      addToast({ type: 'error', title: t('settings.updateFailedGeneric') });
     } finally {
       setIsSaving(false);
     }
@@ -47,14 +49,14 @@ export const WorkOnSundaysToggle: React.FC = () => {
       icon={CalendarCheck}
       iconClassName="text-primary"
       iconBgClassName="bg-primary/10"
-      title="Work on Sundays"
-      description="When on, Sundays are treated as a working day in the attendance calendar. When off, Sundays are shown as a weekend."
+      title={t('settings.sundays.title')}
+      description={t('settings.sundays.description')}
       control={
         <Switch
           checked={enabled}
           onCheckedChange={handleToggle}
           disabled={isSaving || settingQuery.isLoading}
-          aria-label="Work on Sundays"
+          aria-label={t('settings.sundays.title')}
         />
       }
     />
