@@ -69,6 +69,23 @@ export async function getDailyCloseHistory(req: AuthenticatedRequest, res: Respo
 }
 
 /**
+ * GET /api/daily-close/reconciliation
+ * Compare each approved day's takings with that same day's paid revenue and
+ * flag the days that no longer agree. Read-only.
+ */
+export async function getReconciliation(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const parsed = Number.parseInt((req.query.days as string | undefined) ?? '', 10);
+    const days = Number.isNaN(parsed) ? undefined : parsed;
+    const report = await DailyCloseService.reconcileClosedDays({ days });
+    return res.json(report);
+  } catch (error: any) {
+    logger.error({ error }, 'Failed to reconcile closed days');
+    return next(error);
+  }
+}
+
+/**
  * POST /api/daily-close/:date/start
  * Send the request to close the day (usually the cashier).
  */
