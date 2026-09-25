@@ -34,6 +34,7 @@ import { DailyCloseStatus, Role, NotificationType } from '@prisma/client';
 import { executeInCriticalTransaction } from '../../utils/transaction';
 import { ValidationError, ConflictError, NotFoundError } from '../../utils/errors';
 import { getCurrentBusinessDate, getBusinessDayStart, getBusinessDayEnd, validateNotFuture } from '../../utils/businessTime';
+import { settledMoneyOn } from '../../services/settlement.service';
 
 export async function getCurrentDailyClose(businessDate?: string) {
   // Server-authoritative: use server's business date if not provided
@@ -76,8 +77,11 @@ interface DayTotals {
  * never a cached value — so both the live preview and the request snapshot see
  * the same numbers for the same date.
  *
- * Cancelled tickets are counted separately (cancelledOrderCount) and excluded
- * from sales: a ticket that was voided is not revenue.
+ * Sales count PAID tickets only — the money the day actually took — so the
+ * closed day agrees with what the analytics pages report for the same date.
+ * Tickets that are still on the floor (open, in the kitchen, served but
+ * unsettled) are reported as counts instead, and a voided ticket is counted as
+ * a cancellation, never as revenue.
  */
 export async function computeDayTotals(businessDate: string): Promise<DayTotals> {
   const dayStart = getBusinessDayStart(new Date(businessDate));
@@ -92,10 +96,16 @@ export async function computeDayTotals(businessDate: string): Promise<DayTotals>
     }),
   ]);
 
-  const salesOrders = orders.filter(o => o.status !== 'CANCELLED');
+  const paidOrders = orders.filter(o => o.status === 'PAID');
+  const liveOrders = orders.filter(o => o.status !== 'CANCELLED');
 
-  const totalSalesMinor = salesOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-  const totalSettledMinor = settlements.reduce((sum, s) => sum + s.amountMinor, 0);
+  const totalSalesMinor = paidOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+  // "Total settled" is money that changed hands. A VOID row (method NONE) is
+  // the cancellation audit trail — it carries the cancelled ticket's whole
+  // value so the void shows on the settlements pages — and counting it here
+  // booked a voided ticket as collected cash. Only collection rows count.
+  const totalSettledMinor = settledMoneyOn(settlements);
 
   const sumByMethod = (method: 'CASH' | 'CARD' | 'MOBILE' | 'NONE') =>
     settlements.filter(s => s.method === method).reduce((sum, s) => sum + s.amountMinor, 0);
@@ -108,12 +118,15 @@ export async function computeDayTotals(businessDate: string): Promise<DayTotals>
     cashSettledMinor,
     cardSettledMinor: sumByMethod('CARD'),
     mobileSettledMinor: sumByMethod('MOBILE'),
+    // Kept for the record only: the value of the day's voided tickets. It is
+    // deliberately NOT part of totalSettledMinor — nothing was collected on
+    // those tickets.
     otherSettledMinor: sumByMethod('NONE'),
     // Kept for reporting only: approval no longer asks anyone to count the
     // drawer, so there is no declared figure and no variance.
     cashExpectedMinor: cashSettledMinor,
-    unsettledOrderCount: salesOrders.filter(o => o.settlementStatus === 'UNSETTLED').length,
-    partialSettlementCount: salesOrders.filter(o => o.settlementStatus === 'PARTIALLY_SETTLED').length,
+    unsettledOrderCount: liveOrders.filter(o => o.settlementStatus === 'UNSETTLED').length,
+    partialSettlementCount: liveOrders.filter(o => o.settlementStatus === 'PARTIALLY_SETTLED').length,
     cancelledOrderCount: orders.filter(o => o.status === 'CANCELLED').length,
   };
 }
@@ -446,6 +459,140 @@ export interface DailyCloseHistoryRow {
  * Rows are newest-first and capped (the screen only ever shows recent days);
  * this is a read model — it never writes and never recalculates totals.
  */
+/* ─────────────────────── Closed-day reconciliation ───────────────────────
+ * Every approved day carries the total the manager signed off on. What that
+ * day's money IS can be read again at any time from the ledger — PAID tickets,
+ * the same business-day window the analytics pages use. Those two figures come
+ * from different paths: one is a frozen snapshot, the other is a live read of
+ * the orders that are paid *today*. Comparing them is the only way to see a
+ * day that no longer agrees with its own close — a ticket cancelled or
+ * re-priced after the close, a close taken before the last settlement landed,
+ * or a snapshot written before sales were narrowed to paid tickets. Neither
+ * screen can show that on its own: the End of Day page only ever prints the
+ * snapshot, and the Finance charts only ever print the ledger.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** A day diverges as soon as its two figures stop matching — whole units here. */
+export const RECONCILIATION_THRESHOLD_MINOR = 1;
+
+export interface DayReconciliationRow {
+  businessDate: string;
+  /** The total locked when the manager approved the close. */
+  closedSalesMinor: number;
+  /** The same business day's paid revenue, read from the ledger now. */
+  paidRevenueMinor: number;
+  /** Closed − ledger. Positive: the close claimed money the ledger does not have. */
+  deltaMinor: number;
+  /** Delta as a share of the ledger figure; null when the ledger is empty. */
+  deltaPercent: number | null;
+  flagged: boolean;
+  closedByName: string | null;
+  closedAt: Date | null;
+}
+
+export interface ReconciliationReport {
+  days: DayReconciliationRow[];
+  /** How many closed days the report covers. */
+  closedDayCount: number;
+  /** How many of them no longer agree with the ledger. */
+  flaggedCount: number;
+  totals: {
+    closedSalesMinor: number;
+    paidRevenueMinor: number;
+    deltaMinor: number;
+  };
+  thresholdMinor: number;
+}
+
+/**
+ * Compare each approved day's takings with that day's paid revenue.
+ *
+ * Read-only and server-authoritative: nothing here writes, and both sides of
+ * the comparison are computed by the server. Days are returned newest first,
+ * each one flagged when the two figures differ by at least
+ * `RECONCILIATION_THRESHOLD_MINOR`.
+ */
+export async function reconcileClosedDays(opts: { days?: number } = {}): Promise<ReconciliationReport> {
+  const limit = Math.min(180, Math.max(1, Math.floor(opts.days ?? 90)));
+
+  const closed = await prisma.dailyClose.findMany({
+    where: { status: DailyCloseStatus.CLOSED },
+    orderBy: { businessDate: 'desc' },
+    take: limit,
+    include: { closedBy: { select: { name: true } } },
+  });
+
+  if (closed.length === 0) {
+    return {
+      days: [],
+      closedDayCount: 0,
+      flaggedCount: 0,
+      totals: { closedSalesMinor: 0, paidRevenueMinor: 0, deltaMinor: 0 },
+      thresholdMinor: RECONCILIATION_THRESHOLD_MINOR,
+    };
+  }
+
+  // Each day gets its OWN business-day window — the same one the close used.
+  const windows = closed
+    .map((row) => ({
+      businessDate: row.businessDate,
+      start: getBusinessDayStart(new Date(row.businessDate)).getTime(),
+      end: getBusinessDayEnd(new Date(row.businessDate)).getTime(),
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  // One read of the paid tickets across the whole span, then bucket them by the
+  // day that owns the instant. A ticket that falls outside every closed day (a
+  // day nobody closed) is deliberately dropped rather than attributed to a
+  // neighbour.
+  const paidOrders = await prisma.order.findMany({
+    where: {
+      status: 'PAID',
+      createdAt: { gte: new Date(windows[0].start), lte: new Date(windows[windows.length - 1].end) },
+    },
+    select: { createdAt: true, totalAmount: true },
+  });
+
+  const paidByDay = new Map<string, number>();
+  for (const order of paidOrders) {
+    const at = order.createdAt.getTime();
+    const owner = windows.find((w) => at >= w.start && at <= w.end);
+    if (!owner) continue;
+    paidByDay.set(owner.businessDate, (paidByDay.get(owner.businessDate) ?? 0) + order.totalAmount);
+  }
+
+  const days: DayReconciliationRow[] = closed.map((row) => {
+    const paidRevenueMinor = paidByDay.get(row.businessDate) ?? 0;
+    const deltaMinor = row.totalSalesMinor - paidRevenueMinor;
+    return {
+      businessDate: row.businessDate,
+      closedSalesMinor: row.totalSalesMinor,
+      paidRevenueMinor,
+      deltaMinor,
+      deltaPercent:
+        paidRevenueMinor !== 0 ? Math.round((deltaMinor / paidRevenueMinor) * 1000) / 10 : null,
+      flagged: Math.abs(deltaMinor) >= RECONCILIATION_THRESHOLD_MINOR,
+      closedByName: row.closedBy?.name ?? null,
+      closedAt: row.closedAt,
+    };
+  });
+
+  return {
+    days,
+    closedDayCount: days.length,
+    flaggedCount: days.filter((d) => d.flagged).length,
+    totals: days.reduce(
+      (acc, d) => ({
+        closedSalesMinor: acc.closedSalesMinor + d.closedSalesMinor,
+        paidRevenueMinor: acc.paidRevenueMinor + d.paidRevenueMinor,
+        deltaMinor: acc.deltaMinor + d.deltaMinor,
+      }),
+      { closedSalesMinor: 0, paidRevenueMinor: 0, deltaMinor: 0 },
+    ),
+    thresholdMinor: RECONCILIATION_THRESHOLD_MINOR,
+  };
+}
+
 export async function listDailyCloseHistory(limit = 30): Promise<DailyCloseHistoryRow[]> {
   const capped = Math.min(90, Math.max(1, limit));
 
