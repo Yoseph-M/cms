@@ -6,6 +6,7 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SettlementHistory } from './SettlementHistory';
 import { RecordSettlement } from './RecordSettlement';
 
@@ -45,6 +46,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
   onUpdate,
   allowRecordPayment = false,
 }) => {
+  const { t } = useTranslation();
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'settlements'>('details');
 
@@ -52,11 +54,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
   const getStatusBadge = (status: string) => {
     const badges: Record<string, { bg: string; text: string; label: string }> = {
-      SUBMITTED: { bg: 'bg-blue-100', text: 'text-blue-800', label: '📝 Submitted' },
-      IN_KITCHEN: { bg: 'bg-amber-100', text: 'text-amber-800', label: '🍳 In Kitchen' },
-      SERVED: { bg: 'bg-purple-100', text: 'text-purple-800', label: '🍽️ Served' },
-      PAID: { bg: 'bg-green-100', text: 'text-green-800', label: '✓ Paid' },
-      CANCELLED: { bg: 'bg-red-100', text: 'text-red-800', label: '✗ Cancelled' },
+      SUBMITTED: { bg: 'bg-blue-100', text: 'text-blue-800', label: `📝 ${t('orderStatus.submitted')}` },
+      IN_KITCHEN: { bg: 'bg-amber-100', text: 'text-amber-800', label: `🍳 ${t('orderStatus.inKitchen')}` },
+      SERVED: { bg: 'bg-purple-100', text: 'text-purple-800', label: `🍽️ ${t('orderStatus.served')}` },
+      PAID: { bg: 'bg-green-100', text: 'text-green-800', label: `✓ ${t('status.paid')}` },
+      CANCELLED: { bg: 'bg-red-100', text: 'text-red-800', label: `✗ ${t('status.cancelled')}` },
     };
 
     const badge = badges[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
@@ -69,13 +71,13 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
   const getSettlementStatusBadge = (status: string) => {
     const badges: Record<string, { bg: string; text: string; label: string }> = {
-      UNSETTLED: { bg: 'bg-red-100', text: 'text-red-800', label: '✗ Unsettled' },
+      UNSETTLED: { bg: 'bg-red-100', text: 'text-red-800', label: `✗ ${t('settlements.unsettled')}` },
       PARTIALLY_SETTLED: {
         bg: 'bg-amber-100',
         text: 'text-amber-800',
-        label: '⚠ Partial',
+        label: `⚠ ${t('settlements.partial')}`,
       },
-      SETTLED: { bg: 'bg-green-100', text: 'text-green-800', label: '✓ Settled' },
+      SETTLED: { bg: 'bg-green-100', text: 'text-green-800', label: `✓ ${t('settlements.settled')}` },
     };
 
     const badge = badges[status] || { bg: 'bg-gray-100', text: 'text-gray-800', label: status };
@@ -104,15 +106,15 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
         {/* Header */}
         <div className="px-4 py-4 sm:px-6 border-b border-gray-200 flex justify-between items-start gap-3 bg-gray-50">
           <div className="min-w-0">
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Order Details</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">{t('orderDetails.title')}</h2>
             <p className="text-sm text-gray-600 mt-1">
-              Order #{order.clientOrderId} • Table {order.tableNumber}
+              {t('orderDetails.orderTableLine', { id: order.clientOrderId, table: order.tableNumber })}
             </p>
           </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 text-3xl leading-none"
-            aria-label="Close"
+            aria-label={t('a11y.close')}
           >
             ×
           </button>
@@ -128,7 +130,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
-            Order Details
+            {t('orderDetails.title')}
           </button>
           <button
             onClick={() => setActiveTab('settlements')}
@@ -138,7 +140,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 : 'text-gray-600 hover:text-gray-800'
             }`}
           >
-            Settlement History
+            {t('settlements.title')}
           </button>
         </div>
 
@@ -150,11 +152,11 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4">
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">Order Status</p>
+                    <p className="text-sm text-gray-600 mb-1">{t('orderDetails.orderStatus')}</p>
                     {getStatusBadge(order.status)}
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">Payment Status</p>
+                    <p className="text-sm text-gray-600 mb-1">{t('orderDetails.paymentStatus')}</p>
                     {getSettlementStatusBadge(order.settlementStatus)}
                   </div>
                 </div>
@@ -162,14 +164,14 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
               {/* Order Info */}
               <div>
-                <h3 className="font-semibold text-lg mb-3">Order Information</h3>
+                <h3 className="font-semibold text-lg mb-3">{t('orderDetails.info')}</h3>
                 <div className="grid grid-cols-2 max-[767px]:grid-cols-1 gap-4 text-sm">
                   <div>
-                    <p className="text-gray-600">Waiter</p>
-                    <p className="font-semibold">{order.waiter?.name || 'N/A'}</p>
+                    <p className="text-gray-600">{t('settlements.waiter')}</p>
+                    <p className="font-semibold">{order.waiter?.name || t('settlements.na')}</p>
                   </div>
                   <div>
-                    <p className="text-gray-600">Created At</p>
+                    <p className="text-gray-600">{t('orderDetails.createdAt')}</p>
                     <p className="font-semibold">
                       {new Date(order.createdAt).toLocaleString()}
                     </p>
@@ -179,7 +181,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
               {/* Items */}
               <div>
-                <h3 className="font-semibold text-lg mb-3">Order Items</h3>
+                <h3 className="font-semibold text-lg mb-3">{t('orderDetails.items')}</h3>
                 <div className="space-y-2">
                   {order.items.map((item, index) => (
                     <div
@@ -189,7 +191,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                       <div className="flex-1">
                         <p className="font-semibold">{item.name}</p>
                         {item.notes && (
-                          <p className="text-sm text-gray-600 mt-1">Note: {item.notes}</p>
+                          <p className="text-sm text-gray-600 mt-1">{t('orderDetails.note')}: {item.notes}</p>
                         )}
                       </div>
                       <div className="text-right ml-4">
@@ -206,7 +208,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
                 {/* Total */}
                 <div className="mt-4 pt-4 border-t-2 border-gray-300 flex justify-between items-center">
-                  <p className="text-xl font-bold">Total</p>
+                  <p className="text-xl font-bold">{t('orderDetails.total')}</p>
                   <p className="text-2xl font-bold text-green-600">
                     {formatAmount(order.totalAmount)}
                   </p>
@@ -232,7 +234,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                         onClick={() => setShowRecordPayment(true)}
                         className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition"
                       >
-                        💰 Record Payment
+                        💰 {t('settlements.recordPayment')}
                       </button>
                     </div>
                   )}
@@ -253,7 +255,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
             onClick={onClose}
             className="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-lg transition"
           >
-            Close
+            {t('a11y.close')}
           </button>
         </div>
       </div>
