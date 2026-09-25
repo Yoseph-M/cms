@@ -16,6 +16,7 @@ import { dailyCloseApi } from '../../api/phase9Api';
 import { useHeaderStore } from '../../store/headerStore';
 import { useSocketStore } from '../../store/socketStore';
 import { useToastStore } from '../../store/toastStore';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
@@ -74,10 +75,14 @@ export const CashierEndOfDay: React.FC = () => {
   const { socket } = useSocketStore();
   const { addToast } = useToastStore();
   const queryClient = useQueryClient();
+  const { t } = useTranslation('common');
   const [sentAt, setSentAt] = useState<number | null>(null);
 
   useEffect(() => {
-    setPageTitle({ title: 'End of Day', subtitle: 'Send the close request to your manager' });
+    setPageTitle({
+      title: t('cashier.endOfDay', { defaultValue: 'End of Day' }),
+      subtitle: t('cashier.eodSubtitle', { defaultValue: 'Send the close request to your manager' }),
+    });
     setShowDateRange(false);
     return () => {
       setPageTitle({ title: 'Overview', subtitle: '' });
@@ -124,16 +129,18 @@ export const CashierEndOfDay: React.FC = () => {
       setSentAt(Date.now());
       addToast({
         type: 'success',
-        title: 'Close request sent',
-        message: 'Your manager has been notified. The day closes once they approve it.',
+        title: t('cashier.eod.sentToast', { defaultValue: 'Close request sent' }),
+        message: t('cashier.eod.sentToastMsg', {
+          defaultValue: 'Your manager has been notified. The day closes once they approve it.',
+        }),
       });
       void queryClient.invalidateQueries({ queryKey: ['dailyClose'] });
     },
     onError: (err: unknown) => {
       addToast({
         type: 'error',
-        title: 'Could not send the request',
-        message: extractErrorMessage(err, 'Please try again in a moment.'),
+        title: t('cashier.eod.sendFailed', { defaultValue: 'Could not send the request' }),
+        message: extractErrorMessage(err, t('cashier.eod.tryAgain', { defaultValue: 'Please try again in a moment.' })),
       });
     },
   });
@@ -148,21 +155,34 @@ export const CashierEndOfDay: React.FC = () => {
   const figures = status === 'OPEN' || status === 'REJECTED' ? live ?? record : record ?? live;
   const figuresLabel =
     status === 'CLOSED'
-      ? 'Recorded and locked'
+      ? t('cashier.eod.recordedLocked', { defaultValue: 'Recorded and locked' })
       : status === 'PENDING_REVIEW'
-        ? 'Recorded at request time'
-        : 'Today so far';
+        ? t('cashier.eod.recordedAtRequest', { defaultValue: 'Recorded at request time' })
+        : t('cashier.eod.todaySoFar', { defaultValue: 'Today so far' });
 
   if (statusQuery.isLoading || previewQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="w-full min-w-0 space-y-5 pb-8">
         <div className="h-64 animate-pulse rounded-2xl bg-secondary/40" />
       </div>
     );
   }
 
+  /**
+   * Full-canvas width, like every other page in the shell.
+   *
+   * This card used to sit in its own `mx-auto max-w-3xl` column. Because the
+   * sidebar animates its width (80px ↔ 260px) and the canvas is `flex-1`, that
+   * column re-centred on every collapse/expand: the card slid sideways while
+   * every other page simply grew in place. It also left the summary tiles at
+   * two columns on a desktop, because the `sm:`/`md:`/`lg:` prefixes this file
+   * used match nothing in `tailwind.config.js` — the only breakpoints in this
+   * project are `tablet-portrait` (768px), `tablet-landscape` (1024px) and
+   * `desktop` (1280px). Both are fixed here: the page is a normal fluid child
+   * of the canvas, and the strip uses a breakpoint that exists.
+   */
   return (
-    <div className="mx-auto max-w-3xl space-y-5 pb-8">
+    <div className="w-full min-w-0 space-y-5 pb-8">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -172,7 +192,7 @@ export const CashierEndOfDay: React.FC = () => {
         {/* Hero — the state banner decides the whole mood of the page. */}
         <div
           className={cn(
-            'relative px-5 py-6 sm:px-7',
+            'relative px-5 py-6 tablet-portrait:px-7',
             status === 'PENDING_REVIEW'
               ? 'bg-gradient-to-br from-amber-500/15 via-amber-400/5 to-transparent'
               : status === 'CLOSED'
@@ -208,21 +228,28 @@ export const CashierEndOfDay: React.FC = () => {
             <div className="min-w-0">
               <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
                 {status === 'PENDING_REVIEW'
-                  ? 'Waiting for your manager'
+                  ? t('cashier.eod.waitingManager', { defaultValue: 'Waiting for your manager' })
                   : status === 'CLOSED'
-                    ? 'Day approved and closed'
+                    ? t('cashier.eod.dayClosed', { defaultValue: 'Day approved and closed' })
                     : status === 'REJECTED'
-                      ? 'Request disapproved'
-                      : 'Ready to close the day'}
+                      ? t('cashier.eod.disapproved', { defaultValue: 'Request disapproved' })
+                      : t('cashier.eod.readyToClose', { defaultValue: 'Ready to close the day' })}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {status === 'PENDING_REVIEW'
-                  ? `Request sent${record?.requestedBy?.name ? ` by ${record.requestedBy.name}` : ''}. A manager needs to approve it before the day locks.`
+                  ? t('cashier.eod.waitingManagerMsg', {
+                      name: record?.requestedBy?.name ?? '',
+                      defaultValue: 'Request sent{{name}}. A manager needs to approve it before the day locks.',
+                    }).replace('{{name}}', record?.requestedBy?.name ? ` ${t('cashier.close.byName', { name: record.requestedBy.name, defaultValue: 'by {{name}}' })}` : '')
                   : status === 'CLOSED'
-                    ? `${record?.closedBy?.name ?? 'A manager'} approved the close${record?.businessDate ? ` for ${record.businessDate}` : ''}. Nothing further to do.`
+                    ? t('cashier.eod.dayClosedMsg', {
+                        name: record?.closedBy?.name ?? t('cashier.close.aManager', { defaultValue: 'A manager' }),
+                        date: record?.businessDate ?? '',
+                        defaultValue: "{{name}} approved the close{{date}}. Nothing further to do.",
+                      }).replace('{{date}}', record?.businessDate ? ` ${t('cashier.eod.forDate', { date: record.businessDate, defaultValue: 'for {{date}}' })}` : '')
                     : status === 'REJECTED'
-                      ? `The request came back with a note. Fix what is flagged, then send it again.`
-                      : 'Everything for today is tallied below. Send the request and your manager will approve or disapprove it.'}
+                      ? t('cashier.eod.rejectedMsg', { defaultValue: 'The request came back with a note. Fix what is flagged, then send it again.' })
+                      : t('cashier.eod.openMsg', { defaultValue: 'Everything for today is tallied below. Send the request and your manager will approve or disapprove it.' })}
               </p>
             </div>
           </div>
@@ -234,8 +261,8 @@ export const CashierEndOfDay: React.FC = () => {
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
               </span>
               {sentAt
-                ? 'Sent just now — this page updates on its own once they decide.'
-                : 'Awaiting a decision — this page updates on its own once they decide.'}
+                ? t('cashier.eod.sentJustNow', { defaultValue: 'Sent just now — this page updates on its own once they decide.' })
+                : t('cashier.eod.awaitingDecision', { defaultValue: 'Awaiting a decision — this page updates on its own once they decide.' })}
             </div>
           )}
 
@@ -244,7 +271,7 @@ export const CashierEndOfDay: React.FC = () => {
               <ShieldQuestion className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
               <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-wide text-rose-700 dark:text-rose-400">
-                  Manager&apos;s note
+                  {t('cashier.eod.managerNote', { defaultValue: "Manager's note" })}
                 </p>
                 <p className="mt-0.5 text-sm text-foreground">{record.reviewNotes}</p>
               </div>
@@ -254,68 +281,70 @@ export const CashierEndOfDay: React.FC = () => {
 
         {/* Today's sales. Live until the day is closed, then the locked record. */}
         {figures ? (
-          <div className="space-y-4 border-t border-border/60 px-5 py-5 sm:px-7">
+          <div className="space-y-4 border-t border-border/60 px-5 py-5 tablet-portrait:px-7">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                 {figuresLabel}
               </p>
               <p className="font-mono text-xs text-muted-foreground">{figures.businessDate}</p>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label="Total sales" value={figures.totalSalesMinor ?? 0} />
-              <Stat label="Cash" value={figures.cashSettledMinor ?? 0} tone="primary" />
-              <Stat label="Card" value={figures.cardSettledMinor ?? 0} />
-              <Stat label="Mobile" value={figures.mobileSettledMinor ?? 0} />
+            <div className="grid grid-cols-2 gap-3 tablet-landscape:grid-cols-4">
+              <Stat label={t('cashier.eod.totalSales', { defaultValue: 'Total sales' })} value={figures.totalSalesMinor ?? 0} />
+              <Stat label={t('cashier.method.cash', { defaultValue: 'Cash' })} value={figures.cashSettledMinor ?? 0} tone="primary" />
+              <Stat label={t('cashier.method.card', { defaultValue: 'Card' })} value={figures.cardSettledMinor ?? 0} />
+              <Stat label={t('cashier.method.mobile', { defaultValue: 'Mobile' })} value={figures.mobileSettledMinor ?? 0} />
             </div>
             <p className="text-xs text-muted-foreground">
-              {figures.unsettledOrderCount || 0} unsettled · {figures.cancelledOrderCount || 0}{' '}
-              cancelled ticket{figures.cancelledOrderCount === 1 ? '' : 's'} · total settled{' '}
-              {formatCurrency(figures.totalSettledMinor ?? 0)}
+              {t('cashier.eod.summaryLine', {
+                unsettled: figures.unsettledOrderCount || 0,
+                cancelled: figures.cancelledOrderCount || 0,
+                total: formatCurrency(figures.totalSettledMinor ?? 0),
+                defaultValue: '{{unsettled}} unsettled · {{cancelled}} cancelled tickets · total settled {{total}}',
+              })}
             </p>
           </div>
         ) : (
-          <div className="border-t border-border/60 px-5 py-5 sm:px-7">
+          <div className="border-t border-border/60 px-5 py-5 tablet-portrait:px-7">
             <ul className="space-y-2.5 text-sm text-muted-foreground">
               <li className="flex items-start gap-2.5">
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                Your day&apos;s sales, payments, and cancellations are tallied automatically when you
-                send the request.
+                {t('cashier.eod.hintAutoTally', { defaultValue: "Your day's sales, payments, and cancellations are tallied automatically when you send the request." })}
               </li>
               <li className="flex items-start gap-2.5">
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                A manager reviews it and either approves the close or sends it back with a note.
+                {t('cashier.eod.hintManagerReviews', { defaultValue: 'A manager reviews it and either approves the close or sends it back with a note.' })}
               </li>
             </ul>
           </div>
         )}
 
-        <div className="border-t border-border/60 bg-secondary/20 px-5 py-4 sm:px-7">
+        <div className="border-t border-border/60 bg-secondary/20 px-5 py-4 tablet-portrait:px-7">
           {status === 'PENDING_REVIEW' ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
-                You can check back any time — the bell will tell you when it is decided.
+                {t('cashier.eod.checkBackAnyTime', { defaultValue: 'You can check back any time — the bell will tell you when it is decided.' })}
               </p>
               <Button variant="outline" disabled>
                 <Clock3 className="mr-2 h-4 w-4" />
-                Waiting for approval
+                {t('cashier.eod.waitingApproval', { defaultValue: 'Waiting for approval' })}
               </Button>
             </div>
           ) : status === 'CLOSED' ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                Business day locked. See you tomorrow.
+                {t('cashier.eod.dayLockedSeeYou', { defaultValue: 'Business day locked. See you tomorrow.' })}
               </p>
               <Button variant="outline" disabled>
                 <BadgeCheck className="mr-2 h-4 w-4" />
-                Day closed
+                {t('cashier.eod.dayClosedBtn', { defaultValue: 'Day closed' })}
               </Button>
             </div>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
                 {status === 'REJECTED'
-                  ? 'Send a fresh request once the issue is sorted.'
-                  : 'Sending the request locks nothing — only your manager’s approval does.'}
+                  ? t('cashier.eod.resendHint', { defaultValue: 'Send a fresh request once the issue is sorted.' })
+                  : t('cashier.eod.sendHint', { defaultValue: "Sending the request locks nothing — only your manager's approval does." })}
               </p>
               <Button
                 size="lg"
@@ -329,10 +358,10 @@ export const CashierEndOfDay: React.FC = () => {
                   <Send className="mr-2 h-4 w-4" />
                 )}
                 {requestMutation.isPending
-                  ? 'Sending…'
+                  ? t('cashier.eod.sending', { defaultValue: 'Sending…' })
                   : status === 'REJECTED'
-                    ? 'Send request again'
-                    : 'Send close request'}
+                    ? t('cashier.eod.resendBtn', { defaultValue: 'Send request again' })
+                    : t('cashier.eod.sendBtn', { defaultValue: 'Send close request' })}
               </Button>
             </div>
           )}
