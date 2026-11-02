@@ -25,7 +25,8 @@
     "absent": "Absent",
     "leave": "Leave",
     "holiday": "Holiday",
-    "halfDay": "Half Day"
+    "halfDay": "Half Day",
+    "inactive": "Inactive"
   },
   "loading": "Loading...",
   "error": {
@@ -736,6 +737,7 @@
     "saveProduct": "Save product",
     "stockWarning": "Low stock",
     "inactive": "Hidden",
+    "removeMember": "Remove member",
     "stockReasons": { "OPENING_BALANCE": "Opening stock", "RECEIVING": "Received", "ADJUSTMENT": "Adjustment", "SALE": "Marketplace sale", "CANCELLATION": "Cancellation restock" },
     "noProductsManaged": "Add your first product listing.",
     "variants": "Options and variants",
