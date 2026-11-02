@@ -3,6 +3,7 @@ import {
   getPrinterRegistry,
   sendToNetworkPrinter,
   humanizePrintReason,
+  printFailureSentence,
   type PrinterStation,
 } from './printer.service';
 import { createNotification } from './notification.service';
@@ -133,6 +134,9 @@ class PrintDispatchService {
         logger.info({ jobId: job.id, orderId: job.orderId, station: job.station }, 'Kitchen ticket sent to network printer');
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        // Store and broadcast a sentence staff can act on. The raw socket error
+        // stays in the server log for whoever services the printer.
+        const plain = printFailureSentence(message);
         const exhausted = attempts >= job.maxAttempts;
 
         await prisma.printJob.update({
@@ -141,7 +145,7 @@ class PrintDispatchService {
             status: exhausted ? PrintJobStatus.FAILED : PrintJobStatus.QUEUED,
             attempts,
             lastAttemptAt: new Date(),
-            lastError: message,
+            lastError: plain,
           },
         });
 
@@ -156,7 +160,7 @@ class PrintDispatchService {
             jobId: job.id,
             orderId: job.orderId,
             station: job.station,
-            error: message,
+            error: plain,
           });
         } else {
           logger.warn({ jobId: job.id, attempt: attempts, message }, 'Network print attempt failed — will retry');
@@ -201,7 +205,9 @@ class PrintDispatchService {
         jobId: job.id,
         orderId: job.orderId,
         station: job.station,
-        error: job.lastError ?? 'No printer picked up the ticket in time',
+        error: job.lastError
+          ? printFailureSentence(job.lastError)
+          : 'No printer picked up the ticket in time.',
       });
 
       await this.notifyFailure(
