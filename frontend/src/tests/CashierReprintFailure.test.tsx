@@ -118,8 +118,8 @@ const reprintAndFail = async (event: 'printJob:failed' | 'printJob:updated') => 
     socket.emit(
       event,
       event === 'printJob:failed'
-        ? { jobId: 'job-1', orderId: 'o1', station: 'kitchen', error: 'Out of paper' }
-        : { jobId: 'job-1', status: 'FAILED', error: 'Out of paper' },
+        ? { jobId: 'job-1', orderId: 'o1', station: 'kitchen', error: 'The printer is out of paper.' }
+        : { jobId: 'job-1', status: 'FAILED', error: 'The printer is out of paper.' },
     );
   });
 };
@@ -146,6 +146,8 @@ describe('cashier reprint failures', () => {
     );
     // The toast is transient; the strip stays until the ticket prints.
     expect(await screen.findByText('Kitchen print failed')).toBeInTheDocument();
+    // The strip names the actual cause, not just "check the printer".
+    expect(screen.getByText('The printer is out of paper.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Reprint Table 3/i })).toBeInTheDocument();
   });
 
@@ -156,6 +158,23 @@ describe('cashier reprint failures', () => {
       expect.objectContaining({ type: 'error', title: 'Reprint failed again' }),
     );
     expect(await screen.findByText('Kitchen print failed')).toBeInTheDocument();
+  });
+
+  it('shows the specific cause in the printer-failure banner', async () => {
+    renderPage();
+    expect(await screen.findByText('Table 3')).toBeInTheDocument();
+
+    await act(async () => {
+      socket.emit('printer:failed', {
+        station: 'kitchen',
+        device: '04b8:0e15',
+        orderId: 'o1',
+        failedAt: new Date().toISOString(),
+        error: 'The printer is out of paper.',
+      });
+    });
+
+    expect(await screen.findByText(/The printer is out of paper\./)).toBeInTheDocument();
   });
 
   it('clears the failure once the ticket actually prints', async () => {
