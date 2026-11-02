@@ -175,6 +175,8 @@
       "line_other": "{{count}} መስመሮች",
       "tableNumber": "የጠረጴዛ ቁጥር",
       "tablePlaceholder": "ለምሳሌ፡ 12 ወይም ለወጭ",
+      "customerLabel": "ደንበኛ",
+      "walkInCustomer": "የመጣ ደንበኛ",
       "emptyCart": "ዕቃዎቹን ይጫኑ ከዚህ ለማስቀመጥ።",
       "each": "ለእያ",
       "notesPlaceholder": "ማሳሰቢያ (አማራጭ)",
