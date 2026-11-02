@@ -199,7 +199,7 @@ export class PrintJobRecoveryService {
         jobId: job.id,
         orderId: job.orderId,
         station: job.station,
-        error: 'Max print attempts exceeded',
+        error: 'The printer did not accept the ticket after several attempts. Check it and tap Reprint.',
       });
     }
   }
