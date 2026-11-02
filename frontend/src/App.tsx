@@ -37,6 +37,27 @@ const OwnerPayroll = lazy(() =>
 const OwnerExpenses = lazy(() =>
   import('./pages/owner/OwnerExpenses').then((m) => ({ default: m.OwnerExpenses }))
 );
+const OwnerInventory = lazy(() =>
+  import('./pages/owner/OwnerInventory').then((m) => ({ default: m.OwnerInventory }))
+);
+const OwnerPurchases = lazy(() =>
+  import('./pages/owner/OwnerPurchases').then((m) => ({ default: m.OwnerPurchases }))
+);
+const OwnerCustomers = lazy(() =>
+  import('./pages/owner/OwnerCustomers').then((m) => ({ default: m.OwnerCustomers }))
+);
+const MarketplacePage = lazy(() =>
+  import('./pages/marketplace/MarketplacePage').then((m) => ({ default: m.MarketplacePage }))
+);
+const PublicHomePage = lazy(() =>
+  import('./pages/home/PublicHomePage').then((m) => ({ default: m.PublicHomePage }))
+);
+const CashDrawerPage = lazy(() =>
+  import('./pages/shared/CashDrawerPage').then((m) => ({ default: m.CashDrawerPage }))
+);
+const MarketplaceManage = lazy(() =>
+  import('./pages/marketplace/MarketplaceManagePage').then((m) => ({ default: m.MarketplaceManagePage }))
+);
 const SystemAdminPage = lazy(() =>
   import('./pages/owner/SystemAdminPage').then((m) => ({ default: m.SystemAdminPage }))
 );
@@ -156,25 +177,15 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
 /**
  * Login entry point (used by both `/` and `/login`).
  *
- * On a hard refresh the access token lives only in memory, so the app must
- * silently restore the session from the HttpOnly refresh cookie. While that
- * bootstrap is in flight we must NOT render the login form — otherwise the user
- * sees a jarring "logged out" flash followed by an automatic sign-in. Instead:
- *
- *  - if a session is already restored → bounce straight to the role home;
- *  - if a cached user exists but bootstrap is still running → show the skeleton;
- *  - only when we are certain there is no session → show the login form.
+ * The login form reads nothing from the database, so it paints immediately
+ * instead of waiting behind the session bootstrap. That bootstrap restores a
+ * session from the HttpOnly refresh cookie in the background; if it succeeds,
+ * the redirect below fires on the next render. Reserving skeletons for
+ * DB-backed screens keeps a cold production start from sitting on a grey login
+ * placeholder while a slow /auth/refresh is in flight.
  */
 const LoginRoute: React.FC = () => {
-  const { user, isAuthenticated, isLoading } = useAuthStore();
-
-  // Never render the login form while the initial session bootstrap is still
-  // running — on a hard refresh the access token is memory-only and the app is
-  // restoring the session from the HttpOnly refresh cookie. Showing the form
-  // here would flash a false "logged out" screen right before the auto sign-in.
-  if (isLoading) {
-    return <PageSkeleton />;
-  }
+  const { user, isAuthenticated } = useAuthStore();
 
   if (isAuthenticated && user) {
     const home = ROLE_HOME[user.role];
@@ -274,8 +285,10 @@ export const AppRoutes: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ToastContainer />
       <Routes>
-        <Route path="/" element={<LoginRoute />} />
+        <Route path="/" element={<Lazy><PublicHomePage /></Lazy>} />
         <Route path="/login" element={<LoginRoute />} />
+        <Route path="/marketplace" element={<Lazy><MarketplacePage /></Lazy>} />
+        <Route path="/marketplace/:slug" element={<Lazy><MarketplacePage /></Lazy>} />
 
         <Route
           path="/owner"
@@ -294,7 +307,12 @@ export const AppRoutes: React.FC = () => {
           {/* Sales statistics per menu item — how often each item sells. */}
           <Route path="menu/sales" element={<MenuSalesStats />} />
           <Route path="finance" element={<OwnerFinance />} />
+          <Route path="cash-drawer" element={<Lazy><CashDrawerPage /></Lazy>} />
           <Route path="expenses" element={<OwnerExpenses />} />
+          <Route path="inventory" element={<OwnerInventory />} />
+          <Route path="purchases" element={<OwnerPurchases />} />
+          <Route path="customers" element={<OwnerCustomers />} />
+          <Route path="marketplace" element={<Lazy><MarketplaceManage /></Lazy>} />
           <Route path="attendance" element={<AttendanceCalendar isOwner={managerConsolidated ? false : true} />} />
           <Route path="payroll" element={<OwnerPayroll />} />
           <Route path="admin" element={<SystemAdminPage />} />
@@ -333,6 +351,11 @@ export const AppRoutes: React.FC = () => {
           />
           <Route path="payroll" element={<Lazy><ManagerPayroll /></Lazy>} />
           <Route path="expenses" element={<Lazy><ManagerExpenses /></Lazy>} />
+          <Route path="cash-drawer" element={<Lazy><CashDrawerPage /></Lazy>} />
+          <Route path="inventory" element={<Lazy><OwnerInventory /></Lazy>} />
+          <Route path="purchases" element={<Lazy><OwnerPurchases /></Lazy>} />
+          <Route path="customers" element={<Lazy><OwnerCustomers /></Lazy>} />
+          <Route path="marketplace" element={<Lazy><MarketplaceManage /></Lazy>} />
           <Route path="printers" element={<Lazy><ManagerPrinters /></Lazy>} />
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
@@ -350,7 +373,9 @@ export const AppRoutes: React.FC = () => {
         >
           <Route index element={<Lazy><CashierDashboard /></Lazy>} />
           <Route path="tickets" element={<Lazy><CashierTicketsPage /></Lazy>} />
+          <Route path="cash-drawer" element={<Lazy><CashDrawerPage /></Lazy>} />
           <Route path="menu" element={<Lazy><MenuCatalog canEdit={true} /></Lazy>} />
+          <Route path="customers" element={<Lazy><OwnerCustomers /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
           <Route path="printers" element={<Lazy><CashierPrinters /></Lazy>} />
           <Route path="end-of-day" element={<Lazy><CashierEndOfDay /></Lazy>} />
