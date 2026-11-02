@@ -81,6 +81,32 @@ describe('session bootstrap & refresh (authStore)', () => {
     expect(localStorage.getItem('pos_user')).not.toBeNull();
   }, 15000);
 
+  // Regression: the login form paints immediately now, so a user can sign in
+  // while the initial bootstrap is still waiting on /auth/refresh. A late 401
+  // from that stale request must not wipe the session they just created.
+  it('ignores a stale bootstrap rejection after the user signs in', async () => {
+    let rejectRefresh: (reason?: unknown) => void = () => {};
+    mockedPost.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRefresh = reject;
+        }),
+    );
+
+    const bootstrap = useAuthStore.getState().bootstrapSession();
+
+    // The user submits the login form while the refresh is still in flight.
+    useAuthStore.getState().setAuth(OWNER as any, 'fresh-login-token');
+    rejectRefresh({ response: { status: 401 } });
+
+    await bootstrap;
+
+    const s = useAuthStore.getState();
+    expect(s.accessToken).toBe('fresh-login-token');
+    expect(s.isAuthenticated).toBe(true);
+    expect(s.user?.name).toBe('Owner');
+  });
+
   it('dedupes concurrent refresh calls into a single /auth/refresh request', async () => {
     mockedPost.mockResolvedValue({ data: { accessToken: 'at', user: OWNER } });
 
