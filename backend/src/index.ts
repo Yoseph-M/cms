@@ -87,7 +87,19 @@ async function startServer() {
   }
 
   server.listen(config.port, () => {
-    logger.info(`Server running in ${config.nodeEnv} mode on http://localhost:${config.port}`);
+    const address = server.address();
+    const boundPort = typeof address === 'object' && address ? address.port : config.port;
+
+    // PORT=0 asks the OS for any free port, which silently breaks the frontend
+    // dev proxy (it always targets 5001). Say so out loud instead of logging "0".
+    if (config.port === 0) {
+      logger.warn(
+        `PORT=0 is set, so the API bound a random port (${boundPort}). ` +
+          'The frontend proxy expects http://127.0.0.1:5001 — unset PORT or set PORT=5001.'
+      );
+    }
+
+    logger.info(`Server running in ${config.nodeEnv} mode on http://localhost:${boundPort}`);
     logger.info({ transactionCapability: getTransactionCapability() }, 'Transaction capability');
   });
 }
