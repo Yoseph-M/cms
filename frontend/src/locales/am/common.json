@@ -25,7 +25,8 @@
     "absent": "ቀርቷል",
     "leave": "ፈቃድ",
     "holiday": "ዕረፍት",
-    "halfDay": "ግማሽ ቀን"
+    "halfDay": "ግማሽ ቀን",
+    "inactive": "ንቁ ያልሆነ"
   },
   "loading": "በመጫን ላይ...",
   "error": {
@@ -736,6 +737,7 @@
     "saveProduct": "ምርት አስቀምጥ",
     "stockWarning": "ክምችት ዝቅተኛ ነው",
     "inactive": "ተደብቋል",
+    "removeMember": "አባልን አስወግድ",
     "stockReasons": { "OPENING_BALANCE": "የመጀመሪያ ክምችት", "RECEIVING": "ተቀብሏል", "ADJUSTMENT": "ማስተካከያ", "SALE": "የገበያ ሽያጭ", "CANCELLATION": "የስረዛ ክምችት መመለስ" },
     "noProductsManaged": "የመጀመሪያ ምርትዎን ይዘርዝሩ።",
     "variants": "አማራጮች እና ዝርያዎች",
