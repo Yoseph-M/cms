@@ -14,6 +14,7 @@ import { emitToLiveOrders } from './socket.service';
 import { CancellationRequestStatus, OrderStatus, PaymentMethod, SettlementStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { executeInCriticalTransaction } from '../utils/transaction';
+import { restoreCancelledOrderStock } from './inventory.service';
 import {
   ConcurrentModificationError,
   NotFoundError,
@@ -147,6 +148,7 @@ export async function requestCancellation(params: CreateCancellationRequestParam
           cancelledById: requestedById,
         },
       });
+      await restoreCancelledOrderStock(tx, orderId, requestedById);
     }
 
     return request;
@@ -332,6 +334,10 @@ export async function approveCancellation(params: ApproveCancellationParams) {
       if (orderUpdateResult.count === 0) {
         // Order was already cancelled or status changed - log but continue
         // The request is approved so we return that, but order was already cancelled
+      }
+
+      if (orderUpdateResult.count > 0) {
+        await restoreCancelledOrderStock(tx, approvedRequest.orderId, approvedById);
       }
 
       return { 
