@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
-import { Calculator, UtensilsCrossed, Receipt, Settings, Ticket, Printer, ClipboardCheck, X } from 'lucide-react';
+import { Calculator, UtensilsCrossed, Receipt, Settings, Ticket, Printer, ClipboardCheck, UsersRound, Banknote, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
@@ -31,7 +31,9 @@ const CashierLayoutInner: React.FC = () => {
   const CASHIER_NAV = [
     { to: '/cashier', label: t('nav.dashboard', { defaultValue: 'Dashboard' }), icon: Calculator, end: true, group: 'core' },
     { to: '/cashier/tickets', label: t('nav.tickets', { defaultValue: 'Tickets' }), icon: Ticket, end: true, group: 'core' },
+    { to: '/cashier/cash-drawer', label: t('common:cashDrawer.title'), icon: Banknote, end: false, group: 'ops' as const },
     { to: '/cashier/menu', label: t('nav.menu', { defaultValue: 'Menu Catalog' }), icon: UtensilsCrossed, end: false, group: 'ops' as const },
+    { to: '/cashier/customers', label: t('common:customers.title'), icon: UsersRound, end: false, group: 'ops' as const },
     { to: '/cashier/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, end: false, group: 'ops' as const },
     { to: '/cashier/end-of-day', label: t('nav.endOfDay', { defaultValue: 'End of Day' }), icon: ClipboardCheck, end: false, group: 'ops' as const },
     { to: '/cashier/printers', label: t('nav.printers', { defaultValue: 'Printers' }), icon: Printer, end: false, group: 'ops' as const },
