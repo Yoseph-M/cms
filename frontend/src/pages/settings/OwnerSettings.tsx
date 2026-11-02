@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ShieldCheck,
+  Printer,
 } from 'lucide-react';
 import { SettingsShell, type SettingsShellCategory } from '../../components/settings/SettingsShell';
 import { useHeaderStore } from '../../store/headerStore';
@@ -13,6 +14,7 @@ import { OwnerAttendanceToggle } from '../../components/settings/OwnerAttendance
 import { WorkOnSundaysToggle } from '../../components/settings/WorkOnSundaysToggle';
 import { OwnerMenuEditToggle } from '../../components/settings/OwnerMenuEditToggle';
 import { FeatureToggles } from '../../components/settings/FeatureToggles';
+import { ReceiptPrintingSection } from '../../components/settings/ReceiptPrintingSection';
 
 export const OwnerSettings: React.FC = () => {
   const { t } = useTranslation('owner');
@@ -58,6 +60,34 @@ export const OwnerSettings: React.FC = () => {
           description: 'Control which system events trigger notifications on this terminal.',
           keywords: ['notifications', 'alerts', 'printer', 'attendance', 'payroll', 'bell', 'sound'],
           content: <NotificationPreferencesSection />,
+        },
+      ],
+    },
+    {
+      id: 'printing',
+      label: 'Printing',
+      description: 'Receipt layout, paper size, copies, and the business header',
+      icon: Printer,
+      iconClassName: 'text-sky-600 dark:text-sky-400',
+      iconBgClassName: 'bg-sky-500/10',
+      items: [
+        {
+          id: 'receipt-printing',
+          title: 'Receipts & Printing',
+          description: 'Customize how receipts look and print.',
+          bare: true,
+          keywords: [
+            'receipt',
+            'printing',
+            'paper size',
+            '58mm',
+            '80mm',
+            'copies',
+            'bottom message',
+            'business name',
+            'tax',
+          ],
+          content: <ReceiptPrintingSection />,
         },
       ],
     },
