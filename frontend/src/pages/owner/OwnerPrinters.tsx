@@ -19,6 +19,7 @@ import { printTestSlip, type TestSlip } from '../../hooks/useHardwarePrinter';
 import i18nInstance from '../../i18n';
 import { EmptyState } from '../../components/common/EmptyState';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { describePrinterFailure } from '../../utils/printerErrors';
 
 type PrinterTransport = 'BLUETOOTH' | 'USB' | 'NETWORK';
 
@@ -431,17 +432,16 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       }
       setStatuses(prev => ({ ...prev, [printer.station]: 'online' }));
     } catch (err: any) {
-      // printTestSlip rejects with a plain Error carrying the real reason
-      // (nothing selected, browser without Web Bluetooth); axios rejects with
-      // its own shape, which extractErrorMessage knows how to read.
-      const message =
-        err instanceof Error && !('response' in err) && err.message
-          ? err.message
-          : extractErrorMessage(err) || t('printers.unreachable');
+      // printTestSlip rejects with a coded print failure (busy, unplugged,
+      // cancelled); axios rejects with its own shape, which extractErrorMessage
+      // knows how to read. Either way the operator gets a cause, not a driver
+      // error or a status number.
+      const isPrintFailure = err instanceof Error && !('response' in err);
+      const failure = isPrintFailure ? describePrinterFailure(err) : null;
       addToast({
         type: 'error',
-        title: t('printers.testFailedTitle', { station: printer.station }),
-        message,
+        title: failure?.title || t('printers.testFailedTitle', { station: printer.station }),
+        message: failure?.message || extractErrorMessage(err) || t('printers.unreachable'),
       });
       setStatuses(prev => ({ ...prev, [printer.station]: 'offline' }));
     } finally {
