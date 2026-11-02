@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>USB printer harness (dev only)</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; padding: 24px; font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      main { max-width: 1000px; margin: 0 auto; }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      h2 { font-size: 15px; margin: 24px 0 8px; }
+      button { font: inherit; padding: 8px 12px; margin: 0 8px 8px 0; border-radius: 8px; border: 1px solid #8884; background: #8881; cursor: pointer; }
+      button:hover { background: #8882; }
+      button:disabled { opacity: .5; cursor: progress; }
+      pre { background: #8881; padding: 12px; border-radius: 8px; overflow: auto; max-height: 360px; white-space: pre-wrap; }
+      #api-state { padding: 8px 12px; border-radius: 8px; background: #8881; }
+      #toast-list { list-style: none; padding: 0; margin: 8px 0; }
+      #toast-list li { padding: 8px 12px; border-radius: 8px; border: 1px solid #8884; margin-bottom: 6px; }
+      .hint { color: #888d; }
+      table { border-collapse: collapse; width: 100%; font-size: 13px; }
+      th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #8883; vertical-align: top; }
+      td.pass { color: #1a7f37; font-weight: 600; }
+      td.fail { color: #c62828; font-weight: 600; }
+      tr.fail-row td { background: #c6282811; }
+      .summary { font-weight: 600; margin: 8px 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>USB printer harness</h1>
+      <p class="hint">
+        Dev-only page (not part of the build). It loads the real print path from
+        <code>src/hooks/useHardwarePrinter.ts</code> in a real browser, so a physical printer can be
+        tested for real — and every failure mode can be simulated without one.
+      </p>
+      <p id="api-state">Checking WebUSB…</p>
+
+      <h2>Paper test — needs a printer plugged into this machine</h2>
+      <button id="real">Print a slip</button>
+      <p class="hint">
+        Run this in two tabs at the same time to reproduce two windows racing for one printer (the
+        failure that started this). Before the fix the second tab lost the ticket; now it waits for the
+        first window and prints.
+      </p>
+
+      <h2>Simulations</h2>
+      <button id="run-all">Run all simulations</button>
+      <button id="busy-once">Quick: another window holds it once</button>
+      <button id="busy-always">Quick: another program keeps it</button>
+      <div class="summary" id="summary">No simulations run yet.</div>
+      <table id="results"><thead><tr><th>Scenario</th><th>Result</th><th>Detail</th></tr></thead><tbody></tbody></table>
+
+      <div id="queued-root">
+        <ul id="toast-list"></ul>
+      </div>
+
+      <h2>Device log</h2>
+      <pre id="log"></pre>
+    </main>
+
+    <script type="module">
+      import { printTestSlip, useHardwarePrinter } from '/src/hooks/useHardwarePrinter.ts';
+      import { axiosClient } from '/src/api/axiosClient.ts';
+      import { useAuthStore } from '/src/store/authStore.ts';
+      import { useToastStore } from '/src/store/toastStore.ts';
+      import { useSocketStore } from '/src/store/socketStore.ts';
+      import i18n from '/src/i18n.ts';
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+
+      const logEl = document.getElementById('log');
+      const apiStateEl = document.getElementById('api-state');
+      const resultsBody = document.querySelector('#results tbody');
+      const summaryEl = document.getElementById('summary');
+
+      const log = (...parts) => {
+        const line = `${new Date().toLocaleTimeString()}  ${parts.join(' ')}`;
+        console.log('[harness]', line);
+        logEl.textContent += `${line}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      const namedError = (name, message) => Object.assign(new Error(message), { name });
+      const busyError = () =>
+        namedError(
+          'NetworkError',
+          "Failed to execute 'claimInterface' on 'USBService': Unable to claim interface.",
+        );
+      const t = (key) => i18n.t(key);
+
+      /** A minimal ESC/POS slip: init, centred double-height line, cut. */
+      const slipPayload = (text) => {
+        const bytes = [];
+        const push = (s) => { for (const ch of s) bytes.push(ch.charCodeAt(0)); };
+        push('\x1b@');
+        push('\x1ba\x01');
+        push('\x1b!\x20');
+        push('\nHARNESS TEST SLIP\n');
+        push('\x1b!\x00');
+        push(`${text}\n\n\n`);
+        push('\x1dV\x00');
+        let binary = '';
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      };
+
+      const slipFor = (text = 'simulation') => {
+        const payloadBase64 = slipPayload(text);
+        return {
+          slip: {
+            transport: 'USB',
+            printerMacAddress: null,
+            printerVendorId: '04b8',
+            printerProductId: '0e15',
+            payloadBase64,
+          },
+          byteLength: atob(payloadBase64).length,
+        };
+      };
+
+      // ---- A fake device that behaves the way Chromium does -------------------
+
+      function buildInterfaces(opts = {}) {
+        const interfaceNumber = opts.interfaceNumber ?? 0;
+        const endpointNumber = opts.endpointNumber ?? 1;
+        const outEndpoint = { direction: 'out', type: 'bulk', endpointNumber };
+        const inEndpoint = { direction: 'in', type: 'bulk', endpointNumber: 2 };
+
+        if (opts.noBulkOut) {
+          return [{ interfaceNumber: 0, alternates: [{ endpoints: [inEndpoint] }] }];
+        }
+
+        const interfaces = [];
+        if (interfaceNumber !== 0) {
+          interfaces.push({ interfaceNumber: 0, alternates: [{ endpoints: [inEndpoint] }] });
+        }
+        const alternates = opts.endpointOnSecondAlternate
+          ? [{ endpoints: [inEndpoint] }, { endpoints: [outEndpoint] }]
+          : [{ endpoints: [outEndpoint] }];
+        interfaces.push({ interfaceNumber, alternates });
+        return interfaces;
+      }
+
+      function makeDevice(opts = {}) {
+        const calls = [];
+        let claimAttempts = 0;
+        let transferAttempts = 0;
+        let transferActive = false;
+        let interleaved = false;
+        let writtenBytes = 0;
+        const lock = opts.lock;
+        let configValue = opts.configValue ?? 1;
+
+        const device = {
+          vendorId: opts.vendorId ?? 0x04b8,
+          productId: opts.productId ?? 0x0e15,
+          productName: 'Simulated ESC/POS printer',
+          opened: Boolean(opts.alreadyOpen),
+          configuration: null,
+          configurations: [{ configurationValue: configValue }],
+          calls,
+          get interleaved() { return interleaved; },
+          get writtenBytes() { return writtenBytes; },
+
+          async open() {
+            calls.push('open');
+            if (opts.openError) throw namedError(opts.openError, 'Access denied.');
+            device.opened = true;
+          },
+          async selectConfiguration(value) {
+            calls.push(`selectConfiguration:${value}`);
+            if (opts.selectError) throw namedError(opts.selectError, 'Configuration failed.');
+            configValue = value;
+            device.configuration = { configurationValue: value, interfaces: buildInterfaces(opts) };
+          },
+          async claimInterface(number) {
+            claimAttempts += 1;
+            calls.push(`claim:${number}`);
+            if (typeof opts.claimError === 'function') {
+              const err = opts.claimError(claimAttempts);
+              if (err) throw err;
+            }
+            if (lock) {
+              if (lock.claimed) throw busyError();
+              lock.claimed = true;
+              lock.owner = device;
+            }
+          },
+          async releaseInterface(number) {
+            calls.push(`release:${number}`);
+            if (lock && lock.owner === device) {
+              lock.claimed = false;
+              lock.owner = null;
+            }
+            if (opts.releaseError) throw namedError(opts.releaseError, 'Release failed.');
+          },
+          async transferOut(endpointNumber, payload) {
+            calls.push(`transferOut:${endpointNumber}:${payload.byteLength}`);
+            if (transferActive) interleaved = true;
+            transferActive = true;
+            try {
+              if (opts.transferHang) await new Promise(() => {});
+              if (opts.transferDelayMs) await sleep(opts.transferDelayMs);
+              transferAttempts += 1;
+              if (typeof opts.transferError === 'function') {
+                const err = opts.transferError(transferAttempts);
+                if (err) throw err;
+              } else if (opts.transferError) {
+                throw namedError(opts.transferError, 'Transfer failed.');
+              }
+              // A real short write fills part of the buffer (the platform cap),
+              // it does not silently drop a fixed number of trailing bytes.
+              const bytesWritten = opts.shortWriteBytes
+                ? Math.min(opts.shortWriteBytes, payload.byteLength)
+                : payload.byteLength;
+              writtenBytes += bytesWritten;
+              return { status: 'ok', bytesWritten };
+            } finally {
+              transferActive = false;
+            }
+          },
+          async close() {
+            calls.push('close');
+            if (opts.closeError) throw namedError(opts.closeError, 'Close failed.');
+            device.opened = false;
+            device.configuration = null;
+          },
+        };
+
+        if (opts.alreadyConfigured) {
+          device.configuration = { configurationValue: configValue, interfaces: buildInterfaces(opts) };
+        }
+        return device;
+      }
+
+      function makeUsb(devices, { requestDevice } = {}) {
+        const usb = {
+          requestDeviceCalls: 0,
+          getDevices: async () => devices,
+          requestDevice: async (options) => {
+            usb.requestDeviceCalls += 1;
+            const handler = requestDevice ?? ((opts, call) => devices[0] ?? null);
+            return handler(options, usb.requestDeviceCalls);
+          },
+          addEventListener() {},
+          removeEventListener() {},
+        };
+        return usb;
+      }
+
+      // Keep the real WebUSB reachable after every simulated scenario.
+      const ownUsbDescriptor = Object.getOwnPropertyDescriptor(navigator, 'usb');
+      const protoUsbDescriptor = Object.getOwnPropertyDescriptor(Navigator.prototype, 'usb');
+
+      function installFakeUsb(usb) {
+        Object.defineProperty(navigator, 'usb', { configurable: true, get: () => usb });
+      }
+
+      function useRealUsb() {
+        delete navigator.usb;
+        if (ownUsbDescriptor) Object.defineProperty(navigator, 'usb', ownUsbDescriptor);
+        if (protoUsbDescriptor) Object.defineProperty(Navigator.prototype, 'usb', protoUsbDescriptor);
+      }
+
+      const describeWebUsb = () => {
+        apiStateEl.textContent = navigator.usb
+          ? 'WebUSB: available — a real printer can be reached from this page.'
+          : 'WebUSB: not available here (Chrome or Edge over https:// or http://localhost). The simulated tests below still work.';
+      };
+
+      // ---- Assertion helpers --------------------------------------------------
+
+      const format = (value) => JSON.stringify(value);
+
+      function eventCheck(check, actual, expected, label) {
+        check(format(actual) === format(expected), `${label}: expected ${format(expected)}, got ${format(actual)}`);
+      }
+
+      async function outcome(promise) {
+        try {
+          const value = await promise;
+          return { ok: true, value };
+        } catch (error) {
+          return { ok: false, error };
+        }
+      }
+
+      async function printWith(usb, text = 'simulation') {
+        installFakeUsb(usb);
+        describeWebUsb();
+        const { slip, byteLength } = slipFor(text);
+        const result = await outcome(printTestSlip(slip));
+        return { ...result, byteLength };
+      }
+
+      // ---- The queued-ticket path (real hook, stubbed API) --------------------
+
+      const Terminal = () => {
+        useHardwarePrinter();
+        const toasts = useToastStore((state) => state.toasts);
+        return React.createElement(
+          'ul',
+          { id: 'toast-list' },
+          toasts.map((toast) =>
+            React.createElement('li', { key: toast.id }, `${toast.type.toUpperCase()}: ${toast.title} — ${toast.message ?? ''}`),
+          ),
+        );
+      };
+
+      const initialAuth = useAuthStore.getState();
+      const initialSocket = useSocketStore.getState();
+
+      async function runQueuedScenario({ device, devices = device ? [device] : [], jobs, waitMs = 7000 }) {
+        useToastStore.setState({ toasts: [] });
+
+        const acks = [];
+        const container = document.createElement('div');
+        document.getElementById('queued-root').appendChild(container);
+        const root = createRoot(container);
+
+        installFakeUsb(makeUsb(devices));
+        describeWebUsb();
+
+        let pending = [...jobs];
+        axiosClient.get = async (url) => {
+          const out = pending;
+          pending = [];
+          log(`GET ${url} → ${out.length} job(s)`);
+          return { data: out };
+        };
+        axiosClient.post = async (url, body) => {
+          log(`POST ${url} → ${JSON.stringify(body)}`);
+          acks.push({ url, body });
+          return { data: { success: true } };
+        };
+
+        useAuthStore.setState({ isAuthenticated: true, accessToken: 'harness-token' });
+        useSocketStore.setState({ socket: null, isConnected: false });
+
+        root.render(React.createElement(Terminal));
+
+        const deadline = Date.now() + waitMs;
+        while (acks.length < jobs.length && Date.now() < deadline) await sleep(50);
+
+        const toasts = useToastStore.getState().toasts.map((toast) => ({ ...toast }));
+
+        root.unmount();
+        container.remove();
+        useAuthStore.setState({ isAuthenticated: initialAuth.isAuthenticated, accessToken: initialAuth.accessToken });
+        useSocketStore.setState({ socket: initialSocket.socket, isConnected: initialSocket.isConnected });
+        useToastStore.setState({ toasts: [] });
+        return { acks, toasts };
+      }
+
+      const jobFor = (id, text) => {
+        const { slip } = slipFor(text);
+        return { id, station: 'kitchen', ...slip };
+      };
+
+      // ---- Scenarios ----------------------------------------------------------
+
+      const results = [];
+
+      async function scenario(name, fn) {
+        const failures = [];
+        const check = (condition, label) => { if (!condition) failures.push(label); };
+        let detail = '';
+        try {
+          detail = (await fn(check)) ?? '';
+        } catch (error) {
+          failures.push(`unexpected throw ${error?.name}: ${error?.message}`);
+        }
+        results.push({ name, pass: failures.length === 0, failures, detail });
+        log(failures.length === 0 ? `PASS ${name}` : `FAIL ${name} — ${failures.join(' | ')}`);
+      }
+
+      async function runAll() {
+        results.length = 0;
+        resultsBody.innerHTML = '';
+        logEl.textContent = '';
+        log('running all simulations');
+
+        await scenario('happy path: open → configure → claim → write → release → close', async (check) => {
+          const device = makeDevice();
+          const { ok, error, byteLength } = await printWith(makeUsb([device]));
+          check(ok, `print failed: ${error?.name}: ${error?.message}`);
+          eventCheck(check, device.calls, [
+            'open', 'selectConfiguration:1', 'claim:0', 'transferOut:1:' + byteLength, 'release:0', 'close',
+          ], 'device calls');
+          check(!device.opened, 'device left open');
+          return `${byteLength} bytes`;
+        });
+
+        await scenario('already open and configured: no open/selectConfiguration', async (check) => {
+          const device = makeDevice({ alreadyOpen: true, alreadyConfigured: true });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed');
+          eventCheck(check, device.calls, [
+            'claim:0', 'transferOut:1:' + byteLength, 'release:0', 'close',
+          ], 'device calls');
+          return `${byteLength} bytes`;
+        });
+
+        await scenario('device uses configuration 2, not 1', async (check) => {
+          const device = makeDevice({ configValue: 2 });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed');
+          eventCheck(check, device.calls, [
+            'open', 'selectConfiguration:2', 'claim:0', 'transferOut:1:' + byteLength, 'release:0', 'close',
+          ], 'device calls');
+          return 'selected configuration 2';
+        });
+
+        await scenario('bulk OUT endpoint on interface 1, interface 0 is IN-only', async (check) => {
+          const device = makeDevice({ interfaceNumber: 1, endpointNumber: 3 });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed');
+          eventCheck(check, device.calls, [
+            'open', 'selectConfiguration:1', 'claim:1', 'transferOut:3:' + byteLength, 'release:1', 'close',
+          ], 'device calls');
+          return 'used interface 1 / endpoint 3';
+        });
+
+        await scenario('bulk OUT endpoint on the second alternate setting', async (check) => {
+          const device = makeDevice({ endpointOnSecondAlternate: true, endpointNumber: 2 });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed');
+          eventCheck(check, device.calls, [
+            'open', 'selectConfiguration:1', 'claim:0', 'transferOut:2:' + byteLength, 'release:0', 'close',
+          ], 'device calls');
+          return 'used alternate setting';
+        });
+
+        await scenario('no bulk OUT endpoint: friendly error, device handed back', async (check) => {
+          const device = makeDevice({ noBulkOut: true });
+          const { ok, error } = await printWith(makeUsb([device]));
+          check(!ok, 'print unexpectedly succeeded');
+          check(error?.message === t('printers.noBulkEndpoint'), `unexpected message: ${error?.message}`);
+          eventCheck(check, device.calls, ['open', 'selectConfiguration:1', 'close'], 'device calls');
+          check(!device.opened, 'device left open');
+          return error?.message;
+        });
+
+        await scenario('claimed by another window once: retry, then print', async (check) => {
+          const device = makeDevice({ claimError: (attempt) => (attempt === 1 ? busyError() : null) });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed');
+          eventCheck(check, device.calls, [
+            'open', 'selectConfiguration:1',
+            'claim:0', 'release:0',
+            'claim:0', 'transferOut:1:' + byteLength, 'release:0',
+            'close',
+          ], 'device calls');
+          check(device.writtenBytes === byteLength, 'bytes not fully written');
+          return 'printed after 1 retry';
+        });
+
+        await scenario('held by another program forever: PrinterBusyError after 3 attempts', async (check) => {
+          const device = makeDevice({ claimError: () => busyError() });
+          const { ok, error } = await printWith(makeUsb([device]));
+          check(!ok, 'print unexpectedly succeeded');
+          check(error?.code === 'USB_CLAIM_BUSY', `unexpected error code: ${error?.code}`);
+          check(error?.message === t('printers.printerBusyMsg'), `unexpected message: ${error?.message}`);
+          eventCheck(check, device.calls, [
+            'open', 'selectConfiguration:1',
+            'claim:0', 'release:0',
+            'claim:0', 'release:0',
+            'claim:0', 'release:0',
+            'close',
+          ], 'device calls');
+          check(!device.opened, 'device left open');
+          return error?.message;
+        });
+
+        await scenario('busy once then unplugged: real error wins, no third claim', async (check) => {
+          const device = makeDevice({
+            claimError: (attempt) =>
+              attempt === 1 ? busyError() : attempt === 2 ? namedError('NotFoundError', 'The device was disconnected.') : null,
+          });
+          const { ok, error } = await printWith(makeUsb([device]));
+          check(!ok, 'print unexpectedly succeeded');
+          check(error?.name === 'NotFoundError', `unexpected error: ${error?.name}: ${error?.message}`);
+          check(device.calls.filter((call) => call.startsWith('claim')).length === 2, 'kept retrying a non-busy error');
+          check(device.calls.filter((call) => call === 'close').length === 1, 'device not closed');
+          return error?.message;
+        });
+
+        await scenario('permission denied on open: error surfaced, close attempted', async (check) => {
+          const device = makeDevice({ openError: 'SecurityError' });
+          const { ok, error } = await printWith(makeUsb([device]));
+          check(!ok, 'print unexpectedly succeeded');
+          check(error?.name === 'SecurityError', `unexpected error: ${error?.name}`);
+          eventCheck(check, device.calls, ['open', 'close'], 'device calls');
+          return error?.message;
+        });
+
+        await scenario('transferOut fails: error surfaced, interface released, device closed', async (check) => {
+          const device = makeDevice({ transferError: 'NetworkError' });
+          const { ok, error, byteLength } = await printWith(makeUsb([device]));
+          check(!ok, 'print unexpectedly succeeded');
+          check(error?.message === 'Transfer failed.', `unexpected message: ${error?.message}`);
+          eventCheck(check, device.calls, [
+            'open', 'selectConfiguration:1', 'claim:0', `transferOut:1:${byteLength}`, 'release:0', 'close',
+          ], 'device calls');
+          return error?.message;
+        });
+
+        await scenario('releaseInterface throws: print still succeeds and device closes', async (check) => {
+          const device = makeDevice({ releaseError: 'NetworkError' });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed because release threw');
+          check(device.writtenBytes === byteLength, 'bytes not written');
+          check(device.calls.at(-1) === 'close', 'device not closed');
+          return 'release error swallowed';
+        });
+
+        await scenario('close throws: print still succeeds', async (check) => {
+          const device = makeDevice({ closeError: 'NetworkError' });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed because close threw');
+          check(device.writtenBytes === byteLength, 'bytes not written');
+          return 'close error swallowed';
+        });
+
+        await scenario('short USB write: remaining bytes are sent', async (check) => {
+          const device = makeDevice({ shortWriteBytes: 20 });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed');
+          check(device.writtenBytes === byteLength, `only ${device.writtenBytes} of ${byteLength} bytes written`);
+          check(device.calls.filter((call) => call.startsWith('transferOut')).length >= 2, 'no retry of the remainder');
+          return `${byteLength} bytes in ${device.calls.filter((c) => c.startsWith('transferOut')).length} transfers`;
+        });
+
+        await scenario('after a failed write, the next ticket still prints', async (check) => {
+          const device = makeDevice({ transferError: (attempt) => (attempt === 1 ? namedError('NetworkError', 'Transfer failed.') : null) });
+          const first = await printWith(makeUsb([device]));
+          const second = await printWith(makeUsb([device]));
+          check(!first.ok, 'first print unexpectedly succeeded');
+          check(second.ok, 'queue stayed broken after a failed write');
+          check(device.calls.filter((call) => call === 'close').length === 2, 'device not closed after both attempts');
+          return 'second print succeeded';
+        });
+
+        await scenario('two prints in one page are serialized, both reach the printer', async (check) => {
+          const device = makeDevice({ transferDelayMs: 120 });
+          const usb = makeUsb([device]);
+          installFakeUsb(usb);
+          const { slip: slipA } = slipFor('ticket A');
+          const { slip: slipB } = slipFor('ticket B');
+          const [a, b] = await Promise.all([outcome(printTestSlip(slipA)), outcome(printTestSlip(slipB))]);
+          check(a.ok && b.ok, 'one of two queued prints failed');
+          check(!device.interleaved, 'two writes interleaved on the endpoint');
+          check(device.calls.filter((call) => call === 'open').length === 2, 'device not reopened per write');
+          check(device.calls.filter((call) => call === 'close').length === 2, 'device not closed per write');
+          return 'two writes serialized';
+        });
+
+        await scenario('another window holds the printer, then lets go: retry prints', async (check) => {
+          const lock = { claimed: true, owner: 'other-window' };
+          const device = makeDevice({ lock });
+          sleep(250).then(() => { lock.claimed = false; lock.owner = null; });
+          const { ok, byteLength } = await printWith(makeUsb([device]));
+          check(ok, 'print failed instead of waiting for the other window');
+          check(device.writtenBytes === byteLength, 'bytes not fully written');
+          check(device.calls.filter((call) => call.startsWith('claim')).length === 2, 'did not retry the claim');
+          check(!lock.claimed, 'interface left claimed');
+          return 'printed after the other window let go';
+        });
+
+        await scenario('printer not paired: chooser pairs it and prints', async (check) => {
+          const device = makeDevice();
+          const usb = makeUsb([], { requestDevice: () => device });
+          const { ok, byteLength } = await printWith(usb);
+          check(ok, 'print failed');
+          check(usb.requestDeviceCalls === 1, `chooser opened ${usb.requestDeviceCalls} times`);
+          check(device.writtenBytes === byteLength, 'bytes not written');
+          return 'paired and printed';
+        });
+
+        await scenario('chooser cancelled: friendly message, not a raw NotFoundError', async (check) => {
+          const usb = makeUsb([], {
+            requestDevice: () => { throw namedError('NotFoundError', 'No device selected.'); },
+          });
+          const { ok, error } = await printWith(usb);
+          check(!ok, 'print unexpectedly succeeded');
+          check(error?.message === t('printers.noUsbSelected'), `unexpected message: ${error?.name}: ${error?.message}`);
+          return error?.message;
+        });
+
+        await scenario('WebUSB unavailable: friendly message', async (check) => {
+          useRealUsb();
+          const usb = undefined;
+          Object.defineProperty(navigator, 'usb', { configurable: true, get: () => usb });
+          const { slip } = slipFor();
+          const { ok, error } = await outcome(printTestSlip(slip));
+          useRealUsb();
+          check(!ok, 'print unexpectedly succeeded');
+          check(error?.message === t('printers.usbUnsupported'), `unexpected message: ${error?.message}`);
+          return error?.message;
+        });
+
+        await scenario('queued ticket: prints and ACKs PRINTED', async (check) => {
+          const device = makeDevice();
+          const { acks } = await runQueuedScenario({ device, jobs: [jobFor('job-printed', 'TABLE 4')] });
+          check(acks.length === 1, `expected 1 ACK, got ${acks.length}`);
+          check(acks[0]?.body?.status === 'PRINTED', `ACK status: ${acks[0]?.body?.status}`);
+          check(acks[0]?.body?.error === null, `ACK error: ${acks[0]?.body?.error}`);
+          check(device.writtenBytes > 0, 'no bytes written');
+          return `ACK ${format(acks[0]?.body)}`;
+        });
+
+        await scenario('queued ticket, printer not paired: ACKs FAILED, no busy toast', async (check) => {
+          const { acks, toasts } = await runQueuedScenario({
+            device: undefined,
+            jobs: [jobFor('job-unpaired', 'TABLE 5')],
+          });
+          check(acks.length === 1, `expected 1 ACK, got ${acks.length}`);
+          check(acks[0]?.body?.status === 'FAILED', `ACK status: ${acks[0]?.body?.status}`);
+          check(acks[0]?.body?.error === t('printers.usbNotPaired'), `ACK error: ${acks[0]?.body?.error}`);
+          check(toasts.some((toast) => toast.title === t('printers.ticketNotPrinted')), 'missing ticket-not-printed toast');
+          check(!toasts.some((toast) => toast.title === t('printers.printerBusy')), 'wrongly reported a busy printer');
+          return acks[0]?.body?.error;
+        });
+
+        await scenario('queued ticket, printer held forever: ACKs FAILED with busy copy + busy toast', async (check) => {
+          const device = makeDevice({ claimError: () => busyError() });
+          const { acks, toasts } = await runQueuedScenario({ device, jobs: [jobFor('job-busy', 'TABLE 6')] });
+          check(acks.length === 1, `expected 1 ACK, got ${acks.length}`);
+          check(acks[0]?.body?.status === 'FAILED', `ACK status: ${acks[0]?.body?.status}`);
+          check(acks[0]?.body?.error === t('printers.printerBusyMsg'), `ACK error: ${acks[0]?.body?.error}`);
+          check(toasts.some((toast) => toast.title === t('printers.printerBusy')), 'missing printer-busy toast');
+          return `ACK ${format(acks[0]?.body)}`;
+        });
+
+        await scenario('queued tickets: first fails, second still prints in the same poll', async (check) => {
+          const device = makeDevice({ transferError: (attempt) => (attempt === 1 ? namedError('NetworkError', 'Transfer failed.') : null) });
+          const { acks } = await runQueuedScenario({
+            device,
+            jobs: [jobFor('job-a', 'TABLE 7'), jobFor('job-b', 'TABLE 8')],
+          });
+          check(acks.length === 2, `expected 2 ACKs, got ${acks.length}`);
+          check(acks[0]?.body?.status === 'FAILED', `first ACK: ${acks[0]?.body?.status}`);
+          check(acks[1]?.body?.status === 'PRINTED', `second ACK: ${acks[1]?.body?.status}`);
+          return acks.map((ack) => ack.body.status).join(', ');
+        });
+
+        // Last: an unfixed hang would leave the module-level write queue
+        // wedged, so nothing may run after it in this page.
+        await scenario('transfer hangs: times out instead of wedging the queue', async (check) => {
+          const device = makeDevice({ transferHang: true });
+          const started = performance.now();
+          const raced = await Promise.race([
+            printWith(makeUsb([device])),
+            sleep(14000).then(() => ({ timedOut: true })),
+          ]);
+          if (raced.timedOut) {
+            check(false, 'print never settled: the queue is wedged permanently');
+            return 'hung forever — every later ticket would hang too';
+          }
+          check(!raced.ok, 'hung transfer reported success');
+          check(/respond|timeout/i.test(String(raced.error?.message)), `unexpected message: ${raced.error?.message}`);
+          check(device.calls.includes('release:0'), 'interface not released after timeout');
+          check(device.calls.at(-1) === 'close', 'device not closed after timeout');
+          return `rejected after ${Math.round(performance.now() - started)} ms: ${raced.error?.message}`;
+        });
+
+        const passed = results.filter((result) => result.pass).length;
+        summaryEl.textContent = `${passed}/${results.length} simulations passed`;
+        summaryEl.style.color = passed === results.length ? '#1a7f37' : '#c62828';
+        for (const result of results) {
+          const row = document.createElement('tr');
+          if (!result.pass) row.className = 'fail-row';
+          row.innerHTML = `<td>${result.name}</td><td class="${result.pass ? 'pass' : 'fail'}">${result.pass ? 'PASS' : 'FAIL'}</td><td>${result.pass ? result.detail : result.failures.join('<br>')}</td>`;
+          resultsBody.appendChild(row);
+        }
+        useRealUsb();
+        describeWebUsb();
+        return results;
+      }
+
+      window.__printerTests = { runAll, results };
+
+      // ---- Manual buttons -----------------------------------------------------
+
+      const printSlip = async (device) => {
+        if (device) installFakeUsb(makeUsb([device], { requestDevice: () => device }));
+        else useRealUsb();
+        describeWebUsb();
+
+        const paired = device ?? null;
+        const { slip } = slipFor(`after ${new Date().toLocaleTimeString()}`);
+        if (paired) {
+          slip.printerVendorId = paired.vendorId.toString(16);
+          slip.printerProductId = paired.productId.toString(16);
+        }
+
+        log(paired ? `→ printTestSlip (${paired.productName})` : '→ printTestSlip (no paired device: the browser chooser will open)');
+        const started = performance.now();
+        try {
+          await printTestSlip(slip);
+          log(`✓ printTestSlip resolved after ${Math.round(performance.now() - started)} ms`);
+        } catch (error) {
+          log(`✗ ${error?.name}${error?.code ? ` [${error.code}]` : ''}: ${error?.message}`);
+        } finally {
+          useRealUsb();
+          describeWebUsb();
+        }
+      };
+
+      document.getElementById('real').onclick = () => printSlip(null);
+      document.getElementById('busy-once').onclick = () => printSlip(makeDevice({ claimError: (attempt) => (attempt === 1 ? busyError() : null) }));
+      document.getElementById('busy-always').onclick = () => printSlip(makeDevice({ claimError: () => busyError() }));
+
+      const runAllButton = document.getElementById('run-all');
+      runAllButton.onclick = async () => {
+        runAllButton.disabled = true;
+        try {
+          const runResults = await runAll();
+          const failed = runResults.filter((result) => !result.pass);
+          summaryEl.textContent = `${runResults.length - failed.length}/${runResults.length} simulations passed`;
+          summaryEl.style.color = failed.length === 0 ? '#1a7f37' : '#c62828';
+        } finally {
+          runAllButton.disabled = false;
+        }
+      };
+
+      describeWebUsb();
+      log('harness ready');
+    </script>
+  </body>
+</html>
