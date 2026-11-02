@@ -134,6 +134,8 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
   // Waiter selection
   const [waiters, setWaiters] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedWaiterId, setSelectedWaiterId] = useState('');
+  const [customers, setCustomers] = useState<Array<{ id: string; name: string; discountPercent: number }>>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
 
   useEffect(() => {
     axiosClient
@@ -142,12 +144,23 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       .catch(() => {/* silent — cashier can still try to submit */});
   }, []);
 
+  useEffect(() => {
+    axiosClient.get('/customers', { params: { limit: 100 } })
+      .then((response) => setCustomers(response.data?.data ?? []))
+      .catch(() => setCustomers([]));
+  }, []);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = items.filter((i) => {
       if (!i.isAvailable) return false;
       if (category !== 'ALL' && i.category !== category) return false;
-      if (q && !i.name.toLowerCase().includes(q)) return false;
+      if (q && ![
+        i.name,
+        i.nameAmharic ?? '',
+        i.sku ?? '',
+        i.barcode ?? '',
+      ].some((value) => value.toLowerCase().includes(q))) return false;
       return true;
     });
     return rows.sort((a, b) => {
@@ -167,9 +180,12 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
     return counts;
   }, [items]);
 
+  const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
+  const discountPercent = selectedCustomer?.discountPercent ?? 0;
+  const displayPrice = (unitPrice: number) => Math.max(1, Math.round(unitPrice * (100 - discountPercent) / 100));
   const total = useMemo(
-    () => cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
-    [cart]
+    () => cart.reduce((sum, line) => sum + displayPrice(line.unitPrice) * line.quantity, 0),
+    [cart, discountPercent]
   );
   const totalQty = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
 
@@ -229,6 +245,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
         clientOrderId,
         tableNumber: tableNumber.trim(),
         waiterId: selectedWaiterId || undefined,
+        customerId: selectedCustomerId || undefined,
         items: cart.map((l) => ({
           menuItemId: l.menuItemId,
           name: l.name,
@@ -257,6 +274,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
         });
       }
       setCart([]);
+      setSelectedCustomerId('');
       setTableNumber('');
       setSelectedWaiterId('');
       setJustSubmitted(true);
@@ -484,6 +502,26 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
             </div>
           </div>
 
+          <div className="mb-3">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t('ordering.cart.customerLabel')}
+            </label>
+            <DropdownSelect
+              ariaLabel={t('ordering.cart.customerLabel')}
+              className="w-full justify-between"
+              contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
+              value={selectedCustomerId}
+              onChange={setSelectedCustomerId}
+              placeholder={t('ordering.cart.walkInCustomer')}
+              options={customers.map((customer) => ({
+                value: customer.id,
+                label: customer.discountPercent > 0
+                  ? `${customer.name} · ${customer.discountPercent}%`
+                  : customer.name,
+              }))}
+            />
+          </div>
+
           <label htmlFor="order-table" className="text-xs text-muted-foreground mb-1 block">
             {t('ordering.cart.tableNumber')}
           </label>
@@ -517,7 +555,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm text-foreground truncate">{line.name}</p>
                       <p className="text-xs font-mono text-muted-foreground mt-0.5">
-                        {formatCurrency(line.unitPrice)} {t('ordering.cart.each')}
+                        {formatCurrency(displayPrice(line.unitPrice))} {t('ordering.cart.each')}
                       </p>
                     </div>
                     <button
@@ -549,7 +587,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
                       </button>
                     </div>
                     <span className="font-mono font-semibold text-sm text-foreground tabular-nums">
-                      {formatCurrency(line.unitPrice * line.quantity)}
+                      {formatCurrency(displayPrice(line.unitPrice) * line.quantity)}
                     </span>
                   </div>
                   <Input
