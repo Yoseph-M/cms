@@ -1,10 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 import { axiosClient } from '../api/axiosClient';
 import { useSocketStore } from '../store/socketStore';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
+import { describePrinterFailure, type PrinterFailureCopy } from '../utils/printerErrors';
 
 export interface PrintJob {
   id: string;
@@ -42,7 +42,6 @@ export function useHardwarePrinter() {
   const { socket } = useSocketStore();
   const { isAuthenticated } = useAuthStore();
   const addToast = useToastStore((s) => s.addToast);
-  const { t } = useTranslation();
   const isPollingRef = useRef(false);
   // Don't spam the operator: report each device failure at most once a minute.
   const lastNotifiedRef = useRef<Record<string, number>>({});
@@ -63,6 +62,7 @@ export function useHardwarePrinter() {
       for (const job of jobs.filter((job) => transports.has(job.transport))) {
         let success = false;
         let errorMessage = '';
+        let failure: PrinterFailureCopy | null = null;
 
         try {
           const payload = Uint8Array.from(atob(job.payloadBase64), c => c.charCodeAt(0));
@@ -73,8 +73,16 @@ export function useHardwarePrinter() {
             success = await printViaBluetooth(job, payload);
           }
         } catch (err: any) {
-          errorMessage = err.message || i18n.t('printers.unknownPrintError');
-          console.error(`Error processing print job ${job.id}:`, err);
+          // Say what actually went wrong in plain language. The raw browser
+          // error stays in the console for whoever services the hardware.
+          failure = describePrinterFailure(err);
+          errorMessage = failure.message;
+          // Lead with the sentence staff can act on; keep the raw DOMException
+          // on a debug line for whoever services the hardware. Concatenating
+          // the raw error into the visible line is what produced messages like
+          // "Failed to execute 'claimInterface' on 'USBService'".
+          console.error(`Print job ${job.id} did not print: ${failure.message}`);
+          console.debug('Printer error details', err);
         }
 
         if (!success) {
@@ -82,10 +90,13 @@ export function useHardwarePrinter() {
           const last = lastNotifiedRef.current[job.station] ?? 0;
           if (now - last > 60_000) {
             lastNotifiedRef.current[job.station] = now;
+            // Each failure names its own cause and remedy — a busy printer, a
+            // disconnected cable and a rejected ticket need different actions.
+            const shown = failure ?? describePrinterFailure(null);
             addToast({
               type: 'error',
-              title: t('printers.ticketNotPrinted'),
-              message: t('printers.ticketNotPrintedMsg'),
+              title: shown.title,
+              message: shown.message,
             });
           }
         }
@@ -151,50 +162,194 @@ export function useHardwarePrinter() {
 }
 
 /**
+ * Thrown when somebody else is holding the printer's USB interface, so the
+ * operator is told what to close instead of Chromium's raw
+ * `NetworkError: Unable to claim interface`.
+ */
+export class PrinterBusyError extends Error {
+  readonly code = 'USB_CLAIM_BUSY';
+
+  constructor() {
+    super(i18n.t('printers.printerBusyMsg'));
+    this.name = 'PrinterBusyError';
+  }
+}
+
+/** An error our print path can recognise later without parsing translated text. */
+function printError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
+}
+
+const CLAIM_ATTEMPTS = 3;
+const CLAIM_RETRY_DELAY_MS = 300;
+
+/**
+ * A bulk transfer to an unplugged or crashed printer can stay pending forever.
+ * The write queue is page-wide, so one hung transfer would silently stop every
+ * later ticket in this window — including the poll loop. A ticket never takes
+ * this long; give up and let the operator retry.
+ */
+const USB_TRANSFER_TIMEOUT_MS = 10_000;
+
+const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string, code: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(printError(code, message)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * Chromium reports every failed platform claim as `NetworkError: Unable to
+ * claim interface` (libusb's LIBUSB_ERROR_BUSY underneath). It says nothing
+ * about the network: another window, another tab or the OS printer driver
+ * (usblp, the Windows spooler) holds the interface, and it usually lets go a
+ * moment later.
+ */
+function isClaimBusyError(err: any): boolean {
+  return err?.name === 'NetworkError' && /claim/i.test(String(err?.message ?? ''));
+}
+
+/**
+ * Send the whole slip. A bulk transfer may complete short of the requested
+ * length; treating that as success cuts the ticket off mid-line, so keep
+ * sending from where the printer stopped until every byte is out.
+ */
+async function transferAll(
+  targetDevice: any,
+  endpointNumber: number,
+  payload: Uint8Array,
+): Promise<void> {
+  let offset = 0;
+  while (offset < payload.length) {
+    const chunk = payload.subarray(offset);
+    const result = await withTimeout<any>(
+      targetDevice.transferOut(endpointNumber, chunk),
+      USB_TRANSFER_TIMEOUT_MS,
+      i18n.t('printers.usbWriteTimeout'),
+      'USB_WRITE_TIMEOUT',
+    );
+    const written = typeof result?.bytesWritten === 'number' ? result.bytesWritten : chunk.length;
+    if (written <= 0) {
+      throw printError('USB_WRITE_STALLED', i18n.t('printers.usbWriteStalled'));
+    }
+    offset += Math.min(written, chunk.length);
+  }
+}
+
+/** The interface and endpoint that actually carry the printer's bytes. */
+function findUsbWriteTarget(
+  device: any,
+): { interfaceNumber: number; endpointNumber: number } | null {
+  for (const iface of device.configuration?.interfaces ?? []) {
+    for (const alt of iface.alternates ?? []) {
+      const endpoint = (alt.endpoints ?? []).find(
+        (ep: any) => ep.direction === 'out' && ep.type === 'bulk',
+      );
+      if (endpoint) {
+        return {
+          interfaceNumber: iface.interfaceNumber ?? 0,
+          endpointNumber: endpoint.endpointNumber,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * One write, start to finish: open, claim, send the bytes, then hand the
+ * printer straight back.
+ *
+ * Holding the claim for the lifetime of the page is what the WebUSB examples
+ * do for a streaming session, but this app prints a ticket every few minutes
+ * from a poll loop. A page that never releases keeps the interface away from
+ * every other window and from the OS driver — which is exactly how the *next*
+ * job ends up failing with "Unable to claim interface". The interface is
+ * released and the device closed in `finally`, even when the write throws.
+ */
+async function writeUsbNow(targetDevice: any, payload: Uint8Array): Promise<void> {
+  try {
+    if (!targetDevice.opened) await targetDevice.open();
+    if (targetDevice.configuration === null) {
+      // Not always configuration 1: ask the device for its own.
+      const configuration = targetDevice.configurations?.[0]?.configurationValue ?? 1;
+      await targetDevice.selectConfiguration(configuration);
+    }
+
+    // Interfaces are only known once a configuration is selected.
+    const target = findUsbWriteTarget(targetDevice);
+    if (!target) {
+      throw printError('USB_NO_ENDPOINT', i18n.t('printers.noBulkEndpoint'));
+    }
+
+    for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt += 1) {
+      try {
+        await targetDevice.claimInterface(target.interfaceNumber);
+        await transferAll(targetDevice, target.endpointNumber, payload);
+        return;
+      } catch (err) {
+        if (!isClaimBusyError(err)) throw err;
+        if (attempt === CLAIM_ATTEMPTS - 1) throw new PrinterBusyError();
+        // Give the other window/driver time to finish, then claim again.
+        await wait(CLAIM_RETRY_DELAY_MS * (attempt + 1));
+      } finally {
+        // Let go immediately so the next ticket — or the other terminal — can
+        // claim the printer instead of inheriting our claim.
+        await targetDevice.releaseInterface(target.interfaceNumber).catch(() => undefined);
+      }
+    }
+  } finally {
+    try {
+      await targetDevice.close();
+    } catch {
+      // Already closed or unplugged: nothing to give back.
+    }
+  }
+}
+
+/**
  * Raw ESC/POS write to an already-permitted USB device. Shared by the queued
  * ticket path and by the printer page's Test Print button, so both write bytes
  * to the printer the exact same way.
+ *
+ * Every write in this page is queued behind the previous one: the poll loop,
+ * the Test Print button and a reprint can otherwise overlap, and two writers on
+ * one endpoint interleave their bytes into a garbled ticket.
  */
-async function writeToUsbDevice(targetDevice: any, payload: Uint8Array): Promise<void> {
-  await targetDevice.open();
-  if (targetDevice.configuration === null) {
-    await targetDevice.selectConfiguration(1);
-  }
-  await targetDevice.claimInterface(0);
+let usbWriteQueue: Promise<unknown> = Promise.resolve();
 
-  // Find bulk out endpoint
-  let outEndpoint: any = null;
-  for (const alt of targetDevice.configuration!.interfaces[0].alternates) {
-    for (const ep of alt.endpoints) {
-      if (ep.direction === 'out' && ep.type === 'bulk') {
-        outEndpoint = ep;
-        break;
-      }
-    }
-    if (outEndpoint) break;
-  }
-
-  if (!outEndpoint) {
-    throw new Error(i18n.t('printers.noBulkEndpoint'));
-  }
-
-  await targetDevice.transferOut(outEndpoint.endpointNumber, payload);
-  // Optional: close device. Sometimes it's better to keep it open.
-  // await targetDevice.close();
+function writeToUsbDevice(targetDevice: any, payload: Uint8Array): Promise<void> {
+  const write = usbWriteQueue.then(() => writeUsbNow(targetDevice, payload));
+  // Keep the queue alive after a failure: the next ticket must still print.
+  usbWriteQueue = write.catch(() => undefined);
+  return write;
 }
 
 /** Permitted USB devices, tolerating browsers without the permission API. */
 async function permittedUsbDevices(): Promise<any[]> {
   const usb = (navigator as any).usb;
-  if (!usb) throw new Error(i18n.t('printers.webUsbUnsupported'));
-  if (typeof usb.requestDevice !== 'function') throw new Error(i18n.t('printers.webUsbUnsupported'));
+  if (!usb) throw printError('USB_UNSUPPORTED', i18n.t('printers.webUsbUnsupported'));
+  if (typeof usb.requestDevice !== 'function') {
+    throw printError('USB_UNSUPPORTED', i18n.t('printers.webUsbUnsupported'));
+  }
   if (typeof usb.getDevices !== 'function') return [];
   return usb.getDevices();
 }
 
 async function printViaUSB(job: PrintJob, payload: Uint8Array): Promise<boolean> {
   if (!(navigator as any).usb) {
-    throw new Error(i18n.t('printers.webUsbUnsupported'));
+    throw printError('USB_UNSUPPORTED', i18n.t('printers.webUsbUnsupported'));
   }
 
   const vId = parseInt(job.printerVendorId || '0', 16);
@@ -204,7 +359,7 @@ async function printViaUSB(job: PrintJob, payload: Uint8Array): Promise<boolean>
   const targetDevice = devices.find((d: any) => d.vendorId === vId && d.productId === pId);
 
   if (!targetDevice) {
-    throw new Error(i18n.t('printers.usbNotPaired'));
+    throw printError('USB_NOT_PAIRED', i18n.t('printers.usbNotPaired'));
   }
 
   await writeToUsbDevice(targetDevice, payload);
@@ -214,14 +369,14 @@ async function printViaUSB(job: PrintJob, payload: Uint8Array): Promise<boolean>
 
 async function printViaBluetooth(job: PrintJob, payload: Uint8Array): Promise<boolean> {
   if (!(navigator as any).bluetooth) {
-    throw new Error(i18n.t('printers.bluetoothUnsupported'));
+    throw printError('BLUETOOTH_UNSUPPORTED', i18n.t('printers.bluetoothUnsupported'));
   }
 
   const printerId = job.printerMacAddress ?? '';
 
   // navigator.bluetooth.getDevices() is a newer API, may not be in all browsers
   if (typeof (navigator as any).bluetooth.getDevices !== 'function') {
-    throw new Error(i18n.t('printers.bluetoothUnsupported'));
+    throw printError('BLUETOOTH_UNSUPPORTED', i18n.t('printers.bluetoothUnsupported'));
   }
 
   const devices = await (navigator as any).bluetooth.getDevices();
@@ -246,7 +401,7 @@ async function printViaBluetooth(job: PrintJob, payload: Uint8Array): Promise<bo
   }
 
   if (!targetDevice) {
-    throw new Error(i18n.t('printers.bluetoothNotPaired'));
+    throw printError('BLUETOOTH_NOT_PAIRED', i18n.t('printers.bluetoothNotPaired'));
   }
 
   await writeToBluetoothDevice(targetDevice, payload);
@@ -260,7 +415,7 @@ async function printViaBluetooth(job: PrintJob, payload: Uint8Array): Promise<bo
  */
 async function writeToBluetoothDevice(targetDevice: any, payload: Uint8Array): Promise<void> {
   const server = await targetDevice.gatt?.connect();
-  if (!server) throw new Error(i18n.t('printers.gattConnectFailed'));
+  if (!server) throw printError('BLUETOOTH_GATT_FAILED', i18n.t('printers.gattConnectFailed'));
 
   // Generic UUIDs for ESC/POS BLE printers
   const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb').catch(() =>
@@ -302,9 +457,9 @@ export const printTestSlip = async (slip: TestSlip): Promise<void> => {
 
   if (slip.transport === 'USB') {
     const usb = (navigator as any).usb;
-  if (!usb?.requestDevice) {
-    throw new Error(t('printers.usbUnsupported'));
-  }
+    if (!usb?.requestDevice) {
+      throw printError('USB_UNSUPPORTED', t('printers.usbUnsupported'));
+    }
 
     const vendorId = parseInt(slip.printerVendorId || '0', 16);
     const productId = parseInt(slip.printerProductId || '0', 16);
@@ -315,20 +470,26 @@ export const printTestSlip = async (slip: TestSlip): Promise<void> => {
 
     if (!device) {
       // Offer the configured printer first; fall back to any device rather than
-      // dead-ending when the stored ids drifted from the hardware.
-      device = await usb
-        .requestDevice({ filters: [{ vendorId, productId }] })
-        .catch(() => (usb.requestDevice ? usb.requestDevice({ filters: [] }) : null));
+      // dead-ending when the stored ids drifted from the hardware. A cancelled
+      // chooser rejects with NotFoundError, which must become the page's own
+      // "no printer selected" instead of Chromium's wording in a toast.
+      try {
+        device = await usb.requestDevice({ filters: [{ vendorId, productId }] });
+      } catch {
+        device = await (usb.requestDevice
+          ? usb.requestDevice({ filters: [] }).catch(() => null)
+          : null);
+      }
     }
 
-    if (!device) throw new Error(t('printers.noUsbSelected'));
+    if (!device) throw printError('USB_SELECTION_CANCELLED', t('printers.noUsbSelected'));
     await writeToUsbDevice(device, payload);
     return;
   }
 
   const bt = (navigator as any).bluetooth;
   if (!bt?.requestDevice) {
-    throw new Error(t('printers.bluetoothUnsupported'));
+    throw printError('BLUETOOTH_UNSUPPORTED', t('printers.bluetoothUnsupported'));
   }
 
   const printerId = slip.printerMacAddress ?? '';
@@ -349,12 +510,16 @@ export const printTestSlip = async (slip: TestSlip): Promise<void> => {
   }
 
   if (!device) {
-    device = await bt.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455'],
-    });
+    // A cancelled chooser rejects; report it as a cancellation, not as a raw
+    // NotFoundError from the browser.
+    device = await bt
+      .requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455'],
+      })
+      .catch(() => null);
   }
 
-  if (!device) throw new Error(t('printers.noBluetoothSelected'));
+  if (!device) throw printError('BLUETOOTH_SELECTION_CANCELLED', t('printers.noBluetoothSelected'));
   await writeToBluetoothDevice(device, payload);
 }
