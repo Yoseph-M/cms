@@ -11,6 +11,8 @@ export interface PrinterFailureEvent {
   port?: number;
   orderId?: string;
   failedAt: string;
+  /** Plain-English cause from the backend, e.g. "The printer is out of paper." */
+  error?: string;
 }
 
 export interface PrinterFailureBannerProps {
@@ -31,16 +33,19 @@ export const PrinterFailureBanner: React.FC<PrinterFailureBannerProps> = ({ fail
           role="alert"
         >
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          <p className="font-semibold text-sm truncate">
-            {t('cashier.printerFailure.detected', { count: failures.length })}
-          </p>
-          <span className="hidden sm:inline text-xs opacity-90">
-            {failures[0].station}
-            {failures[0].device || failures[0].ip
-              ? ` @ ${failures[0].device || failures[0].ip}${failures[0].port ? `:${failures[0].port}` : ''}`
-              : ''}
-            {failures.length > 1 ? t('cashier.printerFailure.more', { count: failures.length - 1 }) : ''}
-          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-sm truncate">
+              {t('cashier.printerFailure.detected', { count: failures.length })}
+            </p>
+            <p className="truncate text-[11px] opacity-90">
+              {failures[0].station}
+              {failures[0].device || failures[0].ip
+                ? ` @ ${failures[0].device || failures[0].ip}${failures[0].port ? `:${failures[0].port}` : ''}`
+                : ''}
+              {failures[0].error ? ` — ${failures[0].error}` : ''}
+              {failures.length > 1 ? t('cashier.printerFailure.more', { count: failures.length - 1 }) : ''}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onDismiss}
