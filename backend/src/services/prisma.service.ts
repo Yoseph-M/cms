@@ -13,7 +13,7 @@ prisma.$on('error' as never, (e: any) => {
 });
 
 // Note: Immutability is enforced through:
-// 1. No UPDATE/DELETE routes for CashDrawerEvent and Settlement
+// 1. No UPDATE/DELETE routes for CashDrawerEvent, CashDrawerEntry, and Settlement
 // 2. Service-layer validation (see immutability.middleware.ts)
 // 3. Compensating events for corrections (CASH_ADJUSTMENT)
 
@@ -21,7 +21,7 @@ export async function connectDatabase() {
   try {
     await prisma.$connect();
     logger.info('Successfully connected to MongoDB database via Prisma ORM.');
-    logger.info('Immutability enforced for CashDrawerEvent and Settlement models (no UPDATE/DELETE routes).');
+    logger.info('Immutability enforced for cash drawer ledgers and settlements (no UPDATE/DELETE routes).');
     
     // Detect transaction support (replica set vs standalone)
     await detectTransactionSupport(prisma);
