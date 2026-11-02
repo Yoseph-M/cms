@@ -55,6 +55,12 @@ interface MenuItem {
   nameAmharic?: string | null;
   category: 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER';
   price: number;
+  sku?: string | null;
+  barcode?: string | null;
+  cost?: number | null;
+  trackInventory?: boolean;
+  stockQuantity?: number | null;
+  lowStockThreshold?: number | null;
   isAvailable: boolean;
   imageUrl?: string;
 }
@@ -93,6 +99,12 @@ const menuFormSchema = z.object({
     .max(200, 'menuCatalog.errors.nameAmharicTooLong'),
   category: z.enum(['FOOD', 'DRINK', 'DESSERT', 'OTHER'], { message: 'menuCatalog.errors.categoryRequired' }),
   price: z.coerce.number().positive('menuCatalog.errors.pricePositive'),
+  sku: z.string().max(60),
+  barcode: z.string().max(80),
+  cost: z.coerce.number().nonnegative(),
+  trackInventory: z.boolean(),
+  stockQuantity: z.coerce.number().int().nonnegative(),
+  lowStockThreshold: z.coerce.number().int().nonnegative(),
 });
 
 const EMPTY_FORM = {
@@ -100,6 +112,12 @@ const EMPTY_FORM = {
   nameAmharic: '',
   category: 'FOOD' as MenuItem['category'],
   price: '',
+  sku: '',
+  barcode: '',
+  cost: '0',
+  trackInventory: false,
+  stockQuantity: '0',
+  lowStockThreshold: '5',
   imageUrl: '',
   isAvailable: true,
 };
@@ -259,7 +277,11 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
         // Match against the name the user actually sees (Amharic name in the
         // Amharic UI), so searching "ቡና" finds items whose English name is
         // "Coffee" and vice versa.
-        const matchesSearch = displayName(item).toLowerCase().includes(search.toLowerCase());
+        const query = search.toLowerCase();
+        const matchesSearch =
+          displayName(item).toLowerCase().includes(query) ||
+          (item.sku || '').toLowerCase().includes(query) ||
+          (item.barcode || '').toLowerCase().includes(query);
         return matchesCategory && matchesSearch;
       }),
     [displayItems, categoryFilter, search, displayName]
@@ -330,6 +352,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       nameAmharic: item.nameAmharic || '',
       category: item.category,
       price: String(item.price),
+      sku: item.sku || '',
+      barcode: item.barcode || '',
+      cost: String(item.cost ?? 0),
+      trackInventory: item.trackInventory ?? false,
+      stockQuantity: String(item.stockQuantity ?? 0),
+      lowStockThreshold: String(item.lowStockThreshold ?? 5),
       imageUrl: item.imageUrl || '',
       isAvailable: item.isAvailable,
     });
@@ -350,6 +378,12 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
         nameAmharic: parsed.nameAmharic,
         category: parsed.category,
         price: parsed.price,
+        sku: form.sku.trim() || null,
+        barcode: form.barcode.trim() || null,
+        cost: parsed.cost,
+        trackInventory: parsed.trackInventory,
+        ...(editingItem?.trackInventory ? {} : { stockQuantity: parsed.stockQuantity }),
+        lowStockThreshold: parsed.lowStockThreshold,
         imageUrl: form.imageUrl || null,
         isAvailable: form.isAvailable,
       };
@@ -658,6 +692,14 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
           <p className="text-base font-mono font-bold text-primary tracking-tight">
             {formatCurrency(item.price)}
           </p>
+          {item.trackInventory && (
+            <p className={cn(
+              'text-xs font-semibold',
+              (item.stockQuantity ?? 0) <= (item.lowStockThreshold ?? 5) ? 'text-warning' : 'text-muted-foreground',
+            )}>
+              {t('menuCatalog.inventory.stockCount', { count: item.stockQuantity ?? 0 })}
+            </p>
+          )}
           {(canEdit || showAvailability) && (
             <div className="flex items-center justify-between mt-auto pt-2.5 border-t border-border/40">
               {showAvailability ? (
@@ -1219,6 +1261,58 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
               className="[&>input]:font-mono"
             />
             {formErrors.price && <p className="text-destructive text-xs mt-1">{formErrors.price}</p>}
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-secondary/20 p-4 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <label htmlFor="form-track-inventory" className="text-sm font-semibold text-foreground">
+                  {t('menuCatalog.form.trackInventory')}
+                </label>
+                <p className="text-xs text-muted-foreground">{t('menuCatalog.form.trackInventoryHint')}</p>
+              </div>
+              <Switch
+                id="form-track-inventory"
+                checked={form.trackInventory}
+                onCheckedChange={(checked) => setForm((f) => ({ ...f, trackInventory: checked }))}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-foreground">{t('menuCatalog.form.sku')}</span>
+                <Input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))} />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-foreground">{t('menuCatalog.form.barcode')}</span>
+                <Input value={form.barcode} onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))} />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-foreground">{t('menuCatalog.form.cost')}</span>
+                <Input type="number" min="0" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))} />
+              </label>
+              {form.trackInventory && (
+                <>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-foreground">{t('menuCatalog.form.stockQuantity')}</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={form.stockQuantity}
+                      disabled={Boolean(editingItem?.trackInventory)}
+                      onChange={(e) => setForm((f) => ({ ...f, stockQuantity: e.target.value }))}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-foreground">{t('menuCatalog.form.lowStockThreshold')}</span>
+                    <Input type="number" min="0" step="1" value={form.lowStockThreshold} onChange={(e) => setForm((f) => ({ ...f, lowStockThreshold: e.target.value }))} />
+                  </label>
+                </>
+              )}
+            </div>
+            {editingItem?.trackInventory && form.trackInventory && (
+              <p className="text-xs text-muted-foreground">{t('menuCatalog.form.useInventoryPage')}</p>
+            )}
           </div>
 
           {showAvailability && (
