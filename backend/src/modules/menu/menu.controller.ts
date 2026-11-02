@@ -53,7 +53,7 @@ export async function getMenuItems(req: AuthenticatedRequest, res: Response) {
  * @param price - Price in ETB as entered. E.g., 15.99 for 15.99 ETB
  */
 export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
-  const { name, nameAmharic, category, price, isAvailable, imageUrl } = req.body;
+  const { name, nameAmharic, category, price, isAvailable, imageUrl, sku, barcode, cost, trackInventory, stockQuantity, lowStockThreshold } = req.body;
   const actorId = req.user!.userId;
 
   const newItem = await prisma.menuItem.create({
@@ -62,6 +62,15 @@ export async function createMenuItem(req: AuthenticatedRequest, res: Response) {
       nameAmharic: nameAmharic ?? null,
       category,
       price, // Already in ETB from frontend
+      sku: sku ?? null,
+      barcode: barcode ?? null,
+      cost: cost ?? null,
+      trackInventory: trackInventory ?? false,
+      stockQuantity: stockQuantity ?? 0,
+      lowStockThreshold: lowStockThreshold ?? 5,
+      ...(trackInventory && stockQuantity > 0
+        ? { stockMovements: { create: { delta: stockQuantity, reason: 'OPENING_BALANCE', performedById: actorId } } }
+        : {}),
       isAvailable: isAvailable !== undefined ? isAvailable : true,
       imageUrl,
     },
@@ -103,6 +112,15 @@ export async function updateMenuItem(req: AuthenticatedRequest, res: Response) {
       ...(req.body.nameAmharic !== undefined ? { nameAmharic: req.body.nameAmharic } : {}),
       category: req.body.category,
       price: req.body.price, // Already in ETB from frontend
+      ...(req.body.sku !== undefined ? { sku: req.body.sku } : {}),
+      ...(req.body.barcode !== undefined ? { barcode: req.body.barcode } : {}),
+      ...(req.body.cost !== undefined ? { cost: req.body.cost } : {}),
+      ...(req.body.trackInventory !== undefined ? { trackInventory: req.body.trackInventory } : {}),
+      ...(req.body.stockQuantity !== undefined ? { stockQuantity: req.body.stockQuantity } : {}),
+      ...(req.body.lowStockThreshold !== undefined ? { lowStockThreshold: req.body.lowStockThreshold } : {}),
+      ...(!before.trackInventory && req.body.trackInventory && (req.body.stockQuantity ?? 0) > 0
+        ? { stockMovements: { create: { delta: req.body.stockQuantity, reason: 'OPENING_BALANCE', performedById: actorId } } }
+        : {}),
       isAvailable: req.body.isAvailable,
       imageUrl: req.body.imageUrl,
     },
