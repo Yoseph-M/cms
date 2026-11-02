@@ -4,6 +4,11 @@ import { emitToLiveOrders } from './socket.service';
 import { createNotification } from './notification.service';
 import { prisma } from './prisma.service';
 import { getCached, setCache, invalidateCache } from './cache.service';
+import {
+  DEFAULT_RECEIPT_SETTINGS,
+  getReceiptSettings,
+  type ReceiptSettings,
+} from './receipt-settings.service';
 import { PrismaClient, PrintJobStatus, PrintTransport } from '@prisma/client';
 
 export interface PrinterStation {
@@ -98,19 +103,102 @@ export function invalidatePrinterCache(): void {
  * - PRINTED does NOT guarantee physical paper was printed
  * - Physical confirmation requires printer-specific status polling
  */
-export function buildEscPosKitchenTicket(order: {
-  clientOrderId: string;
-  tableNumber: string;
-  waiterName?: string;
-  createdAt: Date | string;
-  items: Array<{ name: string; quantity: number; notes?: string }>;
-}): Buffer {
+/** ESC/POS printers only render the character table they are set to. */
+function ascii(text: string): string {
+  return text.replace(/[^\x20-\x7e]/g, '?');
+}
+
+/** Characters that fit on one line of the configured paper. */
+export function ticketColumns(settings: ReceiptSettings): number {
+  return settings.paperSize === '58mm' ? 32 : 48;
+}
+
+function centerLine(text: string, columns: number): string {
+  const clean = ascii(text).trim();
+  if (!clean) return '';
+  const pad = Math.max(0, Math.floor((columns - clean.length) / 2));
+  return `${' '.repeat(pad)}${clean}`;
+}
+
+/** Word-wrap, splitting words longer than one line instead of truncating them. */
+function wrapLine(text: string, columns: number): string[] {
+  const words = ascii(text).trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    let remaining = word;
+    while (remaining.length > columns) {
+      if (current) {
+        lines.push(current);
+        current = '';
+      }
+      lines.push(remaining.slice(0, columns));
+      remaining = remaining.slice(columns);
+    }
+    if (!current) current = remaining;
+    else if (current.length + 1 + remaining.length <= columns) current += ` ${remaining}`;
+    else {
+      lines.push(current);
+      current = remaining;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+export function buildEscPosKitchenTicket(
+  order: {
+    clientOrderId: string;
+    tableNumber: string;
+    waiterName?: string;
+    createdAt: Date | string;
+    items: Array<{ name: string; quantity: number; notes?: string }>;
+  },
+  settings: ReceiptSettings = DEFAULT_RECEIPT_SETTINGS,
+): Buffer {
+  const columns = ticketColumns(settings);
+  const divider = '-'.repeat(columns);
   const commands: number[] = [];
 
-  commands.push(0x1b, 0x40);
+  commands.push(0x1b, 0x40); // initialise
+
+  // Business header, exactly as configured in Settings → Receipts & Printing.
+  const contactLines: string[] = [];
+  if (settings.showBusinessPhone && settings.businessPhone.trim()) {
+    contactLines.push(settings.businessPhone.trim());
+  }
+  if (settings.showBusinessAddress && settings.businessAddress.trim()) {
+    contactLines.push(settings.businessAddress.trim());
+  }
+  if (settings.showEmail && settings.businessEmail.trim()) {
+    contactLines.push(settings.businessEmail.trim());
+  }
+
+  if (settings.showBusinessName && settings.businessName.trim()) {
+    commands.push(0x1b, 0x61, 0x01); // centre
+    commands.push(0x1b, 0x45, 0x01); // bold
+    for (const line of wrapLine(settings.businessName, columns)) {
+      commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
+    }
+    commands.push(0x1b, 0x45, 0x00);
+  }
+
+  if (contactLines.length > 0) {
+    commands.push(0x1b, 0x61, 0x01);
+    for (const contact of contactLines) {
+      for (const line of wrapLine(contact, columns)) {
+        commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
+      }
+    }
+  }
+
+  if (settings.showBusinessName || contactLines.length > 0) {
+    commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
+  }
+
   commands.push(0x1b, 0x61, 0x01);
   commands.push(0x1d, 0x21, 0x11);
-  commands.push(...Buffer.from('=== KITCHEN TICKET ===\n\n', 'ascii'));
+  commands.push(...Buffer.from(`${centerLine('KITCHEN TICKET', Math.floor(columns / 2))}\n\n`, 'ascii'));
   commands.push(0x1d, 0x21, 0x00);
   commands.push(0x1b, 0x61, 0x00);
 
@@ -120,26 +208,93 @@ export function buildEscPosKitchenTicket(order: {
     second: '2-digit',
   });
 
-  commands.push(...Buffer.from(`Table: #${order.tableNumber}\n`, 'ascii'));
-  commands.push(...Buffer.from(`Waiter: ${order.waiterName || 'Staff'}\n`, 'ascii'));
-  commands.push(...Buffer.from(`Time: ${formattedDate}\n`, 'ascii'));
-  commands.push(...Buffer.from(`Order Ref: ${order.clientOrderId.slice(0, 8)}\n`, 'ascii'));
-  commands.push(...Buffer.from('--------------------------------\n', 'ascii'));
-  commands.push(...Buffer.from('QTY  ITEM                   NOTES\n', 'ascii'));
-  commands.push(...Buffer.from('--------------------------------\n', 'ascii'));
+  commands.push(...Buffer.from(`Table: #${ascii(order.tableNumber)}\n`, 'ascii'));
 
+  // The operator name, timestamp and reference are the kitchen ticket's
+  // counterparts of the receipt's Cashier / Date / Receipt # rows, so the
+  // owner's "show on receipt" toggles gate them here too.
+  if (settings.showCashierName) {
+    commands.push(...Buffer.from(`Waiter: ${ascii(order.waiterName || 'Staff')}\n`, 'ascii'));
+  }
+  if (settings.showDateTime) {
+    commands.push(...Buffer.from(`Time: ${formattedDate}\n`, 'ascii'));
+  }
+  if (settings.showReceiptNumber) {
+    commands.push(...Buffer.from(`Order Ref: ${order.clientOrderId.slice(0, 8)}\n`, 'ascii'));
+  }
+  commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
+  commands.push(...Buffer.from('QTY  ITEM\n', 'ascii'));
+  commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
+
+  const nameWidth = Math.max(8, columns - 5);
   for (const item of order.items) {
     const qtyStr = `${item.quantity}x`.padEnd(5, ' ');
-    const nameStr = item.name.padEnd(20, ' ').slice(0, 20);
+    const nameStr = ascii(item.name).padEnd(nameWidth, ' ').slice(0, nameWidth);
     commands.push(...Buffer.from(`${qtyStr}${nameStr}\n`, 'ascii'));
     if (item.notes && item.notes.trim()) {
-      commands.push(...Buffer.from(`  -> Note: ${item.notes}\n`, 'ascii'));
+      for (const line of wrapLine(`  -> Note: ${item.notes}`, columns)) {
+        commands.push(...Buffer.from(`${line}\n`, 'ascii'));
+      }
     }
   }
 
-  commands.push(...Buffer.from('--------------------------------\n\n', 'ascii'));
-  commands.push(0x1d, 0x56, 0x42, 0x00);
+  commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
 
+  // Footer messages are part of the configured layout, so keep them centred
+  // and wrapped to the paper — a 58mm roll cuts off anything wider.
+  const footer = [settings.bottomMessage, settings.secondaryBottomMessage]
+    .map((message) => message.trim())
+    .filter(Boolean);
+  if (footer.length > 0) {
+    commands.push(0x1b, 0x61, 0x01);
+    for (const message of footer) {
+      for (const line of wrapLine(message, columns)) {
+        commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
+      }
+    }
+    commands.push(0x1b, 0x61, 0x00);
+  }
+
+  commands.push(0x0a);
+  commands.push(0x1d, 0x56, 0x42, 0x00); // cut
+
+  return Buffer.from(commands);
+}
+
+/** The diagnostic slip behind Test Print, using the same configured layout. */
+export function buildEscPosTestSlip(
+  transportLabel: string,
+  settings: ReceiptSettings = DEFAULT_RECEIPT_SETTINGS,
+): Buffer {
+  const columns = ticketColumns(settings);
+  const commands: number[] = [0x1b, 0x40, 0x1b, 0x61, 0x01];
+
+  if (settings.showBusinessName && settings.businessName.trim()) {
+    for (const line of wrapLine(settings.businessName, columns)) {
+      commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
+    }
+  }
+
+  commands.push(0x1d, 0x21, 0x11);
+  commands.push(...Buffer.from(`${centerLine('TEST PRINT', Math.floor(columns / 2))}\n\n`, 'ascii'));
+  commands.push(0x1d, 0x21, 0x00);
+  commands.push(
+    ...Buffer.from(
+      `${centerLine(`If you can read this, ${transportLabel} printing is working.`, columns)}\n\n`,
+      'ascii',
+    ),
+  );
+
+  const footer = [settings.bottomMessage, settings.secondaryBottomMessage]
+    .map((message) => message.trim())
+    .filter(Boolean);
+  for (const message of footer) {
+    for (const line of wrapLine(message, columns)) {
+      commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
+    }
+  }
+
+  commands.push(0x0a, 0x0a, 0x1d, 0x56, 0x42, 0x00);
   return Buffer.from(commands);
 }
 
@@ -149,13 +304,26 @@ export function buildEscPosKitchenTicket(order: {
  * browser" — they only need to know the ticket didn't print and what to do.
  */
 const PLAIN_PRINT_REASONS: Array<{ match: RegExp; text: string }> = [
+  // Claim contention comes first: Chromium's wording contains "interface",
+  // which the generic device rules would otherwise claim.
+  { match: /claim|another window|another program|in use/i, text: 'another window or program is using the printer' },
+  // The rules below also match the sentences this function produces, so
+  // normalising an already-normalised error is safe.
+  { match: /paper jam|jammed/i, text: 'there is a paper jam in the printer' },
+  { match: /out of paper|no paper|paper out|paper end|paper/i, text: 'the printer is out of paper' },
+  { match: /cover open|lid open|cover is open/i, text: "the printer's cover is open" },
+  { match: /stopped responding|accepted no data|timeout|timed out|did not respond/i, text: 'the printer stopped responding' },
+  { match: /unplug|disconnect|device was lost|lost its connection|cable/i, text: 'the printer was disconnected' },
+  { match: /not allowed|permission|denied|security|blocked/i, text: 'this terminal is not allowed to use the printer' },
+  { match: /no device selected|no printer was selected|chooser|cancelled|canceled/i, text: 'no printer was selected' },
+  { match: /switched off|turned off|powered off|power off/i, text: 'the printer is switched off' },
+  { match: /no printer|not configured|not set.?up/i, text: 'no printer is set up for this terminal' },
+  { match: /bulk out|not support|unsupported|no endpoint|endpoint|not accept|does not accept/i, text: 'the printer does not accept ticket data' },
   { match: /bluetooth|getDevices|WebBluetooth/i, text: 'the printer is not connected to this device' },
   { match: /usb|WebUSB/i, text: 'the USB printer is not connected' },
-  { match: /not found|not permitted|pair|not set up/i, text: 'this device does not know the printer yet' },
-  { match: /no kitchen printer|not configured|not set.?up/i, text: 'no kitchen printer has been set up yet' },
-  { match: /timeout|timed out|did not respond/i, text: 'the printer did not answer' },
-  { match: /paper|empty/i, text: 'the printer may be out of paper' },
-  { match: /offline|unreachable|refused|network|socket/i, text: 'the printer is not reachable' },
+  { match: /not found|not permitted|pair/i, text: 'this device does not know the printer yet' },
+  { match: /transfer|write failed/i, text: 'the printer did not accept the ticket' },
+  { match: /offline|not reachable|unreachable|refused|network|socket|ECONN|EHOST|ENOTFOUND/i, text: 'the printer is not reachable' },
 ];
 
 export function humanizePrintReason(reason?: string | null): string {
@@ -164,6 +332,12 @@ export function humanizePrintReason(reason?: string | null): string {
     if (rule.match.test(reason)) return rule.text;
   }
   return 'the printer did not answer';
+}
+
+/** A complete plain-English sentence for a socket payload or job record. */
+export function printFailureSentence(reason?: string | null): string {
+  const clause = humanizePrintReason(reason);
+  return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 }
 
 /**
@@ -196,6 +370,9 @@ export async function notifyKitchenPrintFailure(
     device: deviceLabel ?? '',
     orderId: order.id,
     failedAt: new Date().toISOString(),
+    // Carry the cause so the cashier's banner can name it, not just say that
+    // something failed.
+    error: printFailureSentence(reason),
   });
 }
 
@@ -263,22 +440,30 @@ export async function enqueueKitchenPrintJob(
     return null;
   }
 
-  const ticketBuffer = buildEscPosKitchenTicket(order);
+  const settings = await getReceiptSettings();
+  const ticketBuffer = buildEscPosKitchenTicket(order, settings);
   const payloadBase64 = ticketBuffer.toString('base64');
 
-  const printJob = await tx.printJob.create({
-    data: {
-      orderId: order.id,
-      station: kitchenPrinter.station,
-      transport: kitchenPrinter.transport as PrintTransport,
-      printerMacAddress: kitchenPrinter.macAddress,
-      printerVendorId: kitchenPrinter.vendorId,
-      printerProductId: kitchenPrinter.productId,
-      payloadBase64,
-      status: PrintJobStatus.QUEUED,
-    },
-  });
+  // "Number of Copies" is a layout setting: queue one job per copy so the
+  // existing USB/Bluetooth/network paths print each without special-casing a
+  // repeat command (ESC/POS has no portable one).
+  let firstJob: Awaited<ReturnType<typeof tx.printJob.create>> | null = null;
+  for (let copy = 0; copy < settings.copies; copy += 1) {
+    const job = await tx.printJob.create({
+      data: {
+        orderId: order.id,
+        station: kitchenPrinter.station,
+        transport: kitchenPrinter.transport as PrintTransport,
+        printerMacAddress: kitchenPrinter.macAddress,
+        printerVendorId: kitchenPrinter.vendorId,
+        printerProductId: kitchenPrinter.productId,
+        payloadBase64,
+        status: PrintJobStatus.QUEUED,
+      },
+    });
+    if (!firstJob) firstJob = job;
+  }
 
-  return printJob;
+  return firstJob;
 }
 
