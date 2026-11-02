@@ -981,12 +981,15 @@ export const CashierTicketsPage: React.FC = () => {
                   </p>
                   <ul className="mt-2 flex flex-wrap gap-2">
                     {reprintFailureList.map(({ id, label, reason }) => (
-                      <li key={id}>
+                      <li key={id} className="flex flex-col items-start gap-1">
+                        {/* The backend sends a plain sentence naming the cause
+                            (out of paper, busy, unreachable). Showing it here
+                            is what tells staff which fix to try. */}
+                        <span className="max-w-[320px] text-[11px] leading-snug text-destructive/80">
+                          {reason}
+                        </span>
                         <button
                           type="button"
-                          // The printer's own message stays on hover: the copy
-                          // above is what the cashier acts on, the raw text is
-                          // for whoever fixes the hardware.
                           title={reason}
                           onClick={() => void handleReprint(id)}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-white px-2.5 py-1 text-[11px] font-bold text-destructive transition-colors hover:bg-destructive/10"
