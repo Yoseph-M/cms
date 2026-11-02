@@ -94,6 +94,12 @@ export const createMenuItemSchema = z.object({
   nameAmharic: z.string().trim().min(1).max(200).nullable().optional(),
   category: z.nativeEnum(MenuCategory),
   price: z.number().positive('Price must be greater than 0').transform((v) => Math.round(v)),
+  sku: z.string().trim().max(60).nullable().optional(),
+  barcode: z.string().trim().max(80).nullable().optional(),
+  cost: z.number().nonnegative().transform((v) => Math.round(v)).nullable().optional(),
+  trackInventory: z.boolean().optional(),
+  stockQuantity: z.number().int().nonnegative().optional(),
+  lowStockThreshold: z.number().int().nonnegative().optional(),
   isAvailable: z.boolean().default(true),
   imageUrl: imageUrlSchema.nullable().optional(),
 });
@@ -103,8 +109,142 @@ export const updateMenuItemSchema = z.object({
   nameAmharic: z.string().trim().min(1).max(200).nullable().optional(),
   category: z.nativeEnum(MenuCategory).optional(),
   price: z.number().positive('Price must be greater than 0').transform((v) => Math.round(v)).optional(),
+  sku: z.string().trim().max(60).nullable().optional(),
+  barcode: z.string().trim().max(80).nullable().optional(),
+  cost: z.number().nonnegative().transform((v) => Math.round(v)).nullable().optional(),
+  trackInventory: z.boolean().optional(),
+  stockQuantity: z.number().int().nonnegative().optional(),
+  lowStockThreshold: z.number().int().nonnegative().optional(),
   isAvailable: z.boolean().optional(),
   imageUrl: imageUrlSchema.nullable().optional(),
+});
+
+export const stockAdjustmentSchema = z.object({
+  delta: z.number().int().refine((value) => value !== 0, 'Quantity change cannot be zero'),
+  reason: z.enum(['RECEIVING', 'ADJUSTMENT', 'RETURN']),
+  reference: z.string().trim().max(120).optional(),
+});
+
+export const createSupplierSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  contactName: z.string().trim().max(120).default(''),
+  phone: z.string().trim().max(40).default(''),
+  email: z.string().trim().email().or(z.literal('')).default(''),
+  address: z.string().trim().max(300).default(''),
+  notes: z.string().trim().max(1000).default(''),
+});
+export const updateSupplierSchema = createSupplierSchema.partial().extend({ isActive: z.boolean().optional() });
+
+export const createPurchaseOrderSchema = z.object({
+  supplierId: z.string().min(1),
+  notes: z.string().trim().max(1000).default(''),
+  items: z.array(z.object({
+    menuItemId: z.string().min(1),
+    quantityOrdered: z.number().int().positive().max(100000),
+    unitCost: z.number().int().nonnegative(),
+  })).min(1).max(200).refine((items) => new Set(items.map((item) => item.menuItemId)).size === items.length, 'Each product can only appear once.'),
+});
+
+export const receivePurchaseOrderSchema = z.object({
+  items: z.array(z.object({ menuItemId: z.string().min(1), quantity: z.number().int().positive().max(100000) })).min(1).max(200)
+    .refine((items) => new Set(items.map((item) => item.menuItemId)).size === items.length, 'Each product can only appear once.'),
+});
+
+export const createCashDrawerEntrySchema = z.object({
+  businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  type: z.enum(['OPENING_FLOAT', 'CASH_IN', 'CASH_OUT', 'PETTY_CASH', 'ADJUSTMENT']),
+  amount: z.number().int(),
+  description: z.string().trim().max(300).default(''),
+  reference: z.string().trim().max(120).default(''),
+  idempotencyKey: z.string().uuid().optional(),
+}).refine((entry) => entry.type === 'ADJUSTMENT' ? entry.amount !== 0 : entry.amount >= 0 && (entry.type === 'OPENING_FLOAT' || entry.amount > 0), {
+  message: 'Enter a valid non-negative amount; adjustments must be non-zero.',
+});
+
+export const createCustomerSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  phone: z.string().trim().max(40).default(''),
+  email: z.string().trim().email().or(z.literal('')).default(''),
+  notes: z.string().trim().max(1000).default(''),
+  discountPercent: z.number().int().min(0).max(99).default(0),
+});
+
+export const updateCustomerSchema = createCustomerSchema.partial();
+
+const marketplaceImageSchema = imageUrlSchema.nullable().optional();
+export const createMarketplaceBusinessSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  slug: z.string().trim().min(3).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  category: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(1200).default(''),
+  address: z.string().trim().max(240).default(''),
+  phone: z.string().trim().min(5).max(40),
+  email: z.string().trim().email().or(z.literal('')).default(''),
+  logoUrl: marketplaceImageSchema,
+});
+
+export const updateMarketplaceBusinessSchema = createMarketplaceBusinessSchema.partial().omit({ slug: true });
+export const createMarketplaceMemberSchema = z.object({
+  username: z.string().trim().min(3),
+  role: z.enum(['OWNER', 'MANAGER']).default('MANAGER'),
+});
+
+export const createMarketplaceProductSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(1600).default(''),
+  category: z.string().trim().min(2).max(80),
+  sku: z.string().trim().max(80).default(''),
+  barcode: z.string().trim().max(100).default(''),
+  price: z.number().int().positive(),
+  cost: z.number().int().nonnegative().default(0),
+  stockQuantity: z.number().int().nonnegative().default(0),
+  lowStockAt: z.number().int().nonnegative().default(3),
+  imageUrl: marketplaceImageSchema,
+  isActive: z.boolean().default(true),
+});
+
+export const updateMarketplaceProductSchema = createMarketplaceProductSchema.partial();
+
+export const createMarketplaceVariantSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  sku: z.string().trim().max(80).default(''),
+  price: z.number().int().positive(),
+  stockQuantity: z.number().int().nonnegative().default(0),
+  isActive: z.boolean().default(true),
+});
+
+export const updateMarketplaceVariantSchema = createMarketplaceVariantSchema.partial();
+
+export const createMarketplaceZoneSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  deliveryFee: z.number().int().nonnegative(),
+  minimumOrderAmount: z.number().int().nonnegative().default(0),
+  estimatedMinutes: z.number().int().min(1).max(1440).default(45),
+  isActive: z.boolean().default(true),
+});
+
+export const updateMarketplaceZoneSchema = createMarketplaceZoneSchema.partial();
+
+export const createMarketplaceOrderSchema = z.object({
+  clientOrderId: z.string().uuid(),
+  businessId: z.string().min(1),
+  deliveryZoneId: z.string().min(1).optional(),
+  customerName: z.string().trim().min(2).max(120),
+  customerPhone: z.string().trim().min(5).max(40),
+  customerEmail: z.string().trim().email().or(z.literal('')).default(''),
+  deliveryAddress: z.string().trim().max(300).default(''),
+  note: z.string().trim().max(1000).default(''),
+  paymentMethod: z.enum(['CASH_ON_DELIVERY', 'PAY_AT_STORE']).default('CASH_ON_DELIVERY'),
+  items: z.array(z.object({
+    productId: z.string().min(1),
+    variantId: z.string().min(1).optional(),
+    quantity: z.number().int().positive().max(100),
+  })).min(1).max(80),
+});
+
+export const updateMarketplaceOrderStatusSchema = z.object({
+  status: z.enum(['ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'COMPLETED', 'CANCELLED']),
+  paymentStatus: z.enum(['UNPAID', 'PAID', 'REFUNDED']).optional(),
 });
 
 export const availabilitySchema = z.object({
@@ -131,6 +271,7 @@ export const createOrderSchema = z.object({
   tableNumber: z.string().min(1, 'Table number is required'),
   // waiterId is optional — required when a cashier/manager/owner creates the order
   waiterId: z.string().optional(),
+  customerId: z.string().nullable().optional(),
   items: z.array(orderItemInputSchema).min(1, 'Order must contain at least 1 item'),
 });
 
