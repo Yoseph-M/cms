@@ -1,10 +1,12 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import {
+  buildEscPosTestSlip,
   getPrinterRegistry,
   invalidatePrinterCache,
   sendToNetworkPrinter,
 } from '../../services/printer.service';
+import { getReceiptSettings } from '../../services/receipt-settings.service';
 import { prisma } from '../../services/prisma.service';
 
 import { recordAudit } from '../../services/audit.service';
@@ -203,11 +205,9 @@ export async function testPrint(req: AuthenticatedRequest, res: Response) {
 
   logger.info({ userId, station: printer.station, transport: printer.transport }, 'Test print requested');
 
-  const buffer = Buffer.from([
-    0x1b, 0x40,
-    ...Buffer.from(`*** TEST PRINT ***\n\nIf you can read this, ${printer.transport} printing is working.\n\n\n\n`, 'ascii'),
-    0x1d, 0x56, 0x42, 0x00,
-  ]);
+  // The test slip uses the saved layout, so the owner can confirm the paper
+  // size, business header and footer on real paper before an order depends on it.
+  const buffer = buildEscPosTestSlip(printer.transport, await getReceiptSettings());
 
   if (printer.transport === 'NETWORK') {
     if (!printer.ip) {
