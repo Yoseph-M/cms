@@ -4,7 +4,8 @@ import { prisma } from '../../services/prisma.service';
 import { emitToLiveOrders } from '../../services/socket.service';
 import { enqueueKitchenPrintJob, notifyKitchenPrintFailure } from '../../services/printer.service';
 import { OrderStatus, PaymentMethod, Role, PrintTransport } from '@prisma/client';
-import { executeInTransaction } from '../../utils/transaction';
+import { executeInTransaction, executeInCriticalTransaction } from '../../utils/transaction';
+import { restoreCancelledOrderStock } from '../../services/inventory.service';
 import { canTransition } from '../../utils/orderStateMachine';
 import { recordAudit } from '../../services/audit.service';
 import { getBusinessDayStart, getBusinessDayEnd, parseBusinessDate } from '../../utils/businessTime';
@@ -21,7 +22,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   // If the caller IS a waiter, they are both the waiter and no cashier is set.
   let waiterId = req.user!.userId;
   let cashierId: string | null = null;
-  const { clientOrderId, tableNumber, items, waiterId: bodyWaiterId } = req.body;
+  const { clientOrderId, tableNumber, items, waiterId: bodyWaiterId, customerId } = req.body;
 
   if (([Role.CASHIER, Role.MANAGER, Role.OWNER] as Role[]).includes(callerRole)) {
     // The caller is the cashier on record
@@ -41,6 +42,21 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
   }
 
   const waiterName = req.user!.name;
+  const includeWaiter = {
+    waiter: { select: { id: true, name: true } },
+    cashier: { select: { id: true, name: true } },
+    customer: { select: { id: true, name: true, discountPercent: true } },
+  } as const;
+
+  // Check idempotency before stock validation: a retry of a successful sale
+  // must return the original order without reserving or consuming stock twice.
+  const existing = await prisma.order.findUnique({ where: { clientOrderId }, include: includeWaiter });
+  if (existing) return res.status(200).json({ isNew: false, order: existing });
+
+  const customer = customerId
+    ? await prisma.customer.findUnique({ where: { id: customerId } })
+    : null;
+  if (customerId && !customer) return res.status(400).json({ error: 'Selected customer was not found.' });
 
   // Server-side pricing: NEVER trust the client for unitPrice or totalAmount
   const requestedItemIds = items.map((i: any) => i.menuItemId);
@@ -50,6 +66,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
 
   const menuItemMap = new Map(menuItems.map(m => [m.id, m]));
   let computedTotal = 0;
+  const inventoryDemand = new Map<string, number>();
   
   const validatedItems: Array<{ menuItemId: string; name: string; unitPrice: number; quantity: number; notes: string }> = [];
   for (const item of items) {
@@ -64,7 +81,15 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
       return res.status(400).json({ error: `Invalid quantity for item: ${dbItem.name}` });
     }
 
-    const unitPrice = dbItem.price; // Already in ETB as entered
+    if (dbItem.trackInventory) {
+      const requestedQuantity = (inventoryDemand.get(dbItem.id) ?? 0) + item.quantity;
+      inventoryDemand.set(dbItem.id, requestedQuantity);
+      if (requestedQuantity > (dbItem.stockQuantity ?? 0)) {
+        return res.status(409).json({ error: `Not enough stock for ${dbItem.name}. Available: ${dbItem.stockQuantity ?? 0}.` });
+      }
+    }
+
+    const unitPrice = Math.max(1, Math.round(dbItem.price * (100 - (customer?.discountPercent ?? 0)) / 100));
     computedTotal += unitPrice * item.quantity;
     
     validatedItems.push({
@@ -76,32 +101,23 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     });
   }
 
-  const includeWaiter = { 
-    waiter: { select: { id: true, name: true } },
-    cashier: { select: { id: true, name: true } },
-  } as const;
-
-  // Idempotent create: return existing order on retry (Background Sync)
-  const existing = await prisma.order.findUnique({
-    where: { clientOrderId },
-    include: includeWaiter,
-  });
-  if (existing) {
-    return res.status(200).json({ isNew: false, order: existing });
-  }
+  // Idempotency was checked before stock validation above; the unique client
+  // order key still resolves simultaneous requests below.
 
   let order;
   let createdPrintJobId: string | null = null;
   let printTransport: PrintTransport | null = null;
   
   try {
-    order = await executeInTransaction(prisma, async (tx) => {
+    const executeOrder = inventoryDemand.size > 0 ? executeInCriticalTransaction : executeInTransaction;
+    order = await executeOrder(prisma, async (tx) => {
       const newOrder = await tx.order.create({
         data: {
           clientOrderId,
           tableNumber,
           waiterId,
           cashierId,
+          customerId: customer?.id ?? null,
           items: validatedItems,
           totalAmount: computedTotal,
           status: OrderStatus.SUBMITTED,
@@ -109,9 +125,31 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
         include: includeWaiter,
       });
 
+      // Keep stock and its audit trail with the sale. Conditional writes also
+      // protect against two terminals selling the last units at once.
+      for (const [menuItemId, quantity] of inventoryDemand) {
+        const changed = await tx.menuItem.updateMany({
+          where: { id: menuItemId, trackInventory: true, stockQuantity: { gte: quantity } },
+          data: { stockQuantity: { decrement: quantity } },
+        });
+        if (changed.count === 0) throw new Error('INSUFFICIENT_STOCK');
+        await tx.stockMovement.create({
+          data: {
+            menuItemId,
+            delta: -quantity,
+            reason: 'SALE',
+            reference: newOrder.id,
+            performedById: req.user!.userId,
+          },
+        });
+      }
+
       return newOrder;
     });
   } catch (err: any) {
+    if (err?.message === 'INSUFFICIENT_STOCK') {
+      return res.status(409).json({ error: 'Inventory changed while checkout was in progress. Refresh the order and try again.' });
+    }
     // Concurrent duplicate clientOrderId — return the winner
     if (err?.code === 'P2002') {
       const raced = await prisma.order.findUnique({
@@ -406,17 +444,22 @@ export async function cancelOrder(req: AuthenticatedRequest, res: Response) {
     return res.status(403).json({ error: 'Only Managers or Owners can cancel paid orders.' });
   }
 
-  const result = await prisma.order.updateMany({
-    where: { id, status: order.status },
-    data: {
-      status: OrderStatus.CANCELLED,
-      isPaid: false, // Ensure revenue is properly reversed
-      cancellationReason: reason || order.cancellationReason || 'Cancelled by staff',
-      cancelledById,
-    },
+  const cancelled = await executeInCriticalTransaction(prisma, async (tx) => {
+    const result = await tx.order.updateMany({
+      where: { id, status: order.status },
+      data: {
+        status: OrderStatus.CANCELLED,
+        isPaid: false, // Ensure revenue is properly reversed
+        cancellationReason: reason || order.cancellationReason || 'Cancelled by staff',
+        cancelledById,
+      },
+    });
+    if (result.count === 0) return false;
+    await restoreCancelledOrderStock(tx, id, cancelledById);
+    return true;
   });
 
-  if (result.count === 0) {
+  if (!cancelled) {
     return res.status(409).json({ error: 'Concurrent update detected. Please try again.' });
   }
 
