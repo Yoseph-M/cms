@@ -185,6 +185,8 @@
       "line_other": "{{count}} lines",
       "tableNumber": "Table number",
       "tablePlaceholder": "e.g. 12 or Takeout",
+      "customerLabel": "Customer",
+      "walkInCustomer": "Walk-in customer",
       "emptyCart": "Tap menu items to add them here.",
       "each": "ea",
       "notesPlaceholder": "Notes (optional)",
