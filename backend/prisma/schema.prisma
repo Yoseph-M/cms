@@ -149,6 +149,47 @@ enum IntegrityCategory {
   BROKEN_LEDGER
 }
 
+enum MarketplaceMemberRole {
+  OWNER
+  MANAGER
+}
+
+enum MarketplaceOrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  COMPLETED
+  CANCELLED
+}
+
+enum MarketplacePaymentMethod {
+  CASH_ON_DELIVERY
+  PAY_AT_STORE
+}
+
+enum MarketplacePaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum PurchaseOrderStatus {
+  OPEN
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum CashDrawerEntryType {
+  OPENING_FLOAT
+  CASH_IN
+  CASH_OUT
+  PETTY_CASH
+  ADJUSTMENT
+}
+
 // ---------- Models ----------
 
 model User {
@@ -195,6 +236,10 @@ model User {
   dailyClosesClosed      DailyClose[] @relation("DailyCloseClosedBy")
   dailyClosesRequested   DailyClose[] @relation("DailyCloseRequestedBy")
   integrityIssuesResolved IntegrityIssue[] @relation("IntegrityIssuesResolved")
+  marketplaceMemberships MarketplaceBusinessMember[]
+  purchasesCreated      PurchaseOrder[] @relation("PurchaseCreator")
+  purchasesReceived     PurchaseOrder[] @relation("PurchaseReceiver")
+  cashDrawerEntries     CashDrawerEntry[]
 
   @@index([role, isActive])
   @@map("users")
@@ -206,13 +251,283 @@ model MenuItem {
   nameAmharic String?
   category    MenuCategory
   price       Int      // Stored in ETB as a whole number (no cents)
+  sku         String?
+  barcode     String?
+  cost        Int?     // Unit cost in ETB; used for margin reporting
+  trackInventory Boolean @default(false)
+  stockQuantity Int?    @default(0)
+  lowStockThreshold Int? @default(5)
   isAvailable Boolean      @default(true)
   imageUrl    String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  stockMovements StockMovement[]
+
   @@index([category, isAvailable])
+  @@index([barcode])
+  @@index([sku])
+  @@index([trackInventory, stockQuantity])
   @@map("menuitems")
+}
+
+model Customer {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                  String
+  phone                 String   @default("")
+  email                 String   @default("")
+  notes                 String   @default("")
+  discountPercent       Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([name])
+  @@index([phone])
+  @@map("customers")
+}
+
+model StockMovement {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  menuItemId  String   @db.ObjectId
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id])
+  delta       Int      // Positive for receiving/return; negative for sale/adjustment
+  reason      String   // SALE, RECEIVING, ADJUSTMENT, RETURN
+  reference   String?
+  performedById String @db.ObjectId
+  createdAt   DateTime @default(now())
+
+  @@index([menuItemId, createdAt])
+  @@index([reason, createdAt])
+  @@map("stock_movements")
+}
+
+model Supplier {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  contactName   String          @default("")
+  phone         String          @default("")
+  email         String          @default("")
+  address       String          @default("")
+  notes         String          @default("")
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+
+  @@index([name, isActive])
+  @@map("suppliers")
+}
+
+type PurchaseOrderLine {
+  menuItemId       String @db.ObjectId
+  name             String
+  quantityOrdered  Int
+  quantityReceived Int    @default(0)
+  unitCost         Int
+}
+
+model PurchaseOrder {
+  id             String             @id @default(auto()) @map("_id") @db.ObjectId
+  purchaseNumber String             @unique
+  supplierId     String             @db.ObjectId
+  supplier       Supplier           @relation(fields: [supplierId], references: [id])
+  items          PurchaseOrderLine[]
+  status         PurchaseOrderStatus @default(OPEN)
+  subtotal       Int
+  notes          String             @default("")
+  createdById    String             @db.ObjectId
+  createdBy      User               @relation("PurchaseCreator", fields: [createdById], references: [id])
+  receivedById   String?            @db.ObjectId
+  receivedBy     User?              @relation("PurchaseReceiver", fields: [receivedById], references: [id])
+  receivedAt     DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([supplierId, createdAt])
+  @@index([status, createdAt])
+  @@map("purchase_orders")
+}
+
+model CashDrawerEntry {
+  id             String              @id @default(auto()) @map("_id") @db.ObjectId
+  businessDate   String              // YYYY-MM-DD in the operator's local business day
+  type           CashDrawerEntryType
+  amount         Int                 // ETB whole units; positive magnitude for each movement
+  description    String              @default("")
+  reference      String              @default("")
+  idempotencyKey String?             @unique
+  openingFloatKey String?            @unique
+  createdById    String              @db.ObjectId
+  createdBy      User                @relation(fields: [createdById], references: [id])
+  createdAt      DateTime            @default(now())
+
+  @@index([businessDate, createdAt])
+  @@index([type, businessDate])
+  @@map("cash_drawer_entries")
+}
+
+/// Separate merchant workspace for the public multi-business marketplace.
+/// The current restaurant POS records remain in their existing collections.
+model MarketplaceBusiness {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  slug        String   @unique
+  category    String
+  description String   @default("")
+  address     String   @default("")
+  phone       String   @default("")
+  email       String   @default("")
+  logoUrl     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members        MarketplaceBusinessMember[]
+  products       MarketplaceProduct[]
+  deliveryZones  MarketplaceDeliveryZone[]
+  orders         MarketplaceOrder[]
+
+  @@index([isActive, category, name])
+  @@map("marketplace_businesses")
+}
+
+model MarketplaceBusinessMember {
+  id         String                 @id @default(auto()) @map("_id") @db.ObjectId
+  businessId String                 @db.ObjectId
+  business   MarketplaceBusiness    @relation(fields: [businessId], references: [id])
+  userId     String                 @db.ObjectId
+  user       User                   @relation(fields: [userId], references: [id])
+  role       MarketplaceMemberRole  @default(MANAGER)
+  createdAt  DateTime               @default(now())
+
+  @@unique([businessId, userId])
+  @@index([userId])
+  @@map("marketplace_business_members")
+}
+
+model MarketplaceProduct {
+  id            String              @id @default(auto()) @map("_id") @db.ObjectId
+  businessId    String              @db.ObjectId
+  business      MarketplaceBusiness @relation(fields: [businessId], references: [id])
+  name          String
+  description   String              @default("")
+  category      String
+  sku           String              @default("")
+  barcode       String              @default("")
+  price         Int
+  cost          Int                 @default(0)
+  stockQuantity Int                 @default(0)
+  lowStockAt    Int                 @default(3)
+  imageUrl      String?
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  variants MarketplaceProductVariant[]
+  stockMovements MarketplaceStockMovement[]
+
+  @@index([businessId, isActive, category])
+  @@index([businessId, name])
+  @@index([sku])
+  @@index([barcode])
+  @@map("marketplace_products")
+}
+
+model MarketplaceProductVariant {
+  id            String            @id @default(auto()) @map("_id") @db.ObjectId
+  productId     String            @db.ObjectId
+  product       MarketplaceProduct @relation(fields: [productId], references: [id])
+  name          String
+  sku           String            @default("")
+  price         Int
+  stockQuantity Int               @default(0)
+  isActive      Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  stockMovements MarketplaceStockMovement[]
+
+  @@index([productId, isActive])
+  @@index([sku])
+  @@map("marketplace_product_variants")
+}
+
+model MarketplaceStockMovement {
+  id          String                    @id @default(auto()) @map("_id") @db.ObjectId
+  businessId  String                    @db.ObjectId
+  productId   String                    @db.ObjectId
+  product     MarketplaceProduct        @relation(fields: [productId], references: [id])
+  variantId   String?                   @db.ObjectId
+  variant     MarketplaceProductVariant? @relation(fields: [variantId], references: [id])
+  delta       Int
+  reason      String                    // OPENING_BALANCE, RECEIVING, ADJUSTMENT, SALE, CANCELLATION
+  reference   String?
+  performedById String?                 @db.ObjectId // null for public checkout
+  createdAt   DateTime                  @default(now())
+
+  @@index([businessId, createdAt])
+  @@index([productId, createdAt])
+  @@index([variantId, createdAt])
+  @@index([reason, reference])
+  @@map("marketplace_stock_movements")
+}
+
+model MarketplaceDeliveryZone {
+  id                  String              @id @default(auto()) @map("_id") @db.ObjectId
+  businessId          String              @db.ObjectId
+  business            MarketplaceBusiness @relation(fields: [businessId], references: [id])
+  name                String
+  deliveryFee         Int                 @default(0)
+  minimumOrderAmount  Int                 @default(0)
+  estimatedMinutes   Int                 @default(45)
+  isActive            Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  orders MarketplaceOrder[]
+
+  @@index([businessId, isActive, name])
+  @@map("marketplace_delivery_zones")
+}
+
+type MarketplaceOrderLine {
+  productId     String @db.ObjectId
+  variantId     String? @db.ObjectId
+  name          String
+  variantName   String @default("")
+  sku           String @default("")
+  unitPrice     Int
+  quantity      Int
+}
+
+model MarketplaceOrder {
+  id             String                   @id @default(auto()) @map("_id") @db.ObjectId
+  clientOrderId  String                   @unique
+  businessId     String                   @db.ObjectId
+  business       MarketplaceBusiness      @relation(fields: [businessId], references: [id])
+  deliveryZoneId String?                  @db.ObjectId
+  deliveryZone   MarketplaceDeliveryZone?  @relation(fields: [deliveryZoneId], references: [id])
+  customerName   String
+  customerPhone  String
+  customerEmail  String                   @default("")
+  deliveryAddress String                  @default("")
+  note           String                   @default("")
+  items          MarketplaceOrderLine[]
+  subtotal       Int
+  deliveryFee    Int                      @default(0)
+  totalAmount    Int
+  paymentMethod  MarketplacePaymentMethod @default(CASH_ON_DELIVERY)
+  paymentStatus  MarketplacePaymentStatus @default(UNPAID)
+  status         MarketplaceOrderStatus   @default(PLACED)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([businessId, status, createdAt])
+  @@index([customerPhone, createdAt])
+  @@map("marketplace_orders")
 }
 
 // Composite (embedded) type — mirrors the original embedded orderItemSchema
@@ -233,6 +548,8 @@ model Order {
   cashierId          String?          @db.ObjectId
   cashier            User?            @relation("CashierOrders", fields: [cashierId], references: [id])
   items              OrderItem[]
+  customerId         String?          @db.ObjectId
+  customer           Customer?        @relation(fields: [customerId], references: [id])
   totalAmount        Int
   status             OrderStatus      @default(SUBMITTED)
   settlementStatus   SettlementStatus @default(UNSETTLED)
@@ -254,6 +571,7 @@ model Order {
   @@index([settlementStatus, createdAt])
   @@index([waiterId, createdAt])
   @@index([cashierId, createdAt])
+  @@index([customerId, createdAt])
   @@map("orders")
 }
 
