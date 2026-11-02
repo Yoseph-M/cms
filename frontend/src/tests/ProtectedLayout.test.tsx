@@ -97,7 +97,10 @@ describe('ProtectedLayout / App Routing', () => {
     expect(screen.queryByText('Owner Dashboard Mock')).not.toBeInTheDocument();
   });
 
-  it('does not render the login form on /login until bootstrap finishes', async () => {
+  // Regression: a slow /auth/refresh must not leave a cold production start
+  // sitting on a login skeleton. The form is static, so it paints immediately
+  // while the session restore keeps running in the background.
+  it('renders the login form immediately while the session is still being restored', async () => {
     (useAuthStore as any).mockReturnValue({
       isAuthenticated: false,
       user: { role: 'OWNER', id: '1', name: 'Owner' },
@@ -111,8 +114,25 @@ describe('ProtectedLayout / App Routing', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByLabelText('Loading page')).toBeInTheDocument();
-    expect(screen.queryByText('Login Page Mock')).not.toBeInTheDocument();
+    expect(await screen.findByText('Login Page Mock')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Loading page')).not.toBeInTheDocument();
+  });
+
+  it('redirects /login to the role home once the session is restored', async () => {
+    (useAuthStore as any).mockReturnValue({
+      isAuthenticated: true,
+      user: { role: 'OWNER', id: '1', name: 'Owner' },
+      isLoading: false,
+      bootstrapSession: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Owner Dashboard Mock')).toBeInTheDocument();
   });
 
   it('only renders /login after bootstrap completes without a session', async () => {
