@@ -99,6 +99,13 @@ export async function rejectCancellationRequest(req: AuthenticatedRequest, res: 
   const { rejectedReason } = req.body;
   const approvedById = req.user!.userId;
 
+  // Prisma's Mongo ObjectId filter throws for malformed path params (for
+  // example, when a caller follows a failed request without an id). Treat
+  // those as a client error instead of returning an internal server error.
+  if (!/^[a-f\d]{24}$/i.test(requestId)) {
+    return res.status(400).json({ error: 'Invalid cancellation request ID' });
+  }
+
   try {
     const request = await rejectCancellation({
       requestId,
