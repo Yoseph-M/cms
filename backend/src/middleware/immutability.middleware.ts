@@ -6,7 +6,7 @@
  * the middleware prevents dangerous operations.
  * 
  * PROTECTED MODELS:
- * - CashDrawerEvent: Append-only ledger (always immutable)
+ * - CashDrawerEvent and CashDrawerEntry: Append-only ledgers (always immutable)
  * - Settlement: Financial records (always immutable after creation)
  * - DailyClose: Immutable after status = CLOSED (conditional)
  * - Order: After settlement begins (partial protection, not yet implemented)
@@ -19,25 +19,25 @@ import { logger } from '../utils/logger';
  */
 export function createImmutabilityMiddleware() {
   return async (params: any, next: any) => {
-    // Block ALL updates and deletes on CashDrawerEvent
-    if (params.model === 'CashDrawerEvent') {
+    // Drawer movements are append-only. Corrections are recorded as new adjustments.
+    if (params.model === 'CashDrawerEvent' || params.model === 'CashDrawerEntry') {
       if (params.action === 'update' || params.action === 'updateMany') {
         logger.error(
           { model: params.model, action: params.action, args: params.args },
-          'SECURITY: Attempted to UPDATE immutable CashDrawerEvent'
+          'SECURITY: Attempted to UPDATE immutable cash drawer entry'
         );
         throw new Error(
-          'CashDrawerEvent records are immutable. Use CASH_ADJUSTMENT to create a compensating event.'
+          'Cash drawer entries are immutable. Create a compensating adjustment instead.'
         );
       }
 
       if (params.action === 'delete' || params.action === 'deleteMany') {
         logger.error(
           { model: params.model, action: params.action, args: params.args },
-          'SECURITY: Attempted to DELETE immutable CashDrawerEvent'
+          'SECURITY: Attempted to DELETE immutable cash drawer entry'
         );
         throw new Error(
-          'CashDrawerEvent records cannot be deleted. Ledger is append-only.'
+          'Cash drawer entries cannot be deleted. The ledger is append-only.'
         );
       }
     }
@@ -128,7 +128,7 @@ export function createImmutabilityMiddleware() {
  * Use this for additional validation in service layer
  */
 export function validateImmutability(model: string, operation: 'update' | 'delete'): void {
-  const immutableModels = ['CashDrawerEvent', 'Settlement'];
+  const immutableModels = ['CashDrawerEvent', 'CashDrawerEntry', 'Settlement'];
   
   if (immutableModels.includes(model)) {
     logger.error(
