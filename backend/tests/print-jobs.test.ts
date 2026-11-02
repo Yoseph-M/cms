@@ -434,6 +434,14 @@ describe('Print Jobs and Print Agents', () => {
         .send({ status: 'FAILED', error: 'Printer offline' });
     });
 
+    it('should store an agent failure as a plain-English sentence', async () => {
+      const job = await prisma.printJob.findUnique({ where: { id: failedJobId } });
+
+      // The agent reports "Printer offline"; staff should read the cause, not
+      // the agent's log line.
+      expect(job!.lastError).toBe('The printer is not reachable.');
+    });
+
     it('should allow Owner to retry failed job', async () => {
       const res = await request(app)
         .post(`/api/print-jobs/${failedJobId}/retry`)
@@ -480,6 +488,73 @@ describe('Print Jobs and Print Agents', () => {
         .post(`/api/print-jobs/${failedJobId}/retry`)
         .set('Authorization', `Bearer ${ownerToken}`)
         .expect(400);
+    });
+  });
+
+  describe('Frontend ACK from two windows', () => {
+    // Every open tab of the POS polls /print-jobs/frontend/pending, so two
+    // windows can pick up the same queued job: the winner prints the ticket and
+    // ACKs PRINTED while the loser — which could not claim the USB printer —
+    // ACKs FAILED. That losing ACK must not un-print a ticket that is already
+    // on paper; it would alert Owner/Manager and send the cashier to reprint.
+    let printedJobId: string;
+    let queuedJobId: string;
+
+    beforeAll(async () => {
+      const item = await createTestMenuItem({ name: 'Pasta', price: 1800 });
+      const waiter = await createTestUser(Role.WAITER);
+      const order = await createTestOrder({
+        items: [{
+          menuItemId: item.id,
+          name: item.name,
+          unitPrice: item.price,
+          quantity: 1
+        }],
+        waiterId: waiter.id,
+      });
+
+      const printed = await createTestPrintJob(order.id, {
+        station: 'kitchen',
+        transport: PrintTransport.USB,
+      });
+      printedJobId = printed.id;
+      await prisma.printJob.update({
+        where: { id: printedJobId },
+        data: { status: PrintJobStatus.PRINTED },
+      });
+
+      const queued = await createTestPrintJob(order.id, {
+        station: 'kitchen',
+        transport: PrintTransport.USB,
+      });
+      queuedJobId = queued.id;
+    });
+
+    it('should not flip an already printed ticket back to failed', async () => {
+      const res = await request(app)
+        .post(`/api/print-jobs/frontend/${printedJobId}/ack`)
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ status: 'FAILED', error: 'Unable to claim interface' })
+        .expect(200);
+
+      expect(res.body.idempotent).toBe(true);
+
+      const job = await prisma.printJob.findUnique({ where: { id: printedJobId } });
+      expect(job!.status).toBe(PrintJobStatus.PRINTED);
+      expect(job!.lastError).toBeNull();
+    });
+
+    it('should still record a genuine failure of a queued ticket', async () => {
+      await request(app)
+        .post(`/api/print-jobs/frontend/${queuedJobId}/ack`)
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ status: 'FAILED', error: 'Printer is switched off' })
+        .expect(200);
+
+      const job = await prisma.printJob.findUnique({ where: { id: queuedJobId } });
+      expect(job!.status).toBe(PrintJobStatus.FAILED);
+      // Normalised into the same sentence an operator sees in the toast.
+      expect(job!.lastError).toBe('The printer is switched off.');
     });
   });
 
