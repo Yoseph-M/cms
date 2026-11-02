@@ -157,6 +157,16 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
       // 2. Define the refresh operation
       const performRefresh = async (): Promise<string | null> => {
+        // The login screen paints immediately now, so a user can sign in while
+        // the initial bootstrap is still waiting on /auth/refresh. A late
+        // rejection from that stale request must never sign out the session the
+        // user just created.
+        const sessionAtStart = get().accessToken;
+        const supersededByNewerSession = () => {
+          const current = get().accessToken;
+          return Boolean(current && current !== sessionAtStart);
+        };
+
         try {
           // 3. Double-check auth inside the lock to handle cross-tab or concurrent calls
           // (bypassed when `force` — the proactive timer wants a fresh token
@@ -227,6 +237,11 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
           throw lastError;
         } catch (error) {
+          if (supersededByNewerSession()) {
+            debugLog('ignoring stale refresh failure — a newer session was established');
+            set({ isRefreshing: false });
+            return get().accessToken;
+          }
           if (isDefinitiveAuthError(error)) {
             // Server definitively rejected the refresh token — end the session.
             debugLog('authentication cleared (definitive refresh rejection)');
