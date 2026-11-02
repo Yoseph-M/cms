@@ -42,6 +42,12 @@ export interface MenuItem {
   nameAmharic?: string | null;
   category: MenuCategory;
   price: number;
+  sku?: string | null;
+  barcode?: string | null;
+  cost?: number | null;
+  trackInventory?: boolean;
+  stockQuantity?: number | null;
+  lowStockThreshold?: number | null;
   isAvailable: boolean;
   imageUrl?: string;
   createdAt?: string;
