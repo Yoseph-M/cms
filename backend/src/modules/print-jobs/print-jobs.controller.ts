@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { PrintJobStatus, Role } from '@prisma/client';
 import { emitToLiveOrders } from '../../services/socket.service';
-import { notifyKitchenPrintFailure } from '../../services/printer.service';
+import { notifyKitchenPrintFailure, printFailureSentence } from '../../services/printer.service';
 import { recordAudit } from '../../services/audit.service';
 import { logger } from '../../utils/logger';
 
@@ -156,11 +156,15 @@ export async function ackPrintJob(req: AuthenticatedRequest, res: Response) {
     return res.status(400).json({ error: `Cannot ACK job in ${job.status} state` });
   }
 
+  // Agents send the raw spooler/driver text. Store and broadcast the sentence
+  // staff can act on; the raw error is already in the agent log.
+  const plainError = error ? printFailureSentence(error) : null;
+
   await prisma.printJob.update({
     where: { id: jobId },
     data: {
       status: updatedStatus,
-      lastError: error || null,
+      lastError: plainError,
       printedAt: updatedStatus === PrintJobStatus.PRINTED ? new Date() : null,
     },
   });
@@ -176,7 +180,7 @@ export async function ackPrintJob(req: AuthenticatedRequest, res: Response) {
     error: error || null
   }, 'Print job acknowledged by agent');
 
-  emitToLiveOrders('printJob:updated', { jobId, status: updatedStatus, error });
+  emitToLiveOrders('printJob:updated', { jobId, status: updatedStatus, error: plainError ?? undefined });
 
   return res.status(200).json({ success: true });
 }
@@ -252,22 +256,34 @@ export async function ackFrontendPrintJob(req: AuthenticatedRequest, res: Respon
     }
 
     const updatedStatus = status === 'PRINTED' ? PrintJobStatus.PRINTED : PrintJobStatus.FAILED;
+    // The browser sends its own plain-English copy; a stale or third-party
+    // client may still send a raw DOMException, so normalise here as well.
+    const plainError = error ? printFailureSentence(error) : null;
 
     if (job.status === updatedStatus) {
       return res.status(200).json({ success: true, idempotent: true });
+    }
+
+    // Every open tab of the POS polls the same pending list, so two windows can
+    // hold one job: the winner prints the ticket and ACKs PRINTED while the
+    // loser — which cannot claim the printer — ACKs FAILED. A ticket that is
+    // already on paper must never be re-flagged as failed: that alerts
+    // Owner/Manager and sends the cashier to reprint a ticket they already have.
+    if (job.status === PrintJobStatus.PRINTED && updatedStatus === PrintJobStatus.FAILED) {
+      return res.status(200).json({ success: true, idempotent: true, status: job.status });
     }
 
     await prisma.printJob.update({
       where: { id: jobId },
       data: {
         status: updatedStatus,
-        lastError: error || null,
+        lastError: plainError,
         printedAt: updatedStatus === PrintJobStatus.PRINTED ? new Date() : null,
         attempts: { increment: 1 },
       },
     });
 
-    emitToLiveOrders('printJob:updated', { jobId, status: updatedStatus, error });
+    emitToLiveOrders('printJob:updated', { jobId, status: updatedStatus, error: plainError ?? undefined });
 
     // A failed ticket must tell a human: the order stays on the Tickets page,
     // the cashier gets a banner, and Owner/Manager get a notification.
@@ -358,6 +374,7 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
 
   // Find printer configuration for kitchen
   const { getPrinterRegistry, buildEscPosKitchenTicket, resolveKitchenPrinter } = await import('../../services/printer.service');
+  const { getReceiptSettings } = await import('../../services/receipt-settings.service');
   const printers = await getPrinterRegistry();
   const kitchenPrinter = resolveKitchenPrinter(printers);
 
@@ -365,14 +382,19 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
     return res.status(400).json({ error: 'Kitchen printer not configured' });
   }
 
-  // Build ticket
-  const ticketBuffer = buildEscPosKitchenTicket({
-    clientOrderId: order.clientOrderId,
-    tableNumber: order.tableNumber,
-    waiterName: order.waiter?.name,
-    createdAt: order.createdAt,
-    items: order.items as any,
-  });
+  // Build the ticket with the owner's current layout. A reprint is one ticket,
+  // even when the layout queues multiple copies for new orders.
+  const settings = await getReceiptSettings();
+  const ticketBuffer = buildEscPosKitchenTicket(
+    {
+      clientOrderId: order.clientOrderId,
+      tableNumber: order.tableNumber,
+      waiterName: order.waiter?.name,
+      createdAt: order.createdAt,
+      items: order.items as any,
+    },
+    settings,
+  );
 
   const payloadBase64 = ticketBuffer.toString('base64');
 
