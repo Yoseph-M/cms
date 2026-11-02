@@ -9,6 +9,11 @@ export interface SettingsShellItem {
   id: string;
   title: string;
   description?: string;
+  /**
+   * Render the content without the shell's card/header wrapper. Used by items
+   * that lay out their own cards (e.g. settings + live preview side by side).
+   */
+  bare?: boolean;
   keywords?: string[];
   content: React.ReactNode;
 }
@@ -341,25 +346,29 @@ export const SettingsShell: React.FC<SettingsShellProps> = ({
 
               {/* Category Items */}
               <div className="space-y-6">
-                {activeCategory.items.map((item) => (
-                  <section
-                    key={item.id}
-                    id={item.id}
-                    className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-border sm:p-6"
-                  >
-                    <div className="mb-4">
-                      <h3 className="text-base font-semibold leading-tight text-foreground">
-                        {item.title}
-                      </h3>
-                      {item.description && (
-                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                          {item.description}
-                        </p>
-                      )}
-                    </div>
-                    {item.content}
-                  </section>
-                ))}
+                {activeCategory.items.map((item) =>
+                  item.bare ? (
+                    <React.Fragment key={item.id}>{item.content}</React.Fragment>
+                  ) : (
+                    <section
+                      key={item.id}
+                      id={item.id}
+                      className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm transition-all duration-200 hover:shadow-md hover:border-border sm:p-6"
+                    >
+                      <div className="mb-4">
+                        <h3 className="text-base font-semibold leading-tight text-foreground">
+                          {item.title}
+                        </h3>
+                        {item.description && (
+                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+                      {item.content}
+                    </section>
+                  ),
+                )}
               </div>
             </main>
           )}
