@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Printer } from 'lucide-react';
 import { SettingsShell, type SettingsShellCategory } from '../../components/settings/SettingsShell';
 import { NotificationPreferencesSection } from '../../components/settings/NotificationPreferencesSection';
 import { ManagerMenuEditToggle } from '../../components/settings/ManagerMenuEditToggle';
@@ -9,6 +9,7 @@ import { WorkOnSundaysToggle } from '../../components/settings/WorkOnSundaysTogg
 import { LanguagePreferenceSection } from '../../components/settings/LanguagePreferenceSection';
 import { ThemePreferenceSection } from '../../components/settings/ThemePreferenceSection';
 import { useHeaderStore } from '../../store/headerStore';
+import { ReceiptPrintingSection } from '../../components/settings/ReceiptPrintingSection';
 
 export const ManagerSettings: React.FC = () => {
   const { t } = useTranslation('owner');
@@ -52,6 +53,24 @@ export const ManagerSettings: React.FC = () => {
           description: 'Configure which operational alerts reach your notification bell.',
           keywords: ['notifications', 'alerts', 'sound', 'printer', 'attendance', 'payroll'],
           content: <NotificationPreferencesSection />,
+        },
+      ],
+    },
+    {
+      id: 'printing',
+      label: 'Printing',
+      description: 'Receipt layout, paper size, copies, and the business header',
+      icon: Printer,
+      iconClassName: 'text-sky-600 dark:text-sky-400',
+      iconBgClassName: 'bg-sky-500/10',
+      items: [
+        {
+          id: 'receipt-printing',
+          title: 'Receipts & Printing',
+          description: 'Customize how receipts look and print.',
+          bare: true,
+          keywords: ['receipt', 'printing', 'paper size', '58mm', '80mm', 'copies', 'bottom message', 'business name', 'tax'],
+          content: <ReceiptPrintingSection />,
         },
       ],
     },
