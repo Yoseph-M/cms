@@ -18,6 +18,7 @@ import { useSocketStore } from '../../store/socketStore';
 import { useToastStore } from '../../store/toastStore';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
+import { LoadingState } from '../../components/common/LoadingState';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { cn } from '../../lib/utils';
@@ -161,11 +162,7 @@ export const CashierEndOfDay: React.FC = () => {
         : t('cashier.eod.todaySoFar', { defaultValue: 'Today so far' });
 
   if (statusQuery.isLoading || previewQuery.isLoading) {
-    return (
-      <div className="w-full min-w-0 space-y-5 pb-8">
-        <div className="h-64 animate-pulse rounded-2xl bg-secondary/40" />
-      </div>
-    );
+    return <LoadingState className="min-h-0 py-16" />;
   }
 
   /**
