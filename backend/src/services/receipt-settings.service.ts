@@ -12,7 +12,7 @@ import { logger } from '../utils/logger';
 export type ReceiptPaperSize = '58mm' | '80mm';
 export type ReceiptTaxDisplay = 'show' | 'hide' | 'included';
 
-export interface ReceiptSettings {
+export interface PrintLayoutSettings {
   bottomMessage: string;
   secondaryBottomMessage: string;
   paperSize: ReceiptPaperSize;
@@ -34,9 +34,13 @@ export interface ReceiptSettings {
   showChange: boolean;
 }
 
+export interface ReceiptSettings extends PrintLayoutSettings {
+  kitchenTicket: PrintLayoutSettings;
+}
+
 export const RECEIPT_SETTINGS_KEY = 'receiptSettings';
 
-export const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = {
+export const DEFAULT_PRINT_LAYOUT_SETTINGS: PrintLayoutSettings = {
   bottomMessage: 'Thank you for shopping with us!',
   secondaryBottomMessage: 'Visit us again!',
   paperSize: '80mm',
@@ -58,21 +62,26 @@ export const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = {
   showChange: true,
 };
 
+export const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = {
+  ...DEFAULT_PRINT_LAYOUT_SETTINGS,
+  kitchenTicket: { ...DEFAULT_PRINT_LAYOUT_SETTINGS },
+};
+
 const asString = (value: unknown, fallback: string, max: number) =>
   typeof value === 'string' ? value.slice(0, max) : fallback;
 
 const asBoolean = (value: unknown, fallback: boolean) =>
   typeof value === 'boolean' ? value : fallback;
 
-export function normalizeReceiptSettings(raw: unknown): ReceiptSettings {
+export function normalizePrintLayoutSettings(raw: unknown): PrintLayoutSettings {
   const value = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const copies = Number(value.copies);
 
   return {
-    bottomMessage: asString(value.bottomMessage, DEFAULT_RECEIPT_SETTINGS.bottomMessage, 120),
+    bottomMessage: asString(value.bottomMessage, DEFAULT_PRINT_LAYOUT_SETTINGS.bottomMessage, 120),
     secondaryBottomMessage: asString(
       value.secondaryBottomMessage,
-      DEFAULT_RECEIPT_SETTINGS.secondaryBottomMessage,
+      DEFAULT_PRINT_LAYOUT_SETTINGS.secondaryBottomMessage,
       120,
     ),
     paperSize: value.paperSize === '58mm' ? '58mm' : '80mm',
@@ -96,6 +105,13 @@ export function normalizeReceiptSettings(raw: unknown): ReceiptSettings {
     showAmountPaid: asBoolean(value.showAmountPaid, true),
     showChange: asBoolean(value.showChange, true),
   };
+}
+
+export function normalizeReceiptSettings(raw: unknown): ReceiptSettings {
+  const value = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const receipt = normalizePrintLayoutSettings(value);
+  const kitchenTicket = normalizePrintLayoutSettings(value.kitchenTicket ?? value);
+  return { ...receipt, kitchenTicket };
 }
 
 /**
