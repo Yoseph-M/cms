@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
+import { LoadingState } from '../../components/common/LoadingState';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { formatEthiopianPhone, isValidEthiopianPhone, ETHIOPIAN_COUNTRY_CODE } from '../../utils/phone';
 import { extractErrorMessage } from '../../utils/errorHandler';
@@ -360,7 +361,7 @@ export const OwnerStaff: React.FC = () => {
 
       {/* Table */}
       {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-secondary/40 animate-pulse" />)}</div>
+        <LoadingState className="min-h-0 p-8" />
       ) : error ? (
         <div className="py-16 text-center">
           <p className="text-destructive">{error}</p>
