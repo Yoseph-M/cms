@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { EmptyState } from '../../components/common/EmptyState';
+import { LoadingState } from '../../components/common/LoadingState';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { useTranslation } from 'react-i18next';
 
@@ -363,9 +364,7 @@ export const OwnerPayroll: React.FC = () => {
         <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">{t('payroll.activeStaff', { defaultValue: 'Active Staff' })}</h2>
         
         {isLoading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 max-[419px]:grid-cols-1 gap-4">
-            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-secondary/40 rounded-xl animate-pulse" />)}
-          </div>
+          <LoadingState className="min-h-0 py-8" />
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 max-[419px]:grid-cols-1 gap-4">
             <motion.div 
@@ -412,7 +411,7 @@ export const OwnerPayroll: React.FC = () => {
         </CardHeader>
         <CardContent className="p-0">
           {isLoading && paymentRows.length === 0 ? (
-            <div className="p-6 space-y-2">{Array.from({length: 5}).map((_,i)=><div key={i} className="h-12 rounded-lg bg-secondary/40 animate-pulse" />)}</div>
+            <LoadingState className="min-h-0 p-8" />
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-destructive">{error}</p>
