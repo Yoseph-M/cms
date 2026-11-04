@@ -11,6 +11,7 @@ import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge, type BadgeProps } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/common/EmptyState';
+import { LoadingState } from '../../components/common/LoadingState';
 import { DropdownSelect } from '../../components/ui/DropdownSelect';
 
 /**
@@ -337,11 +338,7 @@ export const OwnerAuditLogs: React.FC = () => {
           </div>
 
           {isLoading ? (
-            <div className="space-y-2 p-6">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="h-12 animate-pulse rounded-lg bg-secondary/40" />
-              ))}
-            </div>
+            <LoadingState className="min-h-0 p-8" />
           ) : error ? (
             <div className="p-12 text-center">
               <AlertCircle className="mx-auto mb-3 h-8 w-8 text-destructive" />
