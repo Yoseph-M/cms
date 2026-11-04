@@ -15,6 +15,7 @@ import { Tooltip } from '../../components/ui/Tooltip';
 import { Sheet } from '../../components/ui/Sheet';
 import { AlertDialog } from '../../components/ui/AlertDialog';
 import { usePrintersQuery } from '../../hooks/useCachedQueries';
+import { LoadingState } from '../../components/common/LoadingState';
 import { printTestSlip, type TestSlip } from '../../hooks/useHardwarePrinter';
 import i18nInstance from '../../i18n';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -487,11 +488,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-36 rounded-xl bg-secondary/40 animate-pulse" />
-          ))}
-        </div>
+        <LoadingState className="min-h-0 py-16" />
       ) : error ? (
         <div className="py-12 text-center">
           <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-3" />
