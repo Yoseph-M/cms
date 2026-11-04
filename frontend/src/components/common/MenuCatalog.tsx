@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
+import { LoadingState } from './LoadingState';
 import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
 import { fileToCompressedDataUrl } from '../../utils/imageResize';
@@ -1022,18 +1023,7 @@ export const MenuCatalog: React.FC<MenuCatalogProps> = ({ canEdit = true, showAv
       </Card>
 
       {isLoading ? (
-        <div className="grid grid-cols-4 max-[767px]:grid-cols-2 max-[419px]:grid-cols-1 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i} className="overflow-hidden animate-pulse">
-              <div className="h-36 bg-secondary/50" />
-              <CardContent className="p-3 space-y-2">
-                <div className="h-4 w-3/4 rounded bg-secondary/70" />
-                <div className="h-5 w-1/2 rounded bg-secondary/50" />
-                <div className="h-6 w-full rounded bg-secondary/30 mt-3" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <LoadingState className="min-h-0 py-16" />
       ) : error ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <p className="text-destructive font-medium">{error}</p>
