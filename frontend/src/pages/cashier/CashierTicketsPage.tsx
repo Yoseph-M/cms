@@ -13,7 +13,7 @@ import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage, extractErrorDetails } from '../../utils/errorHandler';
 import { cn } from '../../lib/utils';
-import { PageSkeleton } from '../../components/common/PageSkeleton';
+import { LoadingState } from '../../components/common/LoadingState';
 
 // New subcomponents
 import { QueueTabs, type SortKey } from '../../components/cashier/dashboard/QueueTabs';
@@ -446,7 +446,7 @@ export const CashierTicketsPage: React.FC = () => {
 
   // Background refresh every 30s — new tickets show up without a manual
   // refresh, even if the socket connection is ever interrupted. Silent: it
-  // never flashes the loading skeleton over an already-rendered queue.
+  // never interrupts an already-rendered queue.
   const fetchOrdersRef = useRef(fetchOrders);
   fetchOrdersRef.current = fetchOrders;
   // Read inside socket handlers, which must not re-subscribe on every render.
@@ -870,7 +870,7 @@ export const CashierTicketsPage: React.FC = () => {
           </div>
         </header>
         <div className="flex-1 min-h-0 overflow-hidden">
-          <Suspense fallback={<PageSkeleton />}>
+          <Suspense fallback={<LoadingState message="Loading order screen…" />}>
             <CashierOrderingPanel
               initialTableNumber={tableForNewOrder}
               initialSearch={orderItemSearch}
