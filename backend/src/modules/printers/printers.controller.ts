@@ -207,7 +207,7 @@ export async function testPrint(req: AuthenticatedRequest, res: Response) {
 
   // The test slip uses the saved layout, so the owner can confirm the paper
   // size, business header and footer on real paper before an order depends on it.
-  const buffer = buildEscPosTestSlip(printer.transport, await getReceiptSettings());
+  const buffer = buildEscPosTestSlip(printer.transport, (await getReceiptSettings()).kitchenTicket);
 
   if (printer.transport === 'NETWORK') {
     if (!printer.ip) {
