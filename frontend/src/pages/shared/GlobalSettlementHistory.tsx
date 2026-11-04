@@ -15,6 +15,7 @@ import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { ArrowLeft, ArrowRight, CreditCard, Banknote, Smartphone, Calendar, CircleDollarSign, AlertCircle, Receipt, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { LoadingState } from '../../components/common/LoadingState';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -393,7 +394,7 @@ export const GlobalSettlementHistory: React.FC = () => {
 
   const settlements = data?.data ?? [];
   const pagination = data?.pagination ?? { page, limit: 25, total: 0, totalPages: 0 };
-  // Skeleton only while there is no cached page; background refetches stay silent.
+  // Show a spinner only before the first page; background refetches stay silent.
   const loading = isLoading || (isFetching && !data);
   const errorMessage =
     queryError instanceof Error ? queryError.message : t('settlements.loadFailed');
