@@ -1,6 +1,7 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { LoadingState } from '../../components/common/LoadingState';
 import { useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -307,11 +308,7 @@ export const ManagerPayroll: React.FC = () => {
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-4 space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-12 rounded-lg bg-secondary/40 animate-pulse" />
-              ))}
-            </div>
+            <LoadingState className="min-h-0 p-6" />
           ) : employeeLedger.length === 0 ? (
             <EmptyState
               title={t('payroll.emptyTitle', { defaultValue: 'No payroll entries yet' })}
