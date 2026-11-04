@@ -18,13 +18,10 @@ export function LoadingState({
         className
       )}
     >
-      <div className="relative mb-4">
-        <div className="absolute inset-0 rounded-full bg-primary/20 blur-md animate-pulse" />
-        <div className="relative w-10 h-10 rounded-full bg-secondary/60 border border-border flex items-center justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-primary" />
-        </div>
+      <div role="status" aria-live="polite" aria-label={t('a11y.loadingPage')} className="flex items-center gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        <p className="text-sm font-medium">{message ?? t('loading')}</p>
       </div>
-      <p className="text-sm font-medium">{message ?? t('loading')}</p>
     </div>
   );
 }
