@@ -5,9 +5,9 @@ import { createNotification } from './notification.service';
 import { prisma } from './prisma.service';
 import { getCached, setCache, invalidateCache } from './cache.service';
 import {
-  DEFAULT_RECEIPT_SETTINGS,
+  DEFAULT_PRINT_LAYOUT_SETTINGS,
   getReceiptSettings,
-  type ReceiptSettings,
+  type PrintLayoutSettings,
 } from './receipt-settings.service';
 import { PrismaClient, PrintJobStatus, PrintTransport } from '@prisma/client';
 
@@ -109,7 +109,7 @@ function ascii(text: string): string {
 }
 
 /** Characters that fit on one line of the configured paper. */
-export function ticketColumns(settings: ReceiptSettings): number {
+export function ticketColumns(settings: PrintLayoutSettings): number {
   return settings.paperSize === '58mm' ? 32 : 48;
 }
 
@@ -154,25 +154,13 @@ export function buildEscPosKitchenTicket(
     createdAt: Date | string;
     items: Array<{ name: string; quantity: number; notes?: string }>;
   },
-  settings: ReceiptSettings = DEFAULT_RECEIPT_SETTINGS,
+  settings: PrintLayoutSettings = DEFAULT_PRINT_LAYOUT_SETTINGS,
 ): Buffer {
   const columns = ticketColumns(settings);
   const divider = '-'.repeat(columns);
   const commands: number[] = [];
 
   commands.push(0x1b, 0x40); // initialise
-
-  // Business header, exactly as configured in Settings → Receipts & Printing.
-  const contactLines: string[] = [];
-  if (settings.showBusinessPhone && settings.businessPhone.trim()) {
-    contactLines.push(settings.businessPhone.trim());
-  }
-  if (settings.showBusinessAddress && settings.businessAddress.trim()) {
-    contactLines.push(settings.businessAddress.trim());
-  }
-  if (settings.showEmail && settings.businessEmail.trim()) {
-    contactLines.push(settings.businessEmail.trim());
-  }
 
   if (settings.showBusinessName && settings.businessName.trim()) {
     commands.push(0x1b, 0x61, 0x01); // centre
@@ -183,16 +171,7 @@ export function buildEscPosKitchenTicket(
     commands.push(0x1b, 0x45, 0x00);
   }
 
-  if (contactLines.length > 0) {
-    commands.push(0x1b, 0x61, 0x01);
-    for (const contact of contactLines) {
-      for (const line of wrapLine(contact, columns)) {
-        commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
-      }
-    }
-  }
-
-  if (settings.showBusinessName || contactLines.length > 0) {
+  if (settings.showBusinessName && settings.businessName.trim()) {
     commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
   }
 
@@ -240,31 +219,16 @@ export function buildEscPosKitchenTicket(
 
   commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
 
-  // Footer messages are part of the configured layout, so keep them centred
-  // and wrapped to the paper — a 58mm roll cuts off anything wider.
-  const footer = [settings.bottomMessage, settings.secondaryBottomMessage]
-    .map((message) => message.trim())
-    .filter(Boolean);
-  if (footer.length > 0) {
-    commands.push(0x1b, 0x61, 0x01);
-    for (const message of footer) {
-      for (const line of wrapLine(message, columns)) {
-        commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
-      }
-    }
-    commands.push(0x1b, 0x61, 0x00);
-  }
-
   commands.push(0x0a);
   commands.push(0x1d, 0x56, 0x42, 0x00); // cut
 
   return Buffer.from(commands);
 }
 
-/** The diagnostic slip behind Test Print, using the same configured layout. */
+/** The diagnostic slip behind Test Print, using the kitchen ticket paper size. */
 export function buildEscPosTestSlip(
   transportLabel: string,
-  settings: ReceiptSettings = DEFAULT_RECEIPT_SETTINGS,
+  settings: PrintLayoutSettings = DEFAULT_PRINT_LAYOUT_SETTINGS,
 ): Buffer {
   const columns = ticketColumns(settings);
   const commands: number[] = [0x1b, 0x40, 0x1b, 0x61, 0x01];
@@ -284,15 +248,6 @@ export function buildEscPosTestSlip(
       'ascii',
     ),
   );
-
-  const footer = [settings.bottomMessage, settings.secondaryBottomMessage]
-    .map((message) => message.trim())
-    .filter(Boolean);
-  for (const message of footer) {
-    for (const line of wrapLine(message, columns)) {
-      commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
-    }
-  }
 
   commands.push(0x0a, 0x0a, 0x1d, 0x56, 0x42, 0x00);
   return Buffer.from(commands);
@@ -441,14 +396,14 @@ export async function enqueueKitchenPrintJob(
   }
 
   const settings = await getReceiptSettings();
-  const ticketBuffer = buildEscPosKitchenTicket(order, settings);
+  const ticketBuffer = buildEscPosKitchenTicket(order, settings.kitchenTicket);
   const payloadBase64 = ticketBuffer.toString('base64');
 
   // "Number of Copies" is a layout setting: queue one job per copy so the
   // existing USB/Bluetooth/network paths print each without special-casing a
   // repeat command (ESC/POS has no portable one).
   let firstJob: Awaited<ReturnType<typeof tx.printJob.create>> | null = null;
-  for (let copy = 0; copy < settings.copies; copy += 1) {
+  for (let copy = 0; copy < settings.kitchenTicket.copies; copy += 1) {
     const job = await tx.printJob.create({
       data: {
         orderId: order.id,
