@@ -5,6 +5,7 @@ import { ChevronDown, History, ReceiptText } from 'lucide-react';
 import { FloatingCard } from '../ui/FloatingCard';
 import { formatCurrency } from '../../utils/currency';
 import { cn } from '../../lib/utils';
+import { LoadingState } from './LoadingState';
 
 /**
  * One row of the payroll ledger as returned by GET /payroll. Payments carry the
@@ -144,11 +145,7 @@ export const PayrollHistoryCard: React.FC<{
       </div>
 
       {isLoading && months.length === 0 ? (
-        <div className="space-y-2 p-5">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-11 animate-pulse rounded-lg bg-secondary/40" />
-          ))}
-        </div>
+        <LoadingState className="min-h-0 py-8" />
       ) : months.length === 0 ? (
         <div className="flex items-center gap-3 px-5 py-6 text-sm text-muted-foreground">
           <ReceiptText className="h-4 w-4 shrink-0 opacity-60" />
