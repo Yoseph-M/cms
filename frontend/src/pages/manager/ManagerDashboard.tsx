@@ -100,7 +100,7 @@ const STATUS_STYLE: Record<string, string> = {
  *
  * Where the cashier's board is a counter tool, this one is an oversight screen:
  * what needs a decision, who is on the floor, and how the numbers are trending.
- * It intentionally shares no layout skeleton with the cashier board.
+ * It intentionally shares no page layout with the cashier board.
  */
 export const ManagerDashboard: React.FC = () => {
   const { user } = useAuthStore();
