@@ -23,13 +23,18 @@ const order = {
 
 const settings = (overrides: Partial<ReceiptSettings> = {}): ReceiptSettings => ({
   ...DEFAULT_RECEIPT_SETTINGS,
+  ...DEFAULT_RECEIPT_SETTINGS.kitchenTicket,
   ...overrides,
+  kitchenTicket: {
+    ...DEFAULT_RECEIPT_SETTINGS.kitchenTicket,
+    ...overrides.kitchenTicket,
+  },
 });
 
 const text = (buffer: Buffer) => buffer.toString('ascii');
 
 describe('receipt layout settings', () => {
-  it('prints the configured business header and footer', () => {
+  it('prints the configured kitchen header without customer receipt details', () => {
     const buffer = buildEscPosKitchenTicket(
       order,
       settings({
@@ -44,18 +49,17 @@ describe('receipt layout settings', () => {
     const ticket = text(buffer);
 
     expect(ticket).toContain('Mahalna Electronics');
-    expect(ticket).toContain('+251 90 123 4567');
-    expect(ticket).toContain('Bole Road, Addis Ababa');
-    expect(ticket).toContain('hello@mahalna.test');
-    expect(ticket).toContain('Thank you for shopping with us!');
-    expect(ticket).toContain('Visit us again!');
+    expect(ticket).not.toContain('+251 90 123 4567');
+    expect(ticket).not.toContain('Bole Road, Addis Ababa');
+    expect(ticket).not.toContain('hello@mahalna.test');
+    expect(ticket).not.toContain('Thank you for shopping with us!');
     // The header must not swallow the operational part of the ticket.
     expect(ticket).toContain('KITCHEN TICKET');
     expect(ticket).toContain('Table: #12');
     expect(ticket).toContain('No onions');
   });
 
-  it('honours the show-on-receipt toggles', () => {
+  it('honours the kitchen ticket visibility toggles', () => {
     const hidden = buildEscPosKitchenTicket(
       order,
       settings({
@@ -108,18 +112,18 @@ describe('receipt layout settings', () => {
     expect(narrow).not.toContain(`${'-'.repeat(48)}\n`);
   });
 
-  it('applies the layout to the Test Print slip too', () => {
+  it('uses kitchen ticket business settings on the Test Print slip', () => {
     const slip = text(
       buildEscPosTestSlip(
         'USB',
-        settings({ businessName: 'Mahalna Electronics', bottomMessage: 'Thank you!' }),
+        settings({ businessName: 'Mahalna Electronics', paperSize: '58mm' }),
       ),
     );
 
     expect(slip).toContain('Mahalna Electronics');
     expect(slip).toContain('TEST PRINT');
     expect(slip).toContain('USB printing is working.');
-    expect(slip).toContain('Thank you!');
+    expect(slip).not.toContain('Thank you!');
   });
 
   it('clamps and defaults anything an older setting record may be missing', () => {
