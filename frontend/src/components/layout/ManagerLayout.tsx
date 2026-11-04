@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../common/Header';
 import { SidebarProvider, useSidebar } from '../../store/SidebarContext';
-import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle, ClipboardCheck, Receipt, LayoutDashboard, UsersRound, Printer, Boxes, ShoppingBag, Truck, Banknote, X } from 'lucide-react';
+import { Users, UtensilsCrossed, CalendarCheck, DollarSign, Wallet, Settings, XCircle, ClipboardCheck, Receipt, LayoutDashboard, UsersRound, Printer, Boxes, Truck, Banknote, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
@@ -42,7 +42,6 @@ const ManagerLayoutInner: React.FC = () => {
     { to: '/manager/inventory', label: t('common:inventory.title'), icon: Boxes, end: false, group: 'ops' },
     { to: '/manager/purchases', label: t('common:purchases.title'), icon: Truck, end: false, group: 'ops' },
     { to: '/manager/customers', label: t('common:customers.title'), icon: UsersRound, end: false, group: 'ops' },
-    { to: '/manager/marketplace', label: t('common:marketplace.title'), icon: ShoppingBag, end: false, group: 'ops' },
     { to: '/manager/reconciliation', label: t('nav.reconciliation', { defaultValue: 'End of Day' }), icon: ClipboardCheck, end: false, group: 'ops' },
     { to: '/manager/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, end: false, group: 'ops' },
     { to: '/manager/expenses', label: t('nav.expenses', { defaultValue: 'Expenses' }), icon: Wallet, end: false, group: 'ops' },
