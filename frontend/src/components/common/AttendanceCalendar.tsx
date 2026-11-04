@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Save, X, ChevronLeft, ChevronRight, CheckSquare, AlertCircle, BarChart3, Info, Grid3X3, History } from 'lucide-react';
 import { AttendanceHistory } from './AttendanceHistory';
 import { useTranslation } from 'react-i18next';
+import { LoadingState } from './LoadingState';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
 
@@ -330,7 +331,7 @@ export const AttendanceCalendar: React.FC<AttendanceCalendarProps> = ({ isOwner 
 
 
       {isLoading ? (
-        <div className="h-64 rounded-xl bg-secondary/40 animate-pulse" />
+        <LoadingState className="min-h-0 py-16" />
       ) : error ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <AlertCircle className="w-8 h-8 text-destructive" />
