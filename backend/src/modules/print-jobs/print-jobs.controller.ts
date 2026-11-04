@@ -393,7 +393,7 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
       createdAt: order.createdAt,
       items: order.items as any,
     },
-    settings,
+    settings.kitchenTicket,
   );
 
   const payloadBase64 = ticketBuffer.toString('base64');
