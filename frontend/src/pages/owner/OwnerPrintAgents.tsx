@@ -10,6 +10,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Plus, Trash2, KeyRound, Server } from 'lucide-react';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { LoadingState } from '../../components/common/LoadingState';
 
 interface PrintAgent {
   id: string;
@@ -105,7 +106,7 @@ export const OwnerPrintAgents: React.FC = () => {
           )}
 
           {isLoading ? (
-            <div className="h-20 bg-secondary/40 animate-pulse rounded-lg" />
+            <LoadingState className="min-h-0 py-8" />
           ) : agents.length === 0 ? (
             <div className="text-center py-6 text-muted-foreground">
               {t('printAgents.empty')}
