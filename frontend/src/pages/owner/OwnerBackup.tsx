@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { axiosClient } from '../../api/axiosClient';
 import { extractErrorMessage } from '../../utils/errorHandler';
+import { LoadingState } from '../../components/common/LoadingState';
 import { datedFilename, downloadBlob, timestampedFilename } from '../../utils/download';
 import { readFileAsText } from '../../utils/readFile';
 import { useToastStore } from '../../store/toastStore';
@@ -486,11 +487,7 @@ export const OwnerBackup: React.FC = () => {
          */}
 
         {isLoading ? (
-          <div className="grid grid-cols-4 max-[767px]:grid-cols-2 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-40 animate-pulse rounded-2xl bg-secondary/40" />
-            ))}
-          </div>
+          <LoadingState className="min-h-0 py-16" />
         ) : error ? (
           <Card>
             <CardContent className="p-8 text-center">
@@ -590,11 +587,7 @@ export const OwnerBackup: React.FC = () => {
             <div className="mt-5 rounded-lg border border-destructive/30 bg-destructive/[0.04] p-3">
               <p className="text-[11px] font-bold uppercase tracking-wide text-destructive">{t('backup.willBeDeleted')}</p>
               {isResetPreviewLoading ? (
-                <div className="mt-2 space-y-1.5">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="h-4 animate-pulse rounded bg-destructive/10" />
-                  ))}
-                </div>
+                <LoadingState className="min-h-0 py-4" />
               ) : (
                 <ul className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs text-foreground sm:grid-cols-2">
                   {(resetPreview?.collections ?? []).map((item) => (
