@@ -12,7 +12,7 @@ import { purgeCachedServerData, subscribeToDataReset } from './lib/dataReset';
 
 import { ToastContainer } from './components/common/ToastContainer';
 
-import { PageSkeleton } from './components/common/PageSkeleton';
+import { LoadingState } from './components/common/LoadingState';
 
 import { OwnerLayout } from './components/layout/OwnerLayout';
 import { ManagerLayout } from './components/layout/ManagerLayout';
@@ -20,6 +20,7 @@ import { CashierLayout } from './components/layout/CashierLayout';
 
 
 import { LoginPage } from './pages/login/LoginPage';
+import { PublicHomePage } from './pages/home/PublicHomePage';
 import { NotFoundPage } from './pages/error/NotFoundPage';
 
 const OwnerDashboard = lazy(() =>
@@ -46,17 +47,8 @@ const OwnerPurchases = lazy(() =>
 const OwnerCustomers = lazy(() =>
   import('./pages/owner/OwnerCustomers').then((m) => ({ default: m.OwnerCustomers }))
 );
-const MarketplacePage = lazy(() =>
-  import('./pages/marketplace/MarketplacePage').then((m) => ({ default: m.MarketplacePage }))
-);
-const PublicHomePage = lazy(() =>
-  import('./pages/home/PublicHomePage').then((m) => ({ default: m.PublicHomePage }))
-);
 const CashDrawerPage = lazy(() =>
   import('./pages/shared/CashDrawerPage').then((m) => ({ default: m.CashDrawerPage }))
-);
-const MarketplaceManage = lazy(() =>
-  import('./pages/marketplace/MarketplaceManagePage').then((m) => ({ default: m.MarketplaceManagePage }))
 );
 const SystemAdminPage = lazy(() =>
   import('./pages/owner/SystemAdminPage').then((m) => ({ default: m.SystemAdminPage }))
@@ -123,7 +115,7 @@ const GlobalSettlementHistory = lazy(() =>
 
 
 const Lazy: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
+  <Suspense fallback={<LoadingState message="Loading…" />}>{children}</Suspense>
 );
 
 const queryClient = new QueryClient({
@@ -157,7 +149,7 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
   // their page early starts protected requests that inevitably produce 401s
   // before the refresh cookie can restore that token.
   if (isLoading) {
-    return <PageSkeleton />;
+    return <LoadingState message="Restoring your session…" />;
   }
 
   if (!isAuthenticated || !user) {
@@ -175,14 +167,13 @@ const RoleGuard: React.FC<{ children: React.ReactNode; allowedRole: string }> = 
 };
 
 /**
- * Login entry point (used by both `/` and `/login`).
+ * Login entry point for `/login`.
  *
  * The login form reads nothing from the database, so it paints immediately
  * instead of waiting behind the session bootstrap. That bootstrap restores a
  * session from the HttpOnly refresh cookie in the background; if it succeeds,
- * the redirect below fires on the next render. Reserving skeletons for
- * DB-backed screens keeps a cold production start from sitting on a grey login
- * placeholder while a slow /auth/refresh is in flight.
+ * the redirect below fires on the next render. The form appears immediately
+ * while a slow /auth/refresh request runs in the background.
  */
 const LoginRoute: React.FC = () => {
   const { user, isAuthenticated } = useAuthStore();
@@ -285,10 +276,8 @@ export const AppRoutes: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ToastContainer />
       <Routes>
-        <Route path="/" element={<Lazy><PublicHomePage /></Lazy>} />
+        <Route path="/" element={<PublicHomePage />} />
         <Route path="/login" element={<LoginRoute />} />
-        <Route path="/marketplace" element={<Lazy><MarketplacePage /></Lazy>} />
-        <Route path="/marketplace/:slug" element={<Lazy><MarketplacePage /></Lazy>} />
 
         <Route
           path="/owner"
@@ -312,7 +301,6 @@ export const AppRoutes: React.FC = () => {
           <Route path="inventory" element={<OwnerInventory />} />
           <Route path="purchases" element={<OwnerPurchases />} />
           <Route path="customers" element={<OwnerCustomers />} />
-          <Route path="marketplace" element={<Lazy><MarketplaceManage /></Lazy>} />
           <Route path="attendance" element={<AttendanceCalendar isOwner={managerConsolidated ? false : true} />} />
           <Route path="payroll" element={<OwnerPayroll />} />
           <Route path="admin" element={<SystemAdminPage />} />
@@ -355,7 +343,6 @@ export const AppRoutes: React.FC = () => {
           <Route path="inventory" element={<Lazy><OwnerInventory /></Lazy>} />
           <Route path="purchases" element={<Lazy><OwnerPurchases /></Lazy>} />
           <Route path="customers" element={<Lazy><OwnerCustomers /></Lazy>} />
-          <Route path="marketplace" element={<Lazy><MarketplaceManage /></Lazy>} />
           <Route path="printers" element={<Lazy><ManagerPrinters /></Lazy>} />
           <Route path="settings" element={<Lazy><ManagerSettings /></Lazy>} />
           <Route path="settlements" element={<Lazy><GlobalSettlementHistory /></Lazy>} />
