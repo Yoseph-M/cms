@@ -16,6 +16,7 @@ import { AlertCircle, RotateCcw } from 'lucide-react';
 import { Button } from './Button';
 import { EmptyState } from '../common/EmptyState';
 import { cn } from '../../lib/utils';
+import { LoadingState } from '../common/LoadingState';
 
 export interface TremorWidgetProps {
   title: string;
@@ -80,7 +81,7 @@ export const TremorWidget: React.FC<TremorWidgetProps> = ({
     ) : null}
     <div className="p-4">
       {loading ? (
-        <div className="h-48 bg-secondary/40 rounded-lg animate-pulse" />
+        <LoadingState className="min-h-0 py-16" />
       ) : error ? (
         <Flex flexDirection="col" alignItems="center" justifyContent="center" className="h-40 gap-2 text-center">
           <AlertCircle className="w-6 h-6 text-destructive" />
@@ -147,7 +148,7 @@ export const KpiMetricCard: React.FC<KpiMetricCardProps> = ({ label, value, load
       {icon}
     </Flex>
     {loading ? (
-      <div className="h-7 w-20 rounded bg-secondary/50 animate-pulse" />
+      <LoadingState className="min-h-0 items-start p-0" />
     ) : (
       <>
         <Metric className="font-mono text-foreground">{value}</Metric>
