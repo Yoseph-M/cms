@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { LoadingState } from './LoadingState';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { axiosClient } from '../../api/axiosClient';
 import { useToastStore } from '../../store/toastStore';
@@ -354,11 +355,7 @@ export const ExpensesTracker: React.FC = () => {
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-6 space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-12 rounded-lg bg-secondary/40 animate-pulse" />
-              ))}
-            </div>
+            <LoadingState className="min-h-0 p-8" />
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-destructive">{error}</p>
