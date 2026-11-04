@@ -12,6 +12,7 @@ import {
   RECEIPT_SETTINGS_KEY,
   parseReceiptSettings,
   serializeReceiptSettings,
+  type PrintLayoutSettings,
   type ReceiptSettings,
 } from '../../utils/receiptSettings';
 import { Button } from '../ui/Button';
@@ -66,7 +67,7 @@ const PreviewRow: React.FC<{ label: string; value: React.ReactNode; strong?: boo
  * Every value comes from the draft settings, so any field edit or toggle is
  * reflected immediately — the sample order itself never changes.
  */
-const ReceiptPreview: React.FC<{ settings: ReceiptSettings }> = ({ settings }) => {
+const ReceiptPreview: React.FC<{ settings: PrintLayoutSettings; kitchen?: boolean }> = ({ settings, kitchen }) => {
   const { t } = useTranslation();
   const narrow = settings.paperSize === '58mm';
   const businessName = settings.businessName.trim() || t('receiptSettings.businessNamePlaceholder');
@@ -75,14 +76,16 @@ const ReceiptPreview: React.FC<{ settings: ReceiptSettings }> = ({ settings }) =
   const businessAddress =
     settings.businessAddress.trim() || t('receiptSettings.businessAddressPlaceholder');
 
-  const showContact =
+  const showContact = !kitchen && (
     (settings.showEmail && businessEmail.length > 0) ||
     (settings.showBusinessPhone && businessPhone.length > 0) ||
-    (settings.showBusinessAddress && businessAddress.length > 0);
+    (settings.showBusinessAddress && businessAddress.length > 0)
+  );
   const showHeader = settings.showBusinessName || showContact;
 
-  const showPaymentBlock =
-    settings.showPaymentMethod || settings.showAmountPaid || settings.showChange;
+  const showPaymentBlock = !kitchen && (
+    settings.showPaymentMethod || settings.showAmountPaid || settings.showChange
+  );
 
   return (
     <div className="relative" data-testid="receipt-preview">
@@ -104,9 +107,9 @@ const ReceiptPreview: React.FC<{ settings: ReceiptSettings }> = ({ settings }) =
             {settings.showBusinessName && (
               <p className="text-[1.15em] font-bold uppercase leading-tight">{businessName}</p>
             )}
-            {settings.showEmail && <p className="break-all">{businessEmail}</p>}
-            {settings.showBusinessPhone && <p className="break-all">{businessPhone}</p>}
-            {settings.showBusinessAddress && <p className="break-words">{businessAddress}</p>}
+            {!kitchen && settings.showEmail && <p className="break-all">{businessEmail}</p>}
+            {!kitchen && settings.showBusinessPhone && <p className="break-all">{businessPhone}</p>}
+            {!kitchen && settings.showBusinessAddress && <p className="break-words">{businessAddress}</p>}
           </div>
         )}
 
@@ -114,10 +117,10 @@ const ReceiptPreview: React.FC<{ settings: ReceiptSettings }> = ({ settings }) =
 
         <div className="space-y-0.5">
           {settings.showReceiptNumber && (
-            <PreviewRow label={t('receiptSettings.receiptNo')} value="000123" />
+            <PreviewRow label={kitchen ? t('receiptSettings.orderReference') : t('receiptSettings.receiptNo')} value="000123" />
           )}
           {settings.showCashierName && (
-            <PreviewRow label={t('receiptSettings.cashier')} value={t('receiptSettings.sampleCashier')} />
+            <PreviewRow label={kitchen ? t('receiptSettings.waiter') : t('receiptSettings.cashier')} value={t('receiptSettings.sampleCashier')} />
           )}
           {settings.showDateTime && (
             <PreviewRow label={t('receiptSettings.date')} value="05/09/2026 11:45 AM" />
@@ -126,41 +129,42 @@ const ReceiptPreview: React.FC<{ settings: ReceiptSettings }> = ({ settings }) =
 
         <div className="my-2 border-t border-dashed border-slate-400" />
 
-        <div className="grid grid-cols-[1fr_auto_auto] gap-2 font-bold">
+        {kitchen && <p className="mb-1 text-center font-bold">{t('receiptSettings.kitchenTicket')}</p>}
+        <div className={cn('grid gap-2 font-bold', kitchen ? 'grid-cols-[1fr_auto]' : 'grid-cols-[1fr_auto_auto]')}>
           <span>{t('receiptSettings.items')}</span>
           <span className="text-right">{t('receiptSettings.qty')}</span>
-          <span className="min-w-[48px] text-right">{t('receiptSettings.price')}</span>
+          {!kitchen && <span className="min-w-[48px] text-right">{t('receiptSettings.price')}</span>}
         </div>
 
         <div className="mt-1 space-y-0.5">
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+          <div className={cn('grid gap-2', kitchen ? 'grid-cols-[1fr_auto]' : 'grid-cols-[1fr_auto_auto]')}>
             <span className="truncate">{t('receiptSettings.sampleItem1')}</span>
             <span className="text-right">1</span>
-            <span className="min-w-[48px] text-right">{formatCurrency(100)}</span>
+            {!kitchen && <span className="min-w-[48px] text-right">{formatCurrency(100)}</span>}
           </div>
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+          <div className={cn('grid gap-2', kitchen ? 'grid-cols-[1fr_auto]' : 'grid-cols-[1fr_auto_auto]')}>
             <span className="truncate">{t('receiptSettings.sampleItem2')}</span>
             <span className="text-right">1</span>
-            <span className="min-w-[48px] text-right">{formatCurrency(150)}</span>
+            {!kitchen && <span className="min-w-[48px] text-right">{formatCurrency(150)}</span>}
           </div>
         </div>
 
         <div className="my-2 border-t border-dashed border-slate-400" />
 
-        {settings.taxDisplay === 'show' && (
+        {!kitchen && settings.taxDisplay === 'show' && (
           <>
             <PreviewRow label={t('receiptSettings.subtotal')} value={formatCurrency(SAMPLE.subtotal)} />
             <PreviewRow label={t('receiptSettings.tax')} value={formatCurrency(SAMPLE.tax)} />
           </>
         )}
 
-        {settings.taxDisplay === 'included' && (
+        {!kitchen && settings.taxDisplay === 'included' && (
           <PreviewRow label={t('receiptSettings.taxIncluded')} value={formatCurrency(SAMPLE.tax)} />
         )}
 
-        <div className="mt-1">
+        {!kitchen && <div className="mt-1">
           <PreviewRow label={t('receiptSettings.total')} value={formatCurrency(SAMPLE.total)} strong />
-        </div>
+        </div>}
 
         {showPaymentBlock && (
           <>
@@ -177,13 +181,13 @@ const ReceiptPreview: React.FC<{ settings: ReceiptSettings }> = ({ settings }) =
           </>
         )}
 
-        {(settings.bottomMessage.trim() || settings.secondaryBottomMessage.trim()) && (
+        {!kitchen && (settings.bottomMessage.trim() || settings.secondaryBottomMessage.trim()) && (
           <div className="my-2 border-t border-dashed border-slate-400" />
         )}
-        {settings.bottomMessage.trim() && (
+        {!kitchen && settings.bottomMessage.trim() && (
           <p className="text-center leading-snug">{settings.bottomMessage}</p>
         )}
-        {settings.secondaryBottomMessage.trim() && (
+        {!kitchen && settings.secondaryBottomMessage.trim() && (
           <p className="mt-1 text-center leading-snug">{settings.secondaryBottomMessage}</p>
         )}
       </div>
@@ -204,8 +208,8 @@ const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 type ReceiptToggleKey = {
-  [K in keyof ReceiptSettings]: ReceiptSettings[K] extends boolean ? K : never;
-}[keyof ReceiptSettings];
+  [K in keyof PrintLayoutSettings]: PrintLayoutSettings[K] extends boolean ? K : never;
+}[keyof PrintLayoutSettings];
 
 /** Two toggle columns, exactly as laid out in the design. */
 const TOGGLE_ROWS: Array<[ReceiptToggleKey, string, ReceiptToggleKey, string]> = [
@@ -229,6 +233,11 @@ const TOGGLE_ROWS: Array<[ReceiptToggleKey, string, ReceiptToggleKey, string]> =
     'receiptSettings.showPaymentMethod',
   ],
   ['showAmountPaid', 'receiptSettings.showAmountPaid', 'showChange', 'receiptSettings.showChange'],
+];
+
+const KITCHEN_TOGGLE_ROWS: Array<[ReceiptToggleKey, string, ReceiptToggleKey, string]> = [
+  ['showBusinessName', 'receiptSettings.showBusinessName', 'showCashierName', 'receiptSettings.waiter'],
+  ['showReceiptNumber', 'receiptSettings.orderReference', 'showDateTime', 'receiptSettings.showDateTime'],
 ];
 
 const ToggleCell: React.FC<{
@@ -260,6 +269,7 @@ export const ReceiptPrintingSection: React.FC = () => {
     [settingQuery.data?.value],
   );
   const [draft, setDraft] = useState<ReceiptSettings>(saved);
+  const [layout, setLayout] = useState<'receipt' | 'kitchenTicket'>('receipt');
   const [editing, setEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -268,8 +278,11 @@ export const ReceiptPrintingSection: React.FC = () => {
     if (!editing) setDraft(saved);
   }, [saved, editing]);
 
-  const update = <K extends keyof ReceiptSettings>(key: K, value: ReceiptSettings[K]) => {
-    setDraft((current) => ({ ...current, [key]: value }));
+  const activeDraft = layout === 'kitchenTicket' ? draft.kitchenTicket : draft;
+  const update = <K extends keyof PrintLayoutSettings>(key: K, value: PrintLayoutSettings[K]) => {
+    setDraft((current) => layout === 'kitchenTicket'
+      ? { ...current, kitchenTicket: { ...current.kitchenTicket, [key]: value } }
+      : { ...current, [key]: value });
   };
 
   const handleSave = async () => {
@@ -357,11 +370,19 @@ export const ReceiptPrintingSection: React.FC = () => {
         </div>
 
         <div className="space-y-5">
-          <div className="grid gap-4 tablet-portrait:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-secondary/40 p-1" role="tablist" aria-label={t('receiptSettings.ticketType')}>
+            <button type="button" role="tab" aria-selected={layout === 'kitchenTicket'} onClick={() => setLayout('kitchenTicket')} className={cn('rounded-lg px-3 py-2 text-sm font-semibold transition-colors', layout === 'kitchenTicket' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>
+              {t('receiptSettings.kitchenTicket')}
+            </button>
+            <button type="button" role="tab" aria-selected={layout === 'receipt'} onClick={() => setLayout('receipt')} className={cn('rounded-lg px-3 py-2 text-sm font-semibold transition-colors', layout === 'receipt' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>
+              {t('receiptSettings.customerReceipt')}
+            </button>
+          </div>
+          {layout === 'receipt' && <div className="grid gap-4 tablet-portrait:grid-cols-2">
             <label className="block">
               <FieldLabel>{t('receiptSettings.bottomMessage')}</FieldLabel>
               <Input
-                value={draft.bottomMessage}
+                value={activeDraft.bottomMessage}
                 onChange={(event) => update('bottomMessage', event.target.value)}
                 placeholder={t('receiptSettings.bottomMessagePlaceholder')}
                 maxLength={120}
@@ -372,7 +393,7 @@ export const ReceiptPrintingSection: React.FC = () => {
             <label className="block">
               <FieldLabel>{t('receiptSettings.secondaryBottomMessage')}</FieldLabel>
               <Input
-                value={draft.secondaryBottomMessage}
+                value={activeDraft.secondaryBottomMessage}
                 onChange={(event) => update('secondaryBottomMessage', event.target.value)}
                 placeholder={t('receiptSettings.secondaryBottomMessagePlaceholder')}
                 maxLength={120}
@@ -380,14 +401,14 @@ export const ReceiptPrintingSection: React.FC = () => {
                 data-testid="receipt-secondary-bottom-message"
               />
             </label>
-          </div>
+          </div>}
 
           <div className="grid gap-4 tablet-portrait:grid-cols-3">
             <label className="block">
               <FieldLabel>{t('receiptSettings.paperSize')}</FieldLabel>
               <Select
-                value={draft.paperSize}
-                onChange={(event) => update('paperSize', event.target.value as ReceiptSettings['paperSize'])}
+                value={activeDraft.paperSize}
+                onChange={(event) => update('paperSize', event.target.value as PrintLayoutSettings['paperSize'])}
                 disabled={disabled}
                 className="h-11"
                 data-testid="receipt-paper-size"
@@ -396,11 +417,11 @@ export const ReceiptPrintingSection: React.FC = () => {
                 <option value="80mm">{t('receiptSettings.paper80')}</option>
               </Select>
             </label>
-            <label className="block">
+            {layout === 'receipt' && <label className="block">
               <FieldLabel>{t('receiptSettings.taxDisplay')}</FieldLabel>
               <Select
-                value={draft.taxDisplay}
-                onChange={(event) => update('taxDisplay', event.target.value as ReceiptSettings['taxDisplay'])}
+                value={activeDraft.taxDisplay}
+                onChange={(event) => update('taxDisplay', event.target.value as PrintLayoutSettings['taxDisplay'])}
                 disabled={disabled}
                 className="h-11"
                 data-testid="receipt-tax-display"
@@ -409,11 +430,11 @@ export const ReceiptPrintingSection: React.FC = () => {
                 <option value="hide">{t('receiptSettings.taxHide')}</option>
                 <option value="included">{t('receiptSettings.taxIncludedOption')}</option>
               </Select>
-            </label>
+            </label>}
             <label className="block">
               <FieldLabel>{t('receiptSettings.copies')}</FieldLabel>
               <Select
-                value={String(draft.copies)}
+                value={String(activeDraft.copies)}
                 onChange={(event) => update('copies', Number(event.target.value))}
                 disabled={disabled}
                 className="h-11"
@@ -431,10 +452,10 @@ export const ReceiptPrintingSection: React.FC = () => {
           <div>
             <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               <Eye className="h-3.5 w-3.5" />
-              {t('receiptSettings.showOnReceipt')}
+              {layout === 'kitchenTicket' ? t('receiptSettings.showOnKitchenTicket') : t('receiptSettings.showOnReceipt')}
             </p>
             <div className="border-t border-border/60" data-testid="receipt-toggles">
-              {TOGGLE_ROWS.map(([leftKey, leftLabel, rightKey, rightLabel]) => (
+              {(layout === 'kitchenTicket' ? KITCHEN_TOGGLE_ROWS : TOGGLE_ROWS).map(([leftKey, leftLabel, rightKey, rightLabel]) => (
                 <div
                   key={leftKey}
                   className="grid border-b border-border/60 tablet-portrait:grid-cols-2"
@@ -442,14 +463,14 @@ export const ReceiptPrintingSection: React.FC = () => {
                 >
                   <ToggleCell
                     label={t(leftLabel)}
-                    checked={draft[leftKey]}
+                    checked={activeDraft[leftKey]}
                     disabled={disabled}
                     onCheckedChange={(checked) => update(leftKey, checked)}
                     className="py-4 tablet-portrait:pr-4"
                   />
                   <ToggleCell
                     label={t(rightLabel)}
-                    checked={draft[rightKey]}
+                    checked={activeDraft[rightKey]}
                     disabled={disabled}
                     onCheckedChange={(checked) => update(rightKey, checked)}
                     className="border-t border-border/60 py-4 tablet-portrait:border-l tablet-portrait:border-t-0 tablet-portrait:pl-5 tablet-portrait:pr-4"
@@ -463,11 +484,11 @@ export const ReceiptPrintingSection: React.FC = () => {
             <p className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               {t('receiptSettings.businessDetails')}
             </p>
-            <div className="grid gap-4 tablet-portrait:grid-cols-2">
+            <div className={cn('grid gap-4', layout === 'receipt' && 'tablet-portrait:grid-cols-2')}>
               <label className="block">
                 <FieldLabel>{t('receiptSettings.businessName')}</FieldLabel>
                 <Input
-                  value={draft.businessName}
+                  value={activeDraft.businessName}
                   onChange={(event) => update('businessName', event.target.value)}
                   placeholder={t('receiptSettings.businessNamePlaceholder')}
                   maxLength={60}
@@ -475,40 +496,40 @@ export const ReceiptPrintingSection: React.FC = () => {
                   data-testid="receipt-business-name"
                 />
               </label>
-              <label className="block">
+              {layout === 'receipt' && <label className="block">
                 <FieldLabel>{t('receiptSettings.businessEmail')}</FieldLabel>
                 <Input
                   type="email"
-                  value={draft.businessEmail}
+                  value={activeDraft.businessEmail}
                   onChange={(event) => update('businessEmail', event.target.value)}
                   placeholder={t('receiptSettings.businessEmailPlaceholder')}
                   maxLength={80}
                   disabled={disabled}
                   data-testid="receipt-business-email"
                 />
-              </label>
-              <label className="block">
+              </label>}
+              {layout === 'receipt' && <label className="block">
                 <FieldLabel>{t('receiptSettings.businessPhone')}</FieldLabel>
                 <Input
-                  value={draft.businessPhone}
+                  value={activeDraft.businessPhone}
                   onChange={(event) => update('businessPhone', event.target.value)}
                   placeholder={t('receiptSettings.businessPhonePlaceholder')}
                   maxLength={30}
                   disabled={disabled}
                   data-testid="receipt-business-phone"
                 />
-              </label>
-              <label className="block">
+              </label>}
+              {layout === 'receipt' && <label className="block">
                 <FieldLabel>{t('receiptSettings.businessAddress')}</FieldLabel>
                 <Input
-                  value={draft.businessAddress}
+                  value={activeDraft.businessAddress}
                   onChange={(event) => update('businessAddress', event.target.value)}
                   placeholder={t('receiptSettings.businessAddressPlaceholder')}
                   maxLength={120}
                   disabled={disabled}
                   data-testid="receipt-business-address"
                 />
-              </label>
+              </label>}
             </div>
           </div>
         </div>
@@ -516,9 +537,9 @@ export const ReceiptPrintingSection: React.FC = () => {
 
       <aside className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
         <h3 className="mb-4 text-base font-semibold text-foreground">
-          {t('receiptSettings.preview')}
+          {layout === 'kitchenTicket' ? t('receiptSettings.kitchenTicket') : t('receiptSettings.preview')}
         </h3>
-        <ReceiptPreview settings={draft} />
+        <ReceiptPreview settings={activeDraft} kitchen={layout === 'kitchenTicket'} />
         <p className="mt-3 text-center text-[11px] text-muted-foreground">
           {t('receiptSettings.previewHint')}
         </p>
