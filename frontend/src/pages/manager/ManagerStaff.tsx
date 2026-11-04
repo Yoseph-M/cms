@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from '../../components/ui/Avatar';
 import { Badge } from '../../components/ui/Badge';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { EmptyState } from '../../components/common/EmptyState';
+import { LoadingState } from '../../components/common/LoadingState';
 import { Sheet } from '../../components/ui/Sheet';
 import { AlertDialog } from '../../components/ui/AlertDialog';
 import { Users, Plus, Search, Pencil, ShieldOff, ShieldCheck, X, Eye, EyeOff, Trash2, Lock, KeyRound, AlertTriangle } from 'lucide-react';
@@ -372,7 +373,7 @@ export const ManagerStaff: React.FC = () => {
       )}
 
       {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-secondary/40 animate-pulse" />)}</div>
+        <LoadingState className="min-h-0 p-8" />
       ) : error ? (
         <div className="py-16 text-center">
           <p className="text-destructive">{error}</p>
