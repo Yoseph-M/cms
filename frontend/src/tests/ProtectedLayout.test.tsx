@@ -76,9 +76,9 @@ describe('ProtectedLayout / App Routing', () => {
   // Regression: during initial session bootstrap (hard refresh) the app must
   // NOT redirect to /login before bootstrapSession has finished restoring the
   // session from the HttpOnly refresh cookie. RoleGuard deliberately holds the
-  // protected route on the skeleton until the restore completes, so the login
+  // protected route on a loading indicator until the restore completes, so the login
   // form never flashes even for a cached user.
-  it('holds the skeleton (never /login) while session bootstrap is in progress with a cached user', async () => {
+  it('holds a loading indicator (never /login) while session bootstrap is in progress with a cached user', async () => {
     (useAuthStore as any).mockReturnValue({
       isAuthenticated: false,
       user: { role: 'OWNER', id: '1', name: 'Owner' },
@@ -98,7 +98,7 @@ describe('ProtectedLayout / App Routing', () => {
   });
 
   // Regression: a slow /auth/refresh must not leave a cold production start
-  // sitting on a login skeleton. The form is static, so it paints immediately
+  // sitting on a login loading screen. The form is static, so it paints immediately
   // while the session restore keeps running in the background.
   it('renders the login form immediately while the session is still being restored', async () => {
     (useAuthStore as any).mockReturnValue({
