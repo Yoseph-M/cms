@@ -16,14 +16,13 @@ import {
   TrendingUp,
   Boxes,
   UsersRound,
-  ShoppingBag,
   Truck,
   Banknote,
   X,
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { PanelLeftRounded } from '../ui/PanelLeftRounded';
-import { PageSkeleton } from '../common/PageSkeleton';
+import { LoadingState } from '../common/LoadingState';
 
 const GROUP_ORDER: string[] = ['core', 'ops', 'people', 'system', 'manager'];
 
@@ -80,7 +79,6 @@ const OwnerLayoutInner: React.FC = () => {
     { to: '/owner/inventory', label: t('common:inventory.title'), icon: Boxes, group: 'ops' },
     { to: '/owner/purchases', label: t('common:purchases.title'), icon: Truck, group: 'ops' },
     { to: '/owner/customers', label: t('common:customers.title'), icon: UsersRound, group: 'ops' },
-    { to: '/owner/marketplace', label: t('common:marketplace.title'), icon: ShoppingBag, group: 'ops' },
     { to: '/owner/settlements', label: t('nav.settlements', { defaultValue: 'Settlements' }), icon: Receipt, group: 'ops' },
     { to: '/owner/attendance', label: t('nav.attendance', { defaultValue: 'Attendance' }), icon: CalendarCheck, group: 'people' },
     { to: '/owner/payroll', label: t('nav.payroll', { defaultValue: 'Payroll' }), icon: DollarSign, group: 'people' },
@@ -325,11 +323,7 @@ const OwnerLayoutInner: React.FC = () => {
             isDashboardPage ? '' : 'p-4 sm:p-6 lg:p-8',
           )}
         >
-          {/* Owner routes are React.lazy() — wrap the Outlet in a Suspense
-              boundary so a fresh chunk load (e.g. navigating to /owner/finance
-              for the first time) shows the page skeleton instead of replacing
-              the whole UI with a loading indicator. */}
-          <Suspense fallback={<PageSkeleton />}>
+          <Suspense fallback={<LoadingState message="Loading…" />}>
             <Outlet />
           </Suspense>
         </main>
