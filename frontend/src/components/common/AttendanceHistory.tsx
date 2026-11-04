@@ -10,6 +10,7 @@ import { AlertCircle, CalendarDays, ChevronRight, UserRound } from 'lucide-react
 import { cn } from '../../lib/utils';
 import { formatBusinessDate } from '../../utils/calendar';
 import { useTranslation } from 'react-i18next';
+import { LoadingState } from './LoadingState';
 
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LEAVE' | 'HOLIDAY';
 
@@ -315,9 +316,9 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
 
   const selectedStaff = staffHistory.find((s) => s.id === selectedStaffId) ?? null;
 
-  // Keep the previous strip visible while a new range loads — a full skeleton
+  // Keep the previous strip visible while a new range loads — a full loader
   // on every filter click is jarring.
-  const showSkeleton = isLoading && !hasLoaded;
+  const showInitialLoading = isLoading && !hasLoaded;
 
   return (
     <div className="space-y-4">
@@ -354,8 +355,8 @@ export const AttendanceHistory: React.FC<AttendanceHistoryProps> = ({ isOwner = 
           </div>
         </div>
 
-        {showSkeleton ? (
-          <div className="mt-6 h-48 rounded-xl bg-secondary/40 animate-pulse" />
+        {showInitialLoading ? (
+          <LoadingState className="min-h-0 py-16" />
         ) : error ? (
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <AlertCircle className="w-8 h-8 text-destructive" />
