@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { ArrowRight, BarChart3, Boxes, CircleDollarSign, ClipboardList, Store, UsersRound, Zap } from 'lucide-react';
+import { ArrowRight, BarChart3, Boxes, CircleDollarSign, ClipboardList, Music2, Send, Store, UsersRound, Zap } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { buttonVariants } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -24,7 +24,7 @@ export const PublicHomePage: React.FC = () => {
     <header className="relative z-10 border-b border-border/60 bg-card/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
         <Link to="/" className="flex items-center gap-2 text-lg font-bold tracking-tight"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Store className="h-5 w-5" /></span>MELEኛ<span className="-ml-2 text-primary">POS</span></Link>
-        <nav className="hidden items-center gap-7 text-sm font-medium text-muted-foreground tablet-portrait:flex"><a href="#features" className="hover:text-foreground">Features</a></nav>
+        <nav className="hidden items-center gap-7 text-sm font-medium text-muted-foreground tablet-portrait:flex"><a href="#features" className="hover:text-foreground">Features</a><a href="#contact" className="hover:text-foreground">Contact</a></nav>
         <div className="flex items-center gap-2"><Link to="/login" className="hidden text-sm font-semibold text-muted-foreground hover:text-foreground sm:inline">Sign in</Link><Link to="/login" className={buttonVariants({ size: 'sm' })}>Open your workspace<ArrowRight className="ml-2 h-4 w-4" /></Link></div>
       </div>
     </header>
@@ -63,9 +63,31 @@ export const PublicHomePage: React.FC = () => {
       <section className="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-8 tablet-portrait:grid-cols-[0.8fr_1.2fr] tablet-portrait:items-center sm:py-20"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">A practical routine</p><h2 className="mt-3 font-display text-3xl font-bold tracking-tight">Set up once. Use it all day.</h2><p className="mt-4 text-sm leading-6 text-muted-foreground">Start with products and prices, use the POS at the counter, and review the numbers when the day is done.</p><Link to="/login" className={`${buttonVariants({ variant: 'outline' })} mt-6`}>Open your workspace<ArrowRight className="ml-2 h-4 w-4" /></Link></div><div className="grid gap-3 sm:grid-cols-3">{[['01', 'Set up your catalog', 'Products, prices, stock, and suppliers.'], ['02', 'Sell from one place', 'Orders, payments, customers, and receipts.'], ['03', 'Review and improve', 'Reports, profit, and what needs attention.']].map(([number, title, text]) => <Card key={number} className="p-5"><p className="font-display text-3xl font-bold text-primary/40">{number}</p><h3 className="mt-5 text-sm font-semibold">{title}</h3><p className="mt-2 text-xs leading-5 text-muted-foreground">{text}</p></Card>)}</div></section>
 
       <section className="px-5 pb-16 sm:px-8 sm:pb-20"><div className="mx-auto flex max-w-7xl flex-col gap-6 rounded-3xl bg-primary p-7 text-primary-foreground sm:p-10 desktop:flex-row desktop:items-center desktop:justify-between"><div className="max-w-2xl"><p className="text-xs font-bold uppercase tracking-[0.18em] text-primary-foreground/70">Meleኛ POS</p><h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">Make the next sale easier.</h2><p className="mt-3 text-sm leading-6 text-primary-foreground/80">Bring your team into one connected workspace for the counter, inventory, and the decisions behind your business.</p></div><div className="flex flex-wrap gap-3"><Link to="/login" className={buttonVariants({ variant: 'secondary', size: 'lg' })}>Sign in to POS<ArrowRight className="ml-2 h-4 w-4" /></Link></div></div></section>
+
+      <section id="contact" className="px-5 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto max-w-7xl rounded-3xl border border-border/60 bg-card/75 p-6 shadow-sm sm:p-10">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Stay connected</p>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">Find us online</h2>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">Follow along on TikTok or reach us directly on Telegram.</p>
+          </div>
+          <div className="mx-auto mt-8 grid max-w-3xl gap-4 sm:grid-cols-2">
+            <a href="https://vm.tiktok.com/ZS9yca7VKeH3o-tcjNC/" target="_blank" rel="noreferrer" className="group flex items-center gap-4 rounded-2xl border border-border/70 bg-background p-5 transition-all hover:-translate-y-0.5 hover:border-foreground/25 hover:shadow-lg">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-foreground text-background"><Music2 className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1"><span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">TikTok</span><span className="mt-1 block font-semibold text-foreground">Watch our videos</span></span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-foreground" />
+            </a>
+            <a href="https://t.me/Abduz2" target="_blank" rel="noreferrer" className="group flex items-center gap-4 rounded-2xl border border-border/70 bg-background p-5 transition-all hover:-translate-y-0.5 hover:border-sky-500/40 hover:shadow-lg">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-600 dark:text-sky-400"><Send className="h-5 w-5" /></span>
+              <span className="min-w-0 flex-1"><span className="block font-semibold text-foreground">Telegram</span><span className="mt-1 block text-xs text-muted-foreground">Message us</span></span>
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-sky-600" />
+            </a>
+          </div>
+        </div>
+      </section>
     </main>
 
-    <footer className="border-t border-border/60 bg-card/70 px-5 py-7 sm:px-8"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground"><span>© {new Date().getFullYear()} MELEኛ POS</span><div className="flex gap-5"><Link to="/login" className="hover:text-foreground">Sign in</Link></div></div></footer>
+    <footer className="border-t border-border/60 bg-card/70 px-5 py-7 sm:px-8"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground"><span>© {new Date().getFullYear()} MELEኛ POS</span><div className="flex gap-5"><a href="#contact" className="hover:text-foreground">Contact</a><Link to="/login" className="hover:text-foreground">Sign in</Link></div></div></footer>
   </div>;
 };
 
