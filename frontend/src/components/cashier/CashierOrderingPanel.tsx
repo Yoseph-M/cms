@@ -134,20 +134,12 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
   // Waiter selection
   const [waiters, setWaiters] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedWaiterId, setSelectedWaiterId] = useState('');
-  const [customers, setCustomers] = useState<Array<{ id: string; name: string; discountPercent: number }>>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState('');
 
   useEffect(() => {
     axiosClient
       .get('/users', { params: { role: 'WAITER', isActive: 'true' } })
       .then((res) => setWaiters(res.data || []))
       .catch(() => {/* silent — cashier can still try to submit */});
-  }, []);
-
-  useEffect(() => {
-    axiosClient.get('/customers', { params: { limit: 100 } })
-      .then((response) => setCustomers(response.data?.data ?? []))
-      .catch(() => setCustomers([]));
   }, []);
 
   const filtered = useMemo(() => {
@@ -180,12 +172,9 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
     return counts;
   }, [items]);
 
-  const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
-  const discountPercent = selectedCustomer?.discountPercent ?? 0;
-  const displayPrice = (unitPrice: number) => Math.max(1, Math.round(unitPrice * (100 - discountPercent) / 100));
   const total = useMemo(
-    () => cart.reduce((sum, line) => sum + displayPrice(line.unitPrice) * line.quantity, 0),
-    [cart, discountPercent]
+    () => cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
+    [cart]
   );
   const totalQty = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
 
@@ -245,7 +234,6 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
         clientOrderId,
         tableNumber: tableNumber.trim(),
         waiterId: selectedWaiterId || undefined,
-        customerId: selectedCustomerId || undefined,
         items: cart.map((l) => ({
           menuItemId: l.menuItemId,
           name: l.name,
@@ -274,7 +262,6 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
         });
       }
       setCart([]);
-      setSelectedCustomerId('');
       setTableNumber('');
       setSelectedWaiterId('');
       setJustSubmitted(true);
@@ -459,150 +446,136 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
 
       {/* Cart column — pinned footer pattern:
        *  - h-full + min-h-0 lock the column to the panel's height
-       *  - header (title + table input) stays at the top
-       *  - the items area is the only thing that scrolls (min-h-0 lets the
-       *    shrink kick in so the footer never gets pushed down)
+       *  - title stays at the top; the table details and the item lines share
+       *    ONE scroll area, so on a short screen the lines are always reachable
+       *    instead of being crushed under the form
+       *  - the form is kept compact so the lines get the height, not the fields
        *  - the "Place Order" footer is fixed at the bottom regardless of
        *    how many items the cashier adds */}
       <div className={`w-96 shrink-0 h-full min-h-0 bg-card flex flex-col max-[767px]:w-[85vw] max-[767px]:max-w-sm max-[767px]:absolute max-[767px]:right-0 max-[767px]:top-0 max-[767px]:bottom-0 max-[767px]:z-50 max-[767px]:shadow-2xl max-[767px]:transition-transform max-[767px]:duration-300 ${showMobileCart ? 'max-[767px]:translate-x-0' : 'max-[767px]:translate-x-full'}`}>
-        <div className="px-5 py-4 border-b border-border shrink-0 relative">
-          <button 
-            onClick={() => setShowMobileCart(false)} 
-            className="hidden max-[767px]:block absolute top-4 right-4 p-1.5 rounded-full bg-secondary/80 text-muted-foreground hover:bg-secondary transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-display text-lg font-semibold flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4 text-primary" />
-              {t('ordering.cart.title')}
-            </h2>
-            <span className="text-xs font-mono text-muted-foreground">
-              {t('ordering.cart.line', { count: cart.length })}
-            </span>
-          </div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="px-4 pt-3 pb-3 border-b border-border relative">
+            <button 
+              onClick={() => setShowMobileCart(false)} 
+              className="hidden max-[767px]:block absolute top-3 right-4 p-1.5 rounded-full bg-secondary/80 text-muted-foreground hover:bg-secondary transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-center justify-between mb-2.5 gap-2">
+              <h2 className="font-display text-lg font-semibold flex items-center gap-2 min-w-0">
+                <ShoppingCart className="w-4 h-4 shrink-0 text-primary" />
+                <span className="truncate">{t('ordering.cart.title')}</span>
+              </h2>
+              <span className="shrink-0 text-xs font-mono text-muted-foreground">
+                {t('ordering.cart.line', { count: cart.length })}
+              </span>
+            </div>
 
-          {/* Waiter selector — house dropdown; the trigger keeps the
-              destructive border while no waiter is chosen. */}
-          <div className="bg-secondary/30 rounded-lg p-4 border border-border/50 mb-3">
-            <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2 block">
-              <UserRound className="inline w-3 h-3 mr-1" />
-              {t('ordering.waiterLabel')}
-            </label>
-            <div className={selectedWaiterId ? '' : '[&>button]:border-destructive/60'}>
-              <DropdownSelect
-                ariaLabel={t('ordering.waiterLabel')}
-                className="w-full justify-between"
-                contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
-                value={selectedWaiterId}
-                onChange={setSelectedWaiterId}
-                placeholder="— Select a waiter —"
-                options={waiters.map((w) => ({ value: w.id, label: w.name }))}
+            {/* Waiter selector — house dropdown; the trigger keeps the
+                destructive border while no waiter is chosen. */}
+            <div className="bg-secondary/30 rounded-lg px-3 py-2.5 border border-border/50 mb-2.5">
+              <label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1.5 block">
+                <UserRound className="inline w-3 h-3 mr-1" />
+                {t('ordering.waiterLabel')}
+              </label>
+              <div className={selectedWaiterId ? '' : '[&>button]:border-destructive/60'}>
+                <DropdownSelect
+                  ariaLabel={t('ordering.waiterLabel')}
+                  className="w-full justify-between"
+                  contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
+                  value={selectedWaiterId}
+                  onChange={setSelectedWaiterId}
+                  placeholder="— Select a waiter —"
+                  options={waiters.map((w) => ({ value: w.id, label: w.name }))}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="order-table" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t('ordering.cart.tableNumber')}
+              </label>
+              <Input
+                id="order-table"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                placeholder={t('ordering.cart.tablePlaceholder')}
+                className="font-mono"
               />
             </div>
           </div>
 
-          <div className="mb-3">
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {t('ordering.cart.customerLabel')}
-            </label>
-            <DropdownSelect
-              ariaLabel={t('ordering.cart.customerLabel')}
-              className="w-full justify-between"
-              contentClassName="max-w-[calc(100vw-3rem)] max-h-72 overflow-y-auto"
-              value={selectedCustomerId}
-              onChange={setSelectedCustomerId}
-              placeholder={t('ordering.cart.walkInCustomer')}
-              options={customers.map((customer) => ({
-                value: customer.id,
-                label: customer.discountPercent > 0
-                  ? `${customer.name} · ${customer.discountPercent}%`
-                  : customer.name,
-              }))}
-            />
+          <div className="p-3 space-y-2">
+            {cart.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground py-12">
+                <ShoppingCart className="w-10 h-10 mb-3 opacity-30" />
+                <p className="text-sm">{t('ordering.cart.emptyCart')}</p>
+              </div>
+            ) : (
+              <AnimatePresence initial={false}>
+                {cart.map((line) => (
+                  <motion.div
+                    key={line.menuItemId}
+                    layout
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: 50, transition: { duration: 0.15 } }}
+                    className="bg-secondary/30 border border-border rounded-lg p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-foreground truncate">{line.name}</p>
+                        <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                          {formatCurrency(line.unitPrice)} {t('ordering.cart.each')}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeLine(line.menuItemId)}
+                        className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        aria-label={t('ordering.cart.remove')}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between mt-2 gap-2">
+                      <div className="flex items-center gap-1 bg-background border border-border rounded-md">
+                        <button
+                          onClick={() => setQuantity(line.menuItemId, line.quantity - 1)}
+                          className="p-1.5 hover:text-primary transition-colors"
+                          aria-label={t('ordering.cart.decreaseQty')}
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-7 text-center font-mono font-bold text-sm tabular-nums">
+                          {line.quantity}
+                        </span>
+                        <button
+                          onClick={() => setQuantity(line.menuItemId, line.quantity + 1)}
+                          className="p-1.5 hover:text-primary transition-colors"
+                          aria-label={t('ordering.cart.increaseQty')}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <span className="font-mono font-semibold text-sm text-foreground tabular-nums">
+                        {formatCurrency(line.unitPrice * line.quantity)}
+                      </span>
+                    </div>
+                    <Input
+                      value={line.notes ?? ''}
+                      onChange={(e) => setLineNotes(line.menuItemId, e.target.value)}
+                      placeholder={t('ordering.cart.notesPlaceholder')}
+                      className="mt-2 h-8 text-xs"
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            )}
           </div>
 
-          <label htmlFor="order-table" className="text-xs text-muted-foreground mb-1 block">
-            {t('ordering.cart.tableNumber')}
-          </label>
-          <Input
-            id="order-table"
-            value={tableNumber}
-            onChange={(e) => setTableNumber(e.target.value)}
-            placeholder={t('ordering.cart.tablePlaceholder')}
-            className="font-mono"
-          />
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2">
-          {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground py-12">
-              <ShoppingCart className="w-10 h-10 mb-3 opacity-30" />
-              <p className="text-sm">{t('ordering.cart.emptyCart')}</p>
-            </div>
-          ) : (
-            <AnimatePresence initial={false}>
-              {cart.map((line) => (
-                <motion.div
-                  key={line.menuItemId}
-                  layout
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: 50, transition: { duration: 0.15 } }}
-                  className="bg-secondary/30 border border-border rounded-lg p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-foreground truncate">{line.name}</p>
-                      <p className="text-xs font-mono text-muted-foreground mt-0.5">
-                        {formatCurrency(displayPrice(line.unitPrice))} {t('ordering.cart.each')}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => removeLine(line.menuItemId)}
-                      className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      aria-label={t('ordering.cart.remove')}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between mt-2 gap-2">
-                    <div className="flex items-center gap-1 bg-background border border-border rounded-md">
-                      <button
-                        onClick={() => setQuantity(line.menuItemId, line.quantity - 1)}
-                        className="p-1.5 hover:text-primary transition-colors"
-                        aria-label={t('ordering.cart.decreaseQty')}
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="w-7 text-center font-mono font-bold text-sm tabular-nums">
-                        {line.quantity}
-                      </span>
-                      <button
-                        onClick={() => setQuantity(line.menuItemId, line.quantity + 1)}
-                        className="p-1.5 hover:text-primary transition-colors"
-                        aria-label={t('ordering.cart.increaseQty')}
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
-                    <span className="font-mono font-semibold text-sm text-foreground tabular-nums">
-                      {formatCurrency(displayPrice(line.unitPrice) * line.quantity)}
-                    </span>
-                  </div>
-                  <Input
-                    value={line.notes ?? ''}
-                    onChange={(e) => setLineNotes(line.menuItemId, e.target.value)}
-                    placeholder={t('ordering.cart.notesPlaceholder')}
-                    className="mt-2 h-8 text-xs"
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          )}
-        </div>
-
-        <div className="shrink-0 border-t border-border p-5 space-y-3 bg-card">
+        <div className="shrink-0 border-t border-border p-4 space-y-2 bg-card">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">{t('ordering.cart.items')}</span>
             <span className="font-mono tabular-nums">{totalQty}</span>
