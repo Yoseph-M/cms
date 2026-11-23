@@ -443,6 +443,102 @@ export interface TestSlip {
   payloadBase64: string;
 }
 
+export type KitchenPrinterTarget = Pick<
+  TestSlip,
+  'transport' | 'printerMacAddress' | 'printerVendorId' | 'printerProductId'
+>;
+
+let preparedKitchenDevice: { transport: KitchenPrinterTarget['transport']; device: any } | null = null;
+
+function matchesRememberedKitchenDevice(device: any, transport: KitchenPrinterTarget['transport']): boolean {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    const saved = JSON.parse(localStorage.getItem(`kitchen-printer:${transport}`) || 'null');
+    if (!saved) return false;
+    return transport === 'USB'
+      ? device.vendorId === saved.vendorId && device.productId === saved.productId && (!saved.serialNumber || device.serialNumber === saved.serialNumber)
+      : device.id === saved.id;
+  } catch {
+    return false;
+  }
+}
+
+function rememberKitchenDevice(device: any, transport: KitchenPrinterTarget['transport']): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const saved = transport === 'USB'
+      ? { vendorId: device.vendorId, productId: device.productId, serialNumber: device.serialNumber || '' }
+      : { id: device.id };
+    localStorage.setItem(`kitchen-printer:${transport}`, JSON.stringify(saved));
+  } catch {
+    // Private browsing/storage restrictions must not block printing.
+  }
+}
+
+/**
+ * Resolve a local printer before an API request consumes the click's browser
+ * activation. Existing browser permission is reused; a single permitted device
+ * is accepted even if saved USB ids drifted from the physical printer.
+ */
+export async function prepareKitchenTicketPrinter(target: KitchenPrinterTarget): Promise<string> {
+  if (target.transport === 'USB') {
+    const usb = (navigator as any).usb;
+    if (!usb?.requestDevice) throw printError('USB_UNSUPPORTED', i18n.t('printers.usbUnsupported'));
+    const devices = await permittedUsbDevices();
+    const vendorId = parseInt(target.printerVendorId || '0', 16);
+    const productId = parseInt(target.printerProductId || '0', 16);
+    let device = devices.find((d: any) => d.vendorId === vendorId && d.productId === productId);
+    if (!device) device = devices.find((d: any) => matchesRememberedKitchenDevice(d, 'USB'));
+    if (!device && devices.length === 1) device = devices[0];
+    if (!device) {
+      // One browser chooser per pairing attempt; show available printers so an
+      // out-of-date saved vendor/product id cannot hide the actual device.
+      device = await usb.requestDevice({ filters: [] }).catch(() => null);
+    }
+    if (!device) throw printError('USB_SELECTION_CANCELLED', i18n.t('printers.noUsbSelected'));
+    rememberKitchenDevice(device, 'USB');
+    preparedKitchenDevice = { transport: 'USB', device };
+    return device.productName || `USB ${Number(device.vendorId).toString(16)}:${Number(device.productId).toString(16)}`;
+  }
+
+  const bt = (navigator as any).bluetooth;
+  if (!bt?.requestDevice) throw printError('BLUETOOTH_UNSUPPORTED', i18n.t('printers.bluetoothUnsupported'));
+  const devices = typeof bt.getDevices === 'function' ? await bt.getDevices() : [];
+  const printerId = target.printerMacAddress || '';
+  let device = printerId
+    ? devices.find((d: any) => d.id === printerId || d.name?.includes(printerId))
+    : undefined;
+  if (!device && printerId) {
+    const needle = printerId.toLowerCase();
+    device = devices.find((d: any) => d.id?.toLowerCase() === needle || d.name?.toLowerCase().includes(needle));
+  }
+  if (!device) device = devices.find((d: any) => matchesRememberedKitchenDevice(d, 'BLUETOOTH'));
+  if (!device && devices.length === 1) device = devices[0];
+  if (!device) {
+    device = await bt.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455'],
+    }).catch(() => null);
+  }
+  if (!device) throw printError('BLUETOOTH_SELECTION_CANCELLED', i18n.t('printers.noBluetoothSelected'));
+  rememberKitchenDevice(device, 'BLUETOOTH');
+  preparedKitchenDevice = { transport: 'BLUETOOTH', device };
+  return device.name || i18n.t('printers.bluetoothPrinter');
+}
+
+/** Print a kitchen ticket using the device prepared on the original click. */
+export async function printKitchenTicket(slip: TestSlip): Promise<void> {
+  const prepared = preparedKitchenDevice;
+  preparedKitchenDevice = null;
+  if (prepared?.transport !== slip.transport) {
+    const message = slip.transport === 'USB' ? i18n.t('printers.noUsbSelected') : i18n.t('printers.noBluetoothSelected');
+    throw printError('PRINTER_NOT_PREPARED', message);
+  }
+  const payload = Uint8Array.from(atob(slip.payloadBase64), (c) => c.charCodeAt(0));
+  if (slip.transport === 'USB') await writeToUsbDevice(prepared.device, payload);
+  else await writeToBluetoothDevice(prepared.device, payload);
+}
+
 /**
  * Print a test slip from THIS terminal.
  *
