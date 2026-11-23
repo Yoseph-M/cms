@@ -12,8 +12,13 @@ import { Order, PaymentMethod } from '../../types';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage, extractErrorDetails } from '../../utils/errorHandler';
-import { printTestSlip, type TestSlip } from '../../hooks/useHardwarePrinter';
+import {
+  prepareKitchenTicketPrinter,
+  printKitchenTicket,
+  type TestSlip,
+} from '../../hooks/useHardwarePrinter';
 import { describePrinterFailure } from '../../utils/printerErrors';
+import { usePrintersQuery } from '../../hooks/useCachedQueries';
 import { cn } from '../../lib/utils';
 import { LoadingState } from '../../components/common/LoadingState';
 
@@ -231,6 +236,9 @@ export const CashierTicketsPage: React.FC = () => {
   const { addToast } = useToastStore();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const printersQuery = usePrintersQuery();
+  const printerRegistry = printersQuery.data ?? [];
+  const kitchenPrinter = printerRegistry.find((printer: any) => printer.station === 'kitchen') ?? printerRegistry[0];
   const { t } = useTranslation('cashier');
   const { setPageTitle, setShowDateRange } = useHeaderStore();
 
@@ -738,12 +746,21 @@ export const CashierTicketsPage: React.FC = () => {
   /** One-tap kitchen reprint from a ticket card. */
   const handleReprint = async (orderId: string) => {
     try {
+      let printerName = '';
+      if (kitchenPrinter?.transport === 'USB' || kitchenPrinter?.transport === 'BLUETOOTH') {
+        printerName = await prepareKitchenTicketPrinter({
+          transport: kitchenPrinter.transport,
+          printerMacAddress: kitchenPrinter.macAddress ?? null,
+          printerVendorId: kitchenPrinter.vendorId ?? null,
+          printerProductId: kitchenPrinter.productId ?? null,
+        });
+        if (!window.confirm(t('tickets.confirmPrinter', { printer: printerName }))) return;
+      }
+
       const response = await axiosClient.post(`/print-jobs/reprint/${orderId}`, {});
       const slip = response.data as Partial<TestSlip> | undefined;
       if (slip?.payloadBase64 && (slip.transport === 'USB' || slip.transport === 'BLUETOOTH')) {
-        // Local printers need the click's browser gesture. Send the ticket now,
-        // just like Test Print, instead of queuing work for a background poll.
-        await printTestSlip(slip as TestSlip);
+        await printKitchenTicket(slip as TestSlip);
       }
       // Network printers queue on the server; their outcome arrives later over
       // the socket and must be attributed to this reprint.
