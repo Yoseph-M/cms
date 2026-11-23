@@ -12,6 +12,8 @@ import { Order, PaymentMethod } from '../../types';
 import { useSystemSettingQuery } from '../../hooks/useCachedQueries';
 import { formatCurrency } from '../../utils/currency';
 import { extractErrorMessage, extractErrorDetails } from '../../utils/errorHandler';
+import { printTestSlip, type TestSlip } from '../../hooks/useHardwarePrinter';
+import { describePrinterFailure } from '../../utils/printerErrors';
 import { cn } from '../../lib/utils';
 import { LoadingState } from '../../components/common/LoadingState';
 
@@ -736,10 +738,18 @@ export const CashierTicketsPage: React.FC = () => {
   /** One-tap kitchen reprint from a ticket card. */
   const handleReprint = async (orderId: string) => {
     try {
-      await axiosClient.post(`/print-jobs/reprint/${orderId}`, {});
-      // Remember the request: the reprint endpoint only queues the job, so a
-      // failure arrives later over the socket and must be attributed to it.
-      reprintAttempts.current.set(orderId, (reprintAttempts.current.get(orderId) ?? 0) + 1);
+      const response = await axiosClient.post(`/print-jobs/reprint/${orderId}`, {});
+      const slip = response.data as Partial<TestSlip> | undefined;
+      if (slip?.payloadBase64 && (slip.transport === 'USB' || slip.transport === 'BLUETOOTH')) {
+        // Local printers need the click's browser gesture. Send the ticket now,
+        // just like Test Print, instead of queuing work for a background poll.
+        await printTestSlip(slip as TestSlip);
+      }
+      // Network printers queue on the server; their outcome arrives later over
+      // the socket and must be attributed to this reprint.
+      if (!slip?.payloadBase64) {
+        reprintAttempts.current.set(orderId, (reprintAttempts.current.get(orderId) ?? 0) + 1);
+      }
       setReprintFailures((prev) => {
         if (!(orderId in prev)) return prev;
         const next = { ...prev };
@@ -753,10 +763,12 @@ export const CashierTicketsPage: React.FC = () => {
       });
       void fetchOrdersRef.current(true);
     } catch (err: any) {
+      const isDevicePrintFailure = err instanceof Error && !('response' in err);
+      const failure = isDevicePrintFailure ? describePrinterFailure(err) : null;
       addToast({
         type: 'error',
-        title: t('toasts.reprintFailed'),
-        message: extractErrorMessage(err, t('errors.tryAgain')),
+        title: failure?.title || t('toasts.reprintFailed'),
+        message: failure?.message || extractErrorMessage(err, t('errors.tryAgain')),
       });
     }
   };
