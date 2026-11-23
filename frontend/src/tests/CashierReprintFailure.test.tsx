@@ -25,7 +25,11 @@ vi.mock('../store/headerStore', () => ({
   useHeaderStore: () => ({ setPageTitle: vi.fn(), setShowDateRange: vi.fn(), title: '', subtitle: '' }),
 }));
 vi.mock('../store/socketStore', () => ({ useSocketStore: vi.fn() }));
-vi.mock('../hooks/useHardwarePrinter', () => ({ printTestSlip: vi.fn() }));
+vi.mock('../hooks/useHardwarePrinter', () => ({
+  printTestSlip: vi.fn(),
+  prepareKitchenTicketPrinter: vi.fn().mockResolvedValue('Kitchen printer'),
+  printKitchenTicket: vi.fn(),
+}));
 vi.mock('react-i18next', () => {
   const resolve = (obj: unknown, path: string): unknown =>
     path.split('.').reduce<any>((acc, key) => (acc == null ? acc : acc[key]), obj);
@@ -50,7 +54,7 @@ import { axiosClient } from '../api/axiosClient';
 import { useToastStore } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
 import { useSocketStore } from '../store/socketStore';
-import { printTestSlip } from '../hooks/useHardwarePrinter';
+import { prepareKitchenTicketPrinter, printKitchenTicket } from '../hooks/useHardwarePrinter';
 
 /** Minimal socket stand-in that records listeners so the test can emit events. */
 const makeSocket = () => {
@@ -134,13 +138,18 @@ beforeEach(() => {
   (useAuthStore as any).mockReturnValue({ user: { id: 'c1', role: 'CASHIER' } });
   (useSocketStore as any).mockReturnValue({ socket, isConnected: true });
   (axiosClient.get as any).mockImplementation((url: string) =>
-    url === '/orders' ? Promise.resolve({ data: [ORDER] }) : Promise.resolve({ data: { value: '12' } }),
+    url === '/orders'
+      ? Promise.resolve({ data: [ORDER] })
+      : url === '/settings/printers'
+        ? Promise.resolve({ data: [{ station: 'kitchen', transport: 'USB', vendorId: '04b8', productId: '0e15' }] })
+        : Promise.resolve({ data: { value: '12' } }),
   );
   (axiosClient.post as any).mockResolvedValue({ data: { id: 'job-2' } });
 });
 
 describe('cashier reprint failures', () => {
   it('prints a local USB reprint from the Tickets button click', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const slip = {
       transport: 'USB',
       printerMacAddress: null,
@@ -154,7 +163,13 @@ describe('cashier reprint failures', () => {
     expect(await screen.findByText('Table 3')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Reprint kitchen ticket'));
 
-    await waitFor(() => expect(printTestSlip).toHaveBeenCalledWith(slip));
+    await waitFor(() => expect(prepareKitchenTicketPrinter).toHaveBeenCalledWith({
+      transport: 'USB',
+      printerMacAddress: null,
+      printerVendorId: '04b8',
+      printerProductId: '0e15',
+    }));
+    expect(printKitchenTicket).toHaveBeenCalledWith(slip);
     expect(axiosClient.post).toHaveBeenCalledWith('/print-jobs/reprint/o1', {});
   });
 
