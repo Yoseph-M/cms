@@ -398,6 +398,27 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
 
   const payloadBase64 = ticketBuffer.toString('base64');
 
+  // USB and Bluetooth devices are attached to the cashier's browser. Reprints
+  // must be sent from the button click so the browser can use its user gesture
+  // to access the device (including asking for permission when needed).
+  if (kitchenPrinter.transport === 'USB' || kitchenPrinter.transport === 'BLUETOOTH') {
+    await recordAudit({
+      actorId: userId,
+      actionType: 'ORDER_REPRINT',
+      targetType: 'Order',
+      targetId: orderId,
+      details: { station: kitchenPrinter.station, transport: kitchenPrinter.transport },
+    });
+
+    return res.status(200).json({
+      transport: kitchenPrinter.transport,
+      printerMacAddress: kitchenPrinter.macAddress,
+      printerVendorId: kitchenPrinter.vendorId,
+      printerProductId: kitchenPrinter.productId,
+      payloadBase64,
+    });
+  }
+
   // Create new print job
   const newJob = await prisma.printJob.create({
     data: {
