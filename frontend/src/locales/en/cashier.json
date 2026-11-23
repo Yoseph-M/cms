@@ -22,6 +22,7 @@
     "reprintFailedTitle": "Kitchen print failed",
     "reprintFailedBody": "These tickets never reached paper. Check the printer is on and loaded, then send them again.",
     "reprintAgain": "Reprint {{label}}",
+    "confirmPrinter": "Print this ticket to {{printer}}?",
     "pageTitle": "Tickets",
     "pageSubtitle": "Live order queue and payment collection",
     "overviewTitle": "Overview"
