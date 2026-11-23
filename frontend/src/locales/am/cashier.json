@@ -15,6 +15,7 @@
     "reprintFailedTitle": "የኩሽና ህትመት አልተሳካም",
     "reprintFailedBody": "እነዚህ ቲኬቶች ወረቀት ላይ አልደረሱም። አታሚው በርቶና ወረቀት እንዳለው አረጋግጠው እንደገና ይላኩ።",
     "reprintAgain": "{{label}} እንደገና አትም",
+    "confirmPrinter": "ይህን ቲኬት በ{{printer}} ላይ ያትም?",
     "pageTitle": "ቲኬቶች",
     "pageSubtitle": "ቀጥታ የትዕዛዝ ወረፋ እና ክፍያ መሰብሰብ",
     "overviewTitle": "አጠቃላይ እይታ"
