@@ -1,4 +1,6 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
+import { printTestSlip, type TestSlip } from '../../hooks/useHardwarePrinter';
+import { describePrinterFailure } from '../../utils/printerErrors';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -251,9 +253,22 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
         }),
       });
 
+      const printSlip = res.data?.printSlip as Partial<TestSlip> | undefined;
+      let localPrintWarning: string | null = null;
+      if (printSlip?.payloadBase64 && (printSlip.transport === 'USB' || printSlip.transport === 'BLUETOOTH')) {
+        try {
+          // Print while this submit click still carries the browser's permission
+          // gesture for the locally attached printer.
+          await printTestSlip(printSlip as TestSlip);
+        } catch (printErr: any) {
+          const failure = printErr instanceof Error ? describePrinterFailure(printErr) : null;
+          localPrintWarning = failure?.message || extractErrorMessage(printErr) || 'The kitchen ticket could not be printed.';
+        }
+      }
+
       // The order is saved either way — but the kitchen ticket must never fail
       // silently. Tell the cashier straight away if it never reached the printer.
-      const printWarning: string | null = res.data?.printWarning ?? null;
+      const printWarning: string | null = localPrintWarning || res.data?.printWarning || null;
       if (printWarning) {
         addToast({
           type: 'warning',
