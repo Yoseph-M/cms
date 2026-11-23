@@ -1,6 +1,11 @@
 import { extractErrorMessage } from "../../utils/errorHandler";
-import { printTestSlip, type TestSlip } from '../../hooks/useHardwarePrinter';
+import {
+  prepareKitchenTicketPrinter,
+  printKitchenTicket,
+  type TestSlip,
+} from '../../hooks/useHardwarePrinter';
 import { describePrinterFailure } from '../../utils/printerErrors';
+import { usePrintersQuery } from '../../hooks/useCachedQueries';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -100,6 +105,9 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
   const { addToast } = useToastStore();
   const { t } = useTranslation('cashier');
   const menuQuery = useMenuQuery();
+  const printersQuery = usePrintersQuery();
+  const printerRegistry = printersQuery.data ?? [];
+  const kitchenPrinter = printerRegistry.find((printer: any) => printer.station === 'kitchen') ?? printerRegistry[0];
   const items: MenuItem[] = menuQuery.data ?? [];
 
   type CategoryKey = 'ALL' | 'FOOD' | 'DRINK' | 'DESSERT' | 'OTHER';
@@ -231,6 +239,24 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
 
     setIsSubmitting(true);
     try {
+      let prepareFailure: unknown = null;
+      let printerPrepared = false;
+      if (kitchenPrinter?.transport === 'USB' || kitchenPrinter?.transport === 'BLUETOOTH') {
+        try {
+          await prepareKitchenTicketPrinter({
+            transport: kitchenPrinter.transport,
+            printerMacAddress: kitchenPrinter.macAddress ?? null,
+            printerVendorId: kitchenPrinter.vendorId ?? null,
+            printerProductId: kitchenPrinter.productId ?? null,
+          });
+          printerPrepared = true;
+        } catch (err) {
+          // Save the order even if the cashier cancels printer access. The
+          // warning below keeps the missing ticket visible.
+          prepareFailure = err;
+        }
+      }
+
       const clientOrderId = crypto.randomUUID();
       const res = await axiosClient.post('/orders', {
         clientOrderId,
@@ -254,15 +280,20 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       });
 
       const printSlip = res.data?.printSlip as Partial<TestSlip> | undefined;
-      let localPrintWarning: string | null = null;
+      let localPrintWarning: string | null = prepareFailure
+        ? (prepareFailure instanceof Error ? describePrinterFailure(prepareFailure).message : 'The printer could not be selected.')
+        : null;
       if (printSlip?.payloadBase64 && (printSlip.transport === 'USB' || printSlip.transport === 'BLUETOOTH')) {
-        try {
-          // Print while this submit click still carries the browser's permission
-          // gesture for the locally attached printer.
-          await printTestSlip(printSlip as TestSlip);
-        } catch (printErr: any) {
-          const failure = printErr instanceof Error ? describePrinterFailure(printErr) : null;
-          localPrintWarning = failure?.message || extractErrorMessage(printErr) || 'The kitchen ticket could not be printed.';
+        if (!prepareFailure) {
+          try {
+            // The printer registry may still be loading on a fast first order;
+            // in that case use the ticket's own target as a fallback.
+            if (!printerPrepared) await prepareKitchenTicketPrinter(printSlip as TestSlip);
+            await printKitchenTicket(printSlip as TestSlip);
+          } catch (printErr: any) {
+            const failure = printErr instanceof Error ? describePrinterFailure(printErr) : null;
+            localPrintWarning = failure?.message || extractErrorMessage(printErr) || 'The kitchen ticket could not be printed.';
+          }
         }
       }
 
