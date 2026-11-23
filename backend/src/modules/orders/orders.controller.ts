@@ -2,7 +2,14 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../../middleware/auth.middleware';
 import { prisma } from '../../services/prisma.service';
 import { emitToLiveOrders } from '../../services/socket.service';
-import { enqueueKitchenPrintJob, notifyKitchenPrintFailure } from '../../services/printer.service';
+import {
+  buildEscPosKitchenTicket,
+  enqueueKitchenPrintJob,
+  getPrinterRegistry,
+  notifyKitchenPrintFailure,
+  resolveKitchenPrinter,
+} from '../../services/printer.service';
+import { getReceiptSettings } from '../../services/receipt-settings.service';
 import { OrderStatus, PaymentMethod, Role, PrintTransport } from '@prisma/client';
 import { executeInTransaction, executeInCriticalTransaction } from '../../utils/transaction';
 import { restoreCancelledOrderStock } from '../../services/inventory.service';
@@ -106,7 +113,6 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
 
   let order;
   let createdPrintJobId: string | null = null;
-  let printTransport: PrintTransport | null = null;
   
   try {
     const executeOrder = inventoryDemand.size > 0 ? executeInCriticalTransaction : executeInTransaction;
@@ -165,26 +171,47 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
 
   // Enqueue kitchen print job OUTSIDE the transaction to avoid timeout
   let printWarning: string | null = null;
+  let printSlip: {
+    transport: PrintTransport;
+    printerMacAddress: string | null;
+    printerVendorId: string | null;
+    printerProductId: string | null;
+    payloadBase64: string;
+  } | null = null;
   try {
-    const printJob = await enqueueKitchenPrintJob(prisma, {
+    const printOrder = {
       id: order.id,
       clientOrderId: order.clientOrderId,
       tableNumber: order.tableNumber,
       waiterName: order.waiter?.name || waiterName,
       createdAt: order.createdAt,
       items: order.items as any,
-    });
+    };
+    const kitchenPrinter = resolveKitchenPrinter(await getPrinterRegistry());
 
-    if (printJob) {
-      createdPrintJobId = printJob.id;
-      printTransport = printJob.transport;
+    if (kitchenPrinter?.transport === PrintTransport.USB || kitchenPrinter?.transport === PrintTransport.BLUETOOTH) {
+      // Local printers need the order-submit click's browser gesture. Return the
+      // encoded ticket for the cashier terminal to print immediately.
+      const settings = await getReceiptSettings();
+      printSlip = {
+        transport: kitchenPrinter.transport,
+        printerMacAddress: kitchenPrinter.macAddress,
+        printerVendorId: kitchenPrinter.vendorId,
+        printerProductId: kitchenPrinter.productId,
+        payloadBase64: buildEscPosKitchenTicket(printOrder, settings.kitchenTicket).toString('base64'),
+      };
     } else {
-      printWarning = 'No kitchen printer has been set up yet.';
+      const printJob = await enqueueKitchenPrintJob(prisma, printOrder);
+      if (printJob) {
+        createdPrintJobId = printJob.id;
+      } else {
+        printWarning = 'No kitchen printer has been set up yet.';
+      }
     }
   } catch (printErr) {
     // Print failure should never block order creation — but it must never be
     // silent either. The order is created and visible on the Tickets page.
-    console.error('Failed to enqueue kitchen print job:', printErr);
+    console.error('Failed to prepare kitchen ticket printing:', printErr);
     printWarning = 'The kitchen ticket could not be sent to the printer.';
   }
 
@@ -203,6 +230,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     order,
     printQueued: Boolean(createdPrintJobId),
     printWarning,
+    printSlip,
   });
 }
 
