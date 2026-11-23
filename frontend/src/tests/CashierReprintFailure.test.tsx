@@ -25,6 +25,7 @@ vi.mock('../store/headerStore', () => ({
   useHeaderStore: () => ({ setPageTitle: vi.fn(), setShowDateRange: vi.fn(), title: '', subtitle: '' }),
 }));
 vi.mock('../store/socketStore', () => ({ useSocketStore: vi.fn() }));
+vi.mock('../hooks/useHardwarePrinter', () => ({ printTestSlip: vi.fn() }));
 vi.mock('react-i18next', () => {
   const resolve = (obj: unknown, path: string): unknown =>
     path.split('.').reduce<any>((acc, key) => (acc == null ? acc : acc[key]), obj);
@@ -49,6 +50,7 @@ import { axiosClient } from '../api/axiosClient';
 import { useToastStore } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
 import { useSocketStore } from '../store/socketStore';
+import { printTestSlip } from '../hooks/useHardwarePrinter';
 
 /** Minimal socket stand-in that records listeners so the test can emit events. */
 const makeSocket = () => {
@@ -138,6 +140,24 @@ beforeEach(() => {
 });
 
 describe('cashier reprint failures', () => {
+  it('prints a local USB reprint from the Tickets button click', async () => {
+    const slip = {
+      transport: 'USB',
+      printerMacAddress: null,
+      printerVendorId: '04b8',
+      printerProductId: '0e15',
+      payloadBase64: btoa('TABLE 3'),
+    };
+    (axiosClient.post as any).mockResolvedValueOnce({ data: slip });
+
+    renderPage();
+    expect(await screen.findByText('Table 3')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Reprint kitchen ticket'));
+
+    await waitFor(() => expect(printTestSlip).toHaveBeenCalledWith(slip));
+    expect(axiosClient.post).toHaveBeenCalledWith('/print-jobs/reprint/o1', {});
+  });
+
   it('tells the cashier when a reprint fails again and keeps it on screen', async () => {
     await reprintAndFail('printJob:failed');
 
