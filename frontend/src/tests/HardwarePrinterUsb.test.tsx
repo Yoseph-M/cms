@@ -33,7 +33,13 @@ vi.mock('react-i18next', () => {
   return { useTranslation: () => ({ t: (key: string) => lookup(key) ?? key }) };
 });
 
-import { printTestSlip, PrinterBusyError, useHardwarePrinter } from '../hooks/useHardwarePrinter';
+import {
+  prepareKitchenTicketPrinter,
+  printKitchenTicket,
+  printTestSlip,
+  PrinterBusyError,
+  useHardwarePrinter,
+} from '../hooks/useHardwarePrinter';
 import { axiosClient } from '../api/axiosClient';
 import { useToastStore } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
@@ -106,6 +112,24 @@ describe('USB ticket printer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete (navigator as any).usb;
+  });
+
+  it('prepares the already paired printer before the order request and reuses it', async () => {
+    const device = makeUsbDevice();
+    installUsb(device);
+
+    const name = await prepareKitchenTicketPrinter({
+      transport: 'USB',
+      printerMacAddress: null,
+      // Simulate stale stored ids: one permitted device should still be reused.
+      printerVendorId: '1234',
+      printerProductId: '5678',
+    });
+    await printKitchenTicket(slip('NEW ORDER'));
+
+    expect(name).toBe('USB 4b8:e15');
+    expect((navigator as any).usb.requestDevice).not.toHaveBeenCalled();
+    expect(device.transfers).toEqual(['NEW ORDER']);
   });
 
   it('retries a claim another window is holding instead of losing the ticket', async () => {
