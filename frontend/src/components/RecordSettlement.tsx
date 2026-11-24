@@ -10,6 +10,10 @@ import { axiosClient } from '../api/axiosClient';
 import { useAuthStore } from '../store/authStore';
 import { extractErrorMessage, extractErrorDetails } from '../utils/errorHandler';
 import { useTranslation } from 'react-i18next';
+import { usePrintersQuery } from '../hooks/useCachedQueries';
+import { prepareKitchenTicketPrinter, printKitchenTicket, type TestSlip } from '../hooks/useHardwarePrinter';
+import { describePrinterFailure } from '../utils/printerErrors';
+import { useToastStore } from '../store/toastStore';
 
 interface RecordSettlementProps {
   orderId: string;
@@ -26,6 +30,10 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 }) => {
   const { accessToken } = useAuthStore();
   const { t } = useTranslation();
+  const { addToast } = useToastStore();
+  const printersQuery = usePrintersQuery();
+  const printerRegistry = printersQuery.data ?? [];
+  const kitchenPrinter = printerRegistry.find((printer: any) => printer.station === 'kitchen') ?? printerRegistry[0];
   const [amount, setAmount] = useState<string>(String(Math.round(remainingAmount)));
   const [method, setMethod] = useState<'CASH' | 'CARD' | 'MOBILE'>('CASH');
   const [reference, setReference] = useState('');
@@ -41,11 +49,15 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
     return `settlement-${orderId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   };
 
-  const submitSettlement = async (idempotencyKey: string) => {
+  const submitSettlement = async (
+    idempotencyKey: string,
+    printerPrepared = false,
+    printerPrepareFailure?: unknown,
+  ) => {
     const amountMinor = parseFloat(amount);
 
     try {
-      await axiosClient.post(
+      const response = await axiosClient.post(
         `/orders/${orderId}/settlements`,
         {
           amountMinor,
@@ -60,6 +72,24 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
           },
         }
       );
+
+      let receiptWarning: string | null = response.data?.receiptWarning ?? null;
+      const receiptSlip = response.data?.receiptSlip as (Partial<TestSlip> & { payloadBase64: string }) | undefined;
+      if (receiptSlip?.payloadBase64 && (receiptSlip.transport === 'USB' || receiptSlip.transport === 'BLUETOOTH')) {
+        if (printerPrepareFailure) {
+          receiptWarning = describePrinterFailure(printerPrepareFailure).message;
+        } else {
+          try {
+            if (!printerPrepared) await prepareKitchenTicketPrinter(receiptSlip as TestSlip);
+            await printKitchenTicket(receiptSlip as TestSlip);
+          } catch (printError) {
+            receiptWarning = printError instanceof Error
+              ? describePrinterFailure(printError).message
+              : 'Payment was recorded, but the receipt could not be printed.';
+          }
+        }
+      }
+      if (receiptWarning) addToast({ type: 'warning', title: t('cashier:toasts.receiptNotPrinted'), message: receiptWarning });
 
       onSuccess();
       retryCountRef.current = 0; // Reset for next submission
@@ -81,7 +111,7 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
         
         // Wait and retry with same idempotency key
         setTimeout(() => {
-          submitSettlement(idempotencyKey);
+          submitSettlement(idempotencyKey, printerPrepared, printerPrepareFailure);
         }, delay);
         return;
       }
@@ -128,7 +158,22 @@ export const RecordSettlement: React.FC<RecordSettlementProps> = ({
 
     setSubmitting(true);
     const idempotencyKey = generateIdempotencyKey();
-    await submitSettlement(idempotencyKey);
+    let printerPrepared = false;
+    let printerPrepareFailure: unknown;
+    if (kitchenPrinter?.transport === 'USB' || kitchenPrinter?.transport === 'BLUETOOTH') {
+      try {
+        await prepareKitchenTicketPrinter({
+          transport: kitchenPrinter.transport,
+          printerMacAddress: kitchenPrinter.macAddress ?? null,
+          printerVendorId: kitchenPrinter.vendorId ?? null,
+          printerProductId: kitchenPrinter.productId ?? null,
+        });
+        printerPrepared = true;
+      } catch (prepareError) {
+        printerPrepareFailure = prepareError;
+      }
+    }
+    await submitSettlement(idempotencyKey, printerPrepared, printerPrepareFailure);
   };
 
   const handleQuickAmount = (percentage: number) => {
