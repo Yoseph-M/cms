@@ -235,7 +235,8 @@
     "confirmingPaymentMsg": "The order changed while payment was recorded. Checking once more.",
     "reprintSent": "Reprint sent",
     "reprintSentMsg": "The kitchen ticket was sent to the printer again.",
-    "reprintFailed": "Could not reprint"
+    "reprintFailed": "Could not reprint",
+    "receiptNotPrinted": "Receipt not printed"
   },
   "shortcuts": {
     "navigate": "↑↓ / J K — Navigate queue",
