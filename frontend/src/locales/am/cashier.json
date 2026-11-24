@@ -225,7 +225,8 @@
     "confirmingPaymentMsg": "ክፍያው በተመዘገበበት ጊዜ ትዕዛዙ ተቀይሯል። አንድ ጊዜ ተጨማሪ በመፈተሽ ላይ።",
     "reprintSent": "እንደገና ተልኳል",
     "reprintSentMsg": "የኩሽና ቲኬቱ እንደገና ወደ አታሚው ተልኳል።",
-    "reprintFailed": "እንደገና ማተም አልተቻለም"
+    "reprintFailed": "እንደገና ማተም አልተቻለም",
+    "receiptNotPrinted": "ደረሰኙ አልታተመም"
   },
   "shortcuts": {
     "navigate": "↑↓ / J K — ወረፋ ዳስስ",
