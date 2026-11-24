@@ -70,18 +70,17 @@ const PreviewRow: React.FC<{ label: string; value: React.ReactNode; strong?: boo
 const ReceiptPreview: React.FC<{ settings: PrintLayoutSettings; kitchen?: boolean }> = ({ settings, kitchen }) => {
   const { t } = useTranslation();
   const narrow = settings.paperSize === '58mm';
-  const businessName = settings.businessName.trim() || t('receiptSettings.businessNamePlaceholder');
-  const businessEmail = settings.businessEmail.trim() || t('receiptSettings.businessEmailPlaceholder');
-  const businessPhone = settings.businessPhone.trim() || t('receiptSettings.businessPhonePlaceholder');
-  const businessAddress =
-    settings.businessAddress.trim() || t('receiptSettings.businessAddressPlaceholder');
+  const businessName = settings.businessName.trim();
+  const businessEmail = settings.businessEmail.trim();
+  const businessPhone = settings.businessPhone.trim();
+  const businessAddress = settings.businessAddress.trim();
 
   const showContact = !kitchen && (
     (settings.showEmail && businessEmail.length > 0) ||
     (settings.showBusinessPhone && businessPhone.length > 0) ||
     (settings.showBusinessAddress && businessAddress.length > 0)
   );
-  const showHeader = settings.showBusinessName || showContact;
+  const showHeader = (settings.showBusinessName && businessName.length > 0) || showContact;
 
   const showPaymentBlock = !kitchen && (
     settings.showPaymentMethod || settings.showAmountPaid || settings.showChange
@@ -104,12 +103,12 @@ const ReceiptPreview: React.FC<{ settings: PrintLayoutSettings; kitchen?: boolea
       >
         {showHeader && (
           <div className="space-y-0.5 text-center">
-            {settings.showBusinessName && (
+            {settings.showBusinessName && businessName && (
               <p className="text-[1.15em] font-bold uppercase leading-tight">{businessName}</p>
             )}
-            {!kitchen && settings.showEmail && <p className="break-all">{businessEmail}</p>}
-            {!kitchen && settings.showBusinessPhone && <p className="break-all">{businessPhone}</p>}
-            {!kitchen && settings.showBusinessAddress && <p className="break-words">{businessAddress}</p>}
+            {!kitchen && settings.showEmail && businessEmail && <p className="break-all">{businessEmail}</p>}
+            {!kitchen && settings.showBusinessPhone && businessPhone && <p className="break-all">{businessPhone}</p>}
+            {!kitchen && settings.showBusinessAddress && businessAddress && <p className="break-words">{businessAddress}</p>}
           </div>
         )}
 
@@ -125,12 +124,13 @@ const ReceiptPreview: React.FC<{ settings: PrintLayoutSettings; kitchen?: boolea
           {settings.showDateTime && (
             <PreviewRow label={t('receiptSettings.date')} value="05/09/2026 11:45 AM" />
           )}
+          {kitchen && <PreviewRow label={t('receiptSettings.tableNumber')} value="#12" />}
         </div>
 
         <div className="my-2 border-t border-dashed border-slate-400" />
 
-        {kitchen && <p className="mb-1 text-center font-bold">{t('receiptSettings.kitchenTicket')}</p>}
-        <div className={cn('grid gap-2 font-bold', kitchen ? 'grid-cols-[1fr_auto]' : 'grid-cols-[1fr_auto_auto]')}>
+        {kitchen && <p className="mb-1 text-center font-bold uppercase">{t('receiptSettings.kitchenTicket')}</p>}
+        <div className={cn('grid gap-2 font-bold uppercase', kitchen ? 'grid-cols-[1fr_auto]' : 'grid-cols-[1fr_auto_auto]')}>
           <span>{t('receiptSettings.items')}</span>
           <span className="text-right">{t('receiptSettings.qty')}</span>
           {!kitchen && <span className="min-w-[48px] text-right">{t('receiptSettings.price')}</span>}
@@ -138,15 +138,18 @@ const ReceiptPreview: React.FC<{ settings: PrintLayoutSettings; kitchen?: boolea
 
         <div className="mt-1 space-y-0.5">
           <div className={cn('grid gap-2', kitchen ? 'grid-cols-[1fr_auto]' : 'grid-cols-[1fr_auto_auto]')}>
-            <span className="truncate">{t('receiptSettings.sampleItem1')}</span>
+            <span className="min-w-0 break-words">{t('receiptSettings.sampleItem1')}</span>
             <span className="text-right">1</span>
             {!kitchen && <span className="min-w-[48px] text-right">{formatCurrency(100)}</span>}
           </div>
           <div className={cn('grid gap-2', kitchen ? 'grid-cols-[1fr_auto]' : 'grid-cols-[1fr_auto_auto]')}>
-            <span className="truncate">{t('receiptSettings.sampleItem2')}</span>
+            <span className="min-w-0 break-words">{t('receiptSettings.sampleItem2')}</span>
             <span className="text-right">1</span>
             {!kitchen && <span className="min-w-[48px] text-right">{formatCurrency(150)}</span>}
           </div>
+          {kitchen && (
+            <p className="col-span-2 text-[0.9em] text-slate-600">-&gt; Note: No onions</p>
+          )}
         </div>
 
         <div className="my-2 border-t border-dashed border-slate-400" />
