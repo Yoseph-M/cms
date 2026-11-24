@@ -448,7 +448,23 @@ export type KitchenPrinterTarget = Pick<
   'transport' | 'printerMacAddress' | 'printerVendorId' | 'printerProductId'
 >;
 
-let preparedKitchenDevice: { transport: KitchenPrinterTarget['transport']; device: any } | null = null;
+type ResolvedKitchenDevice = {
+  transport: KitchenPrinterTarget['transport'];
+  device: any;
+  targetKey: string;
+};
+
+let preparedKitchenDevice: ResolvedKitchenDevice | null = null;
+let cachedKitchenDevice: ResolvedKitchenDevice | null = null;
+
+function kitchenTargetKey(target: KitchenPrinterTarget): string {
+  return [
+    target.transport,
+    target.printerMacAddress || '',
+    target.printerVendorId || '',
+    target.printerProductId || '',
+  ].join(':');
+}
 
 function matchesRememberedKitchenDevice(device: any, transport: KitchenPrinterTarget['transport']): boolean {
   try {
@@ -481,6 +497,17 @@ function rememberKitchenDevice(device: any, transport: KitchenPrinterTarget['tra
  * is accepted even if saved USB ids drifted from the physical printer.
  */
 export async function prepareKitchenTicketPrinter(target: KitchenPrinterTarget): Promise<string> {
+  const targetKey = kitchenTargetKey(target);
+  const alreadyResolved =
+    (preparedKitchenDevice?.targetKey === targetKey && preparedKitchenDevice) ||
+    (cachedKitchenDevice?.targetKey === targetKey && cachedKitchenDevice);
+  if (alreadyResolved) {
+    preparedKitchenDevice = alreadyResolved;
+    return alreadyResolved.transport === 'USB'
+      ? (alreadyResolved.device.productName || `USB ${Number(alreadyResolved.device.vendorId).toString(16)}:${Number(alreadyResolved.device.productId).toString(16)}`)
+      : (alreadyResolved.device.name || i18n.t('printers.bluetoothPrinter'));
+  }
+
   if (target.transport === 'USB') {
     const usb = (navigator as any).usb;
     if (!usb?.requestDevice) throw printError('USB_UNSUPPORTED', i18n.t('printers.usbUnsupported'));
@@ -497,7 +524,8 @@ export async function prepareKitchenTicketPrinter(target: KitchenPrinterTarget):
     }
     if (!device) throw printError('USB_SELECTION_CANCELLED', i18n.t('printers.noUsbSelected'));
     rememberKitchenDevice(device, 'USB');
-    preparedKitchenDevice = { transport: 'USB', device };
+    preparedKitchenDevice = { transport: 'USB', device, targetKey };
+    cachedKitchenDevice = preparedKitchenDevice;
     return device.productName || `USB ${Number(device.vendorId).toString(16)}:${Number(device.productId).toString(16)}`;
   }
 
@@ -522,7 +550,8 @@ export async function prepareKitchenTicketPrinter(target: KitchenPrinterTarget):
   }
   if (!device) throw printError('BLUETOOTH_SELECTION_CANCELLED', i18n.t('printers.noBluetoothSelected'));
   rememberKitchenDevice(device, 'BLUETOOTH');
-  preparedKitchenDevice = { transport: 'BLUETOOTH', device };
+  preparedKitchenDevice = { transport: 'BLUETOOTH', device, targetKey };
+  cachedKitchenDevice = preparedKitchenDevice;
   return device.name || i18n.t('printers.bluetoothPrinter');
 }
 
@@ -535,8 +564,13 @@ export async function printKitchenTicket(slip: TestSlip): Promise<void> {
     throw printError('PRINTER_NOT_PREPARED', message);
   }
   const payload = Uint8Array.from(atob(slip.payloadBase64), (c) => c.charCodeAt(0));
-  if (slip.transport === 'USB') await writeToUsbDevice(prepared.device, payload);
-  else await writeToBluetoothDevice(prepared.device, payload);
+  try {
+    if (slip.transport === 'USB') await writeToUsbDevice(prepared.device, payload);
+    else await writeToBluetoothDevice(prepared.device, payload);
+  } catch (error) {
+    if (cachedKitchenDevice?.device === prepared.device) cachedKitchenDevice = null;
+    throw error;
+  }
 }
 
 /**
