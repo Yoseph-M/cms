@@ -556,20 +556,30 @@ export async function prepareKitchenTicketPrinter(target: KitchenPrinterTarget):
 }
 
 /** Print a kitchen ticket using the device prepared on the original click. */
-export async function printKitchenTicket(slip: TestSlip): Promise<void> {
+export async function printKitchenTicket(slip: TestSlip, printJobId?: string): Promise<void> {
   const prepared = preparedKitchenDevice;
   preparedKitchenDevice = null;
-  if (prepared?.transport !== slip.transport) {
-    const message = slip.transport === 'USB' ? i18n.t('printers.noUsbSelected') : i18n.t('printers.noBluetoothSelected');
-    throw printError('PRINTER_NOT_PREPARED', message);
-  }
-  const payload = Uint8Array.from(atob(slip.payloadBase64), (c) => c.charCodeAt(0));
   try {
+    if (prepared?.transport !== slip.transport) {
+      const message = slip.transport === 'USB' ? i18n.t('printers.noUsbSelected') : i18n.t('printers.noBluetoothSelected');
+      throw printError('PRINTER_NOT_PREPARED', message);
+    }
+    const payload = Uint8Array.from(atob(slip.payloadBase64), (c) => c.charCodeAt(0));
     if (slip.transport === 'USB') await writeToUsbDevice(prepared.device, payload);
     else await writeToBluetoothDevice(prepared.device, payload);
   } catch (error) {
-    if (cachedKitchenDevice?.device === prepared.device) cachedKitchenDevice = null;
+    if (prepared && cachedKitchenDevice?.device === prepared.device) cachedKitchenDevice = null;
+    if (printJobId) {
+      await axiosClient.post(`/print-jobs/frontend/${printJobId}/ack`, {
+        status: 'FAILED',
+        error: error instanceof Error ? error.message : String(error),
+      }).catch((ackError) => console.error('Failed to acknowledge kitchen ticket failure:', ackError));
+    }
     throw error;
+  }
+  if (printJobId) {
+    await axiosClient.post(`/print-jobs/frontend/${printJobId}/ack`, { status: 'PRINTED' })
+      .catch((ackError) => console.error('Kitchen ticket printed, but its status could not be acknowledged:', ackError));
   }
 }
 
