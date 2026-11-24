@@ -373,7 +373,12 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
   }
 
   // Find printer configuration for kitchen
-  const { getPrinterRegistry, buildEscPosKitchenTicket, resolveKitchenPrinter } = await import('../../services/printer.service');
+  const {
+    getPrinterRegistry,
+    buildEscPosKitchenTicket,
+    repeatEscPosCopies,
+    resolveKitchenPrinter,
+  } = await import('../../services/printer.service');
   const { getReceiptSettings } = await import('../../services/receipt-settings.service');
   const printers = await getPrinterRegistry();
   const kitchenPrinter = resolveKitchenPrinter(printers);
@@ -382,8 +387,7 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
     return res.status(400).json({ error: 'Kitchen printer not configured' });
   }
 
-  // Build the ticket with the owner's current layout. A reprint is one ticket,
-  // even when the layout queues multiple copies for new orders.
+  // Build the ticket with the owner's current layout, including its copy count.
   const settings = await getReceiptSettings();
   const ticketBuffer = buildEscPosKitchenTicket(
     {
@@ -396,18 +400,30 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
     settings.kitchenTicket,
   );
 
-  const payloadBase64 = ticketBuffer.toString('base64');
+  const payloadBase64 = repeatEscPosCopies(ticketBuffer, settings.kitchenTicket.copies).toString('base64');
 
   // USB and Bluetooth devices are attached to the cashier's browser. Reprints
   // must be sent from the button click so the browser can use its user gesture
   // to access the device (including asking for permission when needed).
   if (kitchenPrinter.transport === 'USB' || kitchenPrinter.transport === 'BLUETOOTH') {
+    const localJob = await prisma.printJob.create({
+      data: {
+        orderId: order.id,
+        station: kitchenPrinter.station,
+        transport: kitchenPrinter.transport,
+        printerMacAddress: kitchenPrinter.macAddress,
+        printerVendorId: kitchenPrinter.vendorId,
+        printerProductId: kitchenPrinter.productId,
+        payloadBase64,
+        status: PrintJobStatus.PRINTING,
+      },
+    });
     await recordAudit({
       actorId: userId,
       actionType: 'ORDER_REPRINT',
       targetType: 'Order',
       targetId: orderId,
-      details: { station: kitchenPrinter.station, transport: kitchenPrinter.transport },
+      details: { printJobId: localJob.id, station: kitchenPrinter.station, transport: kitchenPrinter.transport },
     });
 
     return res.status(200).json({
@@ -416,6 +432,7 @@ export async function reprintOrder(req: AuthenticatedRequest, res: Response) {
       printerVendorId: kitchenPrinter.vendorId,
       printerProductId: kitchenPrinter.productId,
       payloadBase64,
+      printJobId: localJob.id,
     });
   }
 
