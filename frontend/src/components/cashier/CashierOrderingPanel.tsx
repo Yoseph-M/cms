@@ -279,7 +279,7 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
         }),
       });
 
-      const printSlip = res.data?.printSlip as Partial<TestSlip> | undefined;
+      const printSlip = res.data?.printSlip as (Partial<TestSlip> & { printJobId?: string }) | undefined;
       let localPrintWarning: string | null = prepareFailure
         ? (prepareFailure instanceof Error ? describePrinterFailure(prepareFailure).message : 'The printer could not be selected.')
         : null;
@@ -289,11 +289,16 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
             // The printer registry may still be loading on a fast first order;
             // in that case use the ticket's own target as a fallback.
             if (!printerPrepared) await prepareKitchenTicketPrinter(printSlip as TestSlip);
-            await printKitchenTicket(printSlip as TestSlip);
+            await printKitchenTicket(printSlip as TestSlip, printSlip.printJobId);
           } catch (printErr: any) {
             const failure = printErr instanceof Error ? describePrinterFailure(printErr) : null;
             localPrintWarning = failure?.message || extractErrorMessage(printErr) || 'The kitchen ticket could not be printed.';
           }
+        } else if (printSlip.printJobId) {
+          await axiosClient.post(`/print-jobs/frontend/${printSlip.printJobId}/ack`, {
+            status: 'FAILED',
+            error: prepareFailure instanceof Error ? prepareFailure.message : 'The printer could not be selected.',
+          }).catch(() => undefined);
         }
       }
 
