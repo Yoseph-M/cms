@@ -518,10 +518,9 @@ export const CashierTicketsPage: React.FC = () => {
       const attempts = reprintAttempts.current.get(orderId) ?? 0;
       setReprintFailures((prev) => ({
         ...prev,
-        [orderId]: payload?.error || t('errors.printerRejected'),
+        [orderId]: t('errors.printerRejected'),
       }));
-      // NOTE: the payload's `error` is kept for context; the copy the cashier
-      // reads stays in plain language rather than raw driver text.
+      // Keep driver errors out of the cashier UI; they are not actionable for staff.
       addToast({
         type: 'error',
         title: attempts > 0 ? t('toasts.reprintFailedAgain') : t('toasts.kitchenTicketFailed'),
@@ -610,6 +609,22 @@ export const CashierTicketsPage: React.FC = () => {
         return;
       }
 
+      let receiptPrinterPrepared = false;
+      let receiptPrepareFailure: unknown = null;
+      if (kitchenPrinter?.transport === 'USB' || kitchenPrinter?.transport === 'BLUETOOTH') {
+        try {
+          await prepareKitchenTicketPrinter({
+            transport: kitchenPrinter.transport,
+            printerMacAddress: kitchenPrinter.macAddress ?? null,
+            printerVendorId: kitchenPrinter.vendorId ?? null,
+            printerProductId: kitchenPrinter.productId ?? null,
+          });
+          receiptPrinterPrepared = true;
+        } catch (error) {
+          receiptPrepareFailure = error;
+        }
+      }
+
       const res = await axiosClient.post(
         `/orders/${orderId}/settlements`,
         {
@@ -623,6 +638,23 @@ export const CashierTicketsPage: React.FC = () => {
 
       if (attemptId !== settlementAttemptRef.current) return;
 
+      let receiptWarning: string | null = res.data?.receiptWarning ?? null;
+      const receiptSlip = res.data?.receiptSlip as (Partial<TestSlip> & { payloadBase64: string }) | undefined;
+      if (receiptSlip?.payloadBase64 && (receiptSlip.transport === 'USB' || receiptSlip.transport === 'BLUETOOTH')) {
+        if (receiptPrepareFailure) {
+          receiptWarning = describePrinterFailure(receiptPrepareFailure).message;
+        } else {
+          try {
+            if (!receiptPrinterPrepared) await prepareKitchenTicketPrinter(receiptSlip as TestSlip);
+            await printKitchenTicket(receiptSlip as TestSlip);
+          } catch (error) {
+            receiptWarning = error instanceof Error
+              ? describePrinterFailure(error).message
+              : 'Payment was recorded, but the receipt could not be printed.';
+          }
+        }
+      }
+
       setOrders((prev) => prev.map((o) => (o.id === orderId ? res.data.order : o)));
       isSettlingRef.current = false; // Clear ref on success
 
@@ -630,9 +662,16 @@ export const CashierTicketsPage: React.FC = () => {
         ? t('toasts.tableText', { table: res.data.order.tableNumber })
         : t('toasts.takeoutText');
       addToast({ type: 'success', title: t('toasts.settled', { tableText }) });
+      if (receiptWarning) {
+        addToast({
+          type: 'warning',
+          title: t('toasts.receiptNotPrinted'),
+          message: receiptWarning,
+        });
+      }
 
       setTimeout(() => {
-        setPhase('printed');
+        setPhase(receiptWarning ? 'idle' : 'printed');
         setTimeout(() => {
           setPhase('idle');
           // Auto-close the order detail card after the settled ticket is acknowledged.
@@ -758,9 +797,9 @@ export const CashierTicketsPage: React.FC = () => {
       }
 
       const response = await axiosClient.post(`/print-jobs/reprint/${orderId}`, {});
-      const slip = response.data as Partial<TestSlip> | undefined;
+      const slip = response.data as (Partial<TestSlip> & { printJobId?: string }) | undefined;
       if (slip?.payloadBase64 && (slip.transport === 'USB' || slip.transport === 'BLUETOOTH')) {
-        await printKitchenTicket(slip as TestSlip);
+        await printKitchenTicket(slip as TestSlip, slip.printJobId);
       }
       // Network printers queue on the server; their outcome arrives later over
       // the socket and must be attributed to this reprint.
