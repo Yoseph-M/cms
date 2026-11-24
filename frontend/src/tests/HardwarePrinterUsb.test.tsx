@@ -114,7 +114,7 @@ describe('USB ticket printer', () => {
     delete (navigator as any).usb;
   });
 
-  it('prepares the already paired printer before the order request and reuses it', async () => {
+  it('prepares the already paired printer once and reuses it for later tickets', async () => {
     const device = makeUsbDevice();
     installUsb(device);
 
@@ -126,10 +126,18 @@ describe('USB ticket printer', () => {
       printerProductId: '5678',
     });
     await printKitchenTicket(slip('NEW ORDER'));
+    await prepareKitchenTicketPrinter({
+      transport: 'USB',
+      printerMacAddress: null,
+      printerVendorId: '1234',
+      printerProductId: '5678',
+    });
+    await printKitchenTicket(slip('REPRINT'));
 
     expect(name).toBe('USB 4b8:e15');
     expect((navigator as any).usb.requestDevice).not.toHaveBeenCalled();
-    expect(device.transfers).toEqual(['NEW ORDER']);
+    expect((navigator as any).usb.getDevices).toHaveBeenCalledTimes(1);
+    expect(device.transfers).toEqual(['NEW ORDER', 'REPRINT']);
   });
 
   it('retries a claim another window is holding instead of losing the ticket', async () => {
