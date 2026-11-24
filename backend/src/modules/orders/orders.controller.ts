@@ -7,10 +7,11 @@ import {
   enqueueKitchenPrintJob,
   getPrinterRegistry,
   notifyKitchenPrintFailure,
+  repeatEscPosCopies,
   resolveKitchenPrinter,
 } from '../../services/printer.service';
 import { getReceiptSettings } from '../../services/receipt-settings.service';
-import { OrderStatus, PaymentMethod, Role, PrintTransport } from '@prisma/client';
+import { OrderStatus, PaymentMethod, Role, PrintTransport, PrintJobStatus } from '@prisma/client';
 import { executeInTransaction, executeInCriticalTransaction } from '../../utils/transaction';
 import { restoreCancelledOrderStock } from '../../services/inventory.service';
 import { canTransition } from '../../utils/orderStateMachine';
@@ -177,6 +178,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
     printerVendorId: string | null;
     printerProductId: string | null;
     payloadBase64: string;
+    printJobId: string;
   } | null = null;
   try {
     const printOrder = {
@@ -193,12 +195,29 @@ export async function createOrder(req: AuthenticatedRequest, res: Response) {
       // Local printers need the order-submit click's browser gesture. Return the
       // encoded ticket for the cashier terminal to print immediately.
       const settings = await getReceiptSettings();
+      const payloadBase64 = repeatEscPosCopies(
+        buildEscPosKitchenTicket(printOrder, settings.kitchenTicket),
+        settings.kitchenTicket.copies,
+      ).toString('base64');
+      const printJob = await prisma.printJob.create({
+        data: {
+          orderId: order.id,
+          station: kitchenPrinter.station,
+          transport: kitchenPrinter.transport,
+          printerMacAddress: kitchenPrinter.macAddress,
+          printerVendorId: kitchenPrinter.vendorId,
+          printerProductId: kitchenPrinter.productId,
+          payloadBase64,
+          status: PrintJobStatus.PRINTING,
+        },
+      });
       printSlip = {
         transport: kitchenPrinter.transport,
         printerMacAddress: kitchenPrinter.macAddress,
         printerVendorId: kitchenPrinter.vendorId,
         printerProductId: kitchenPrinter.productId,
-        payloadBase64: buildEscPosKitchenTicket(printOrder, settings.kitchenTicket).toString('base64'),
+        payloadBase64,
+        printJobId: printJob.id,
       };
     } else {
       const printJob = await enqueueKitchenPrintJob(prisma, printOrder);
