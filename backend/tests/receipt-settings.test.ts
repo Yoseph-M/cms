@@ -1,8 +1,10 @@
 import {
   buildEscPosKitchenTicket,
+  buildEscPosCustomerReceipt,
   buildEscPosTestSlip,
   humanizePrintReason,
   printFailureSentence,
+  repeatEscPosCopies,
 } from '../src/services/printer.service';
 import {
   DEFAULT_RECEIPT_SETTINGS,
@@ -48,7 +50,7 @@ describe('receipt layout settings', () => {
     );
     const ticket = text(buffer);
 
-    expect(ticket).toContain('Mahalna Electronics');
+    expect(ticket).toContain('MAHALNA ELECTRONICS');
     expect(ticket).not.toContain('+251 90 123 4567');
     expect(ticket).not.toContain('Bole Road, Addis Ababa');
     expect(ticket).not.toContain('hello@mahalna.test');
@@ -57,6 +59,8 @@ describe('receipt layout settings', () => {
     expect(ticket).toContain('KITCHEN TICKET');
     expect(ticket).toContain('Table: #12');
     expect(ticket).toContain('No onions');
+    expect(ticket.indexOf('Order Ref:')).toBeLessThan(ticket.indexOf('KITCHEN TICKET'));
+    expect(ticket).toContain('ITEMS');
   });
 
   it('honours the kitchen ticket visibility toggles', () => {
@@ -83,7 +87,7 @@ describe('receipt layout settings', () => {
   it('honours the cashier, date and receipt-number toggles on the ticket', () => {
     const full = text(buildEscPosKitchenTicket(order, settings()));
     expect(full).toContain('Waiter: David Waiter');
-    expect(full).toContain('Time:');
+    expect(full).toContain('Date:');
     expect(full).toContain('Order Ref: 123e4567');
 
     const trimmed = text(
@@ -97,7 +101,7 @@ describe('receipt layout settings', () => {
       ),
     );
     expect(trimmed).not.toContain('Waiter:');
-    expect(trimmed).not.toContain('Time:');
+    expect(trimmed).not.toContain('Date:');
     expect(trimmed).not.toContain('Order Ref:');
     // The operational core of a kitchen ticket always prints.
     expect(trimmed).toContain('Table: #12');
@@ -110,6 +114,48 @@ describe('receipt layout settings', () => {
     expect(narrow).toContain(`${'-'.repeat(32)}\n`);
     expect(wide).toContain(`${'-'.repeat(48)}\n`);
     expect(narrow).not.toContain(`${'-'.repeat(48)}\n`);
+  });
+
+  it('repeats the configured number of complete cut-terminated ticket copies', () => {
+    const one = buildEscPosKitchenTicket(order, settings());
+    const repeated = repeatEscPosCopies(one, 2).toString('ascii');
+    expect(repeated.split('KITCHEN TICKET')).toHaveLength(3);
+    expect(repeated.split(String.fromCharCode(0x1d, 0x56, 0x42, 0)).length - 1).toBe(2);
+  });
+
+  it('builds the customer receipt from its own configured layout', () => {
+    const receipt = text(buildEscPosCustomerReceipt(
+      {
+        clientOrderId: '123e4567-e89b-12d3-a456-426614174000',
+        createdAt: new Date('2026-09-05T08:45:00.000Z'),
+        items: [{ name: 'Coffee', quantity: 2, unitPrice: 100 }],
+        totalAmount: 250,
+      },
+      { method: 'CASH', amountPaid: 300, cashierName: 'Alemu', paidAt: new Date('2026-09-05T08:45:00.000Z') },
+      {
+        ...DEFAULT_RECEIPT_SETTINGS,
+        businessName: 'Mahalna Cafe',
+        businessEmail: 'hello@example.test',
+        businessPhone: '0900000000',
+        businessAddress: 'Bole Road',
+        bottomMessage: 'Thank you',
+        secondaryBottomMessage: 'Visit again',
+      },
+    ));
+
+    expect(receipt).toContain('MAHALNA CAFE');
+    expect(receipt).toContain('hello@example.test');
+    expect(receipt).toContain('0900000000');
+    expect(receipt).toContain('Bole Road');
+    expect(receipt).toContain('Coffee');
+    expect(receipt).toContain('Subtotal');
+    expect(receipt).toContain('Tax');
+    expect(receipt).toContain('Total');
+    expect(receipt).toContain('Cash');
+    expect(receipt).toContain('Amount Paid');
+    expect(receipt).toContain('Change');
+    expect(receipt).toContain('Thank you');
+    expect(receipt).toContain('Visit again');
   });
 
   it('uses kitchen ticket business settings on the Test Print slip', () => {
