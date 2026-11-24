@@ -38,7 +38,11 @@ vi.mock('react-i18next', () => {
       t: (key: string, opts?: Record<string, unknown>) => {
         // `cashier` is the page's own namespace; anything else (including the
         // default `common`) resolves against the shared catalog.
-        const value = ns === 'cashier' ? resolve(enCashier, key) : resolve(enCommon, key);
+        const bundle = ns === 'cashier' ? enCashier : enCommon;
+        const baseValue = resolve(bundle, key);
+        const value = typeof opts?.count === 'number'
+          ? resolve(bundle, `${key}_${opts.count === 1 ? 'one' : 'other'}`) ?? baseValue
+          : baseValue;
         if (typeof value === 'string') {
           return value.replace(/\{\{(\w+)\}\}/g, (_m, k) => String(opts?.[k] ?? ''));
         }
@@ -156,6 +160,7 @@ describe('cashier reprint failures', () => {
       printerVendorId: '04b8',
       printerProductId: '0e15',
       payloadBase64: btoa('TABLE 3'),
+      printJobId: 'job-2',
     };
     (axiosClient.post as any).mockResolvedValueOnce({ data: slip });
 
@@ -169,7 +174,7 @@ describe('cashier reprint failures', () => {
       printerVendorId: '04b8',
       printerProductId: '0e15',
     }));
-    expect(printKitchenTicket).toHaveBeenCalledWith(slip);
+    expect(printKitchenTicket).toHaveBeenCalledWith(expect.objectContaining(slip), 'job-2');
     expect(axiosClient.post).toHaveBeenCalledWith('/print-jobs/reprint/o1', {});
   });
 
@@ -181,8 +186,8 @@ describe('cashier reprint failures', () => {
     );
     // The toast is transient; the strip stays until the ticket prints.
     expect(await screen.findByText('Kitchen print failed')).toBeInTheDocument();
-    // The strip names the actual cause, not just "check the printer".
-    expect(screen.getByText('The printer is out of paper.')).toBeInTheDocument();
+    expect(screen.getByText('The printer did not accept the ticket.')).toBeInTheDocument();
+    expect(screen.queryByText('The printer is out of paper.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Reprint Table 3/i })).toBeInTheDocument();
   });
 
@@ -195,21 +200,23 @@ describe('cashier reprint failures', () => {
     expect(await screen.findByText('Kitchen print failed')).toBeInTheDocument();
   });
 
-  it('shows the specific cause in the printer-failure banner', async () => {
+  it('shows a clear printer message without technical device details', async () => {
     renderPage();
     expect(await screen.findByText('Table 3')).toBeInTheDocument();
 
     await act(async () => {
       socket.emit('printer:failed', {
         station: 'kitchen',
-        device: '04b8:0e15',
+        device: 'aVlOPQZUafrbP8z29wXfYQ==',
         orderId: 'o1',
         failedAt: new Date().toISOString(),
         error: 'The printer is out of paper.',
       });
     });
 
-    expect(await screen.findByText(/The printer is out of paper\./)).toBeInTheDocument();
+    expect(await screen.findByText("A receipt didn't print.")).toBeInTheDocument();
+    expect(screen.getByText('Check that the kitchen printer is on and connected, then try again.')).toBeInTheDocument();
+    expect(screen.queryByText(/aVlOPQZUafrbP8z29wXfYQ==|The printer is out of paper/)).not.toBeInTheDocument();
   });
 
   it('clears the failure once the ticket actually prints', async () => {
