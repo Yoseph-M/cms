@@ -38,12 +38,8 @@ export const PrinterFailureBanner: React.FC<PrinterFailureBannerProps> = ({ fail
               {t('cashier.printerFailure.detected', { count: failures.length })}
             </p>
             <p className="truncate text-[11px] opacity-90">
-              {failures[0].station}
-              {failures[0].device || failures[0].ip
-                ? ` @ ${failures[0].device || failures[0].ip}${failures[0].port ? `:${failures[0].port}` : ''}`
-                : ''}
-              {failures[0].error ? ` — ${failures[0].error}` : ''}
-              {failures.length > 1 ? t('cashier.printerFailure.more', { count: failures.length - 1 }) : ''}
+              {t('cashier.printerFailure.action')}
+              {failures.length > 1 ? ` ${t('cashier.printerFailure.more', { count: failures.length - 1 })}` : ''}
             </p>
           </div>
           <button
