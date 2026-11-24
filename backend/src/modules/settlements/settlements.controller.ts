@@ -4,6 +4,14 @@ import { recordSettlement, getOrderSettlements, getSettlementById, getRemainingA
 import { prisma } from '../../services/prisma.service';
 import { logger } from '../../utils/logger';
 import { OrderStatus, Prisma } from '@prisma/client';
+import {
+  buildEscPosCustomerReceipt,
+  getPrinterRegistry,
+  repeatEscPosCopies,
+  resolveKitchenPrinter,
+  sendToNetworkPrinter,
+} from '../../services/printer.service';
+import { getReceiptSettings } from '../../services/receipt-settings.service';
 
 /** Order fields the settlement page needs for its detail card. */
 const ORDER_SUMMARY_SELECT = Prisma.validator<Prisma.OrderSelect>()({
@@ -268,11 +276,76 @@ export async function createSettlement(req: AuthenticatedRequest, res: Response,
       requestFingerprint: `${orderId}:${amountMinor}:${method}`,
     });
 
+    let receiptSlip: {
+      transport: 'USB' | 'BLUETOOTH';
+      printerMacAddress: string | null;
+      printerVendorId: string | null;
+      printerProductId: string | null;
+      payloadBase64: string;
+    } | null = null;
+    let receiptWarning: string | null = null;
+
+    // A new payment produces a customer receipt using the customer-receipt
+    // layout. Replays do not print again, so a retried request cannot duplicate
+    // a receipt that already reached paper.
+    if (!result.isReplay) {
+      try {
+        const printer = resolveKitchenPrinter(await getPrinterRegistry());
+        if (!printer) {
+          receiptWarning = 'No receipt printer is configured.';
+        } else {
+          const settings = await getReceiptSettings();
+          const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            select: { clientOrderId: true, createdAt: true, totalAmount: true, items: true },
+          });
+          if (!order) throw new Error('Order not found while preparing its receipt.');
+          const payload = repeatEscPosCopies(
+            buildEscPosCustomerReceipt(
+              {
+                clientOrderId: order.clientOrderId,
+                createdAt: order.createdAt,
+                items: order.items as any,
+                totalAmount: order.totalAmount,
+              },
+              {
+                method,
+                amountPaid: amountMinor,
+                cashierName: req.user!.name,
+                paidAt: result.settlement.createdAt,
+              },
+              settings,
+            ),
+            settings.copies,
+          );
+
+          if (printer.transport === 'USB' || printer.transport === 'BLUETOOTH') {
+            receiptSlip = {
+              transport: printer.transport,
+              printerMacAddress: printer.macAddress,
+              printerVendorId: printer.vendorId,
+              printerProductId: printer.productId,
+              payloadBase64: payload.toString('base64'),
+            };
+          } else if (printer.transport === 'NETWORK' && printer.ip) {
+            await sendToNetworkPrinter(printer.ip, printer.port, payload);
+          } else {
+            receiptWarning = 'The configured receipt printer is missing its network address.';
+          }
+        }
+      } catch (printError) {
+        logger.error({ printError, orderId }, 'Settlement saved, but its receipt could not be prepared or printed');
+        receiptWarning = 'Payment was recorded, but the receipt could not be printed.';
+      }
+    }
+
     // A genuine new settlement is 201; an idempotent replay of a settled
     // request returns the same payload as 200 so clients treat it as a read.
     return res.status(result.isReplay ? 200 : 201).json({
       settlement: result.settlement,
       order: result.order,
+      receiptSlip,
+      receiptWarning,
     });
   } catch (error: any) {
     logger.error({ error, orderId, recordedById }, 'Settlement recording failed');
