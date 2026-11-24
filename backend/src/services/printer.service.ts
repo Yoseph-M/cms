@@ -165,51 +165,46 @@ export function buildEscPosKitchenTicket(
   if (settings.showBusinessName && settings.businessName.trim()) {
     commands.push(0x1b, 0x61, 0x01); // centre
     commands.push(0x1b, 0x45, 0x01); // bold
-    for (const line of wrapLine(settings.businessName, columns)) {
+    for (const line of wrapLine(settings.businessName.toUpperCase(), columns)) {
       commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
     }
     commands.push(0x1b, 0x45, 0x00);
-  }
-
-  if (settings.showBusinessName && settings.businessName.trim()) {
     commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
   }
 
-  commands.push(0x1b, 0x61, 0x01);
-  commands.push(0x1d, 0x21, 0x11);
-  commands.push(...Buffer.from(`${centerLine('KITCHEN TICKET', Math.floor(columns / 2))}\n\n`, 'ascii'));
-  commands.push(0x1d, 0x21, 0x00);
-  commands.push(0x1b, 0x61, 0x00);
-
-  const formattedDate = new Date(order.createdAt).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-
-  commands.push(...Buffer.from(`Table: #${ascii(order.tableNumber)}\n`, 'ascii'));
-
-  // The operator name, timestamp and reference are the kitchen ticket's
-  // counterparts of the receipt's Cashier / Date / Receipt # rows, so the
-  // owner's "show on receipt" toggles gate them here too.
+  // Keep the metadata order in step with the kitchen-ticket preview.
+  if (settings.showReceiptNumber) {
+    commands.push(...Buffer.from(`Order Ref: ${order.clientOrderId.slice(0, 8)}\n`, 'ascii'));
+  }
   if (settings.showCashierName) {
     commands.push(...Buffer.from(`Waiter: ${ascii(order.waiterName || 'Staff')}\n`, 'ascii'));
   }
   if (settings.showDateTime) {
-    commands.push(...Buffer.from(`Time: ${formattedDate}\n`, 'ascii'));
+    const formattedDate = printDateTime(order.createdAt);
+    commands.push(...Buffer.from(`Date: ${formattedDate}\n`, 'ascii'));
   }
-  if (settings.showReceiptNumber) {
-    commands.push(...Buffer.from(`Order Ref: ${order.clientOrderId.slice(0, 8)}\n`, 'ascii'));
-  }
-  commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
-  commands.push(...Buffer.from('QTY  ITEM\n', 'ascii'));
+  commands.push(...Buffer.from(`Table: #${ascii(order.tableNumber)}\n`, 'ascii'));
   commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
 
-  const nameWidth = Math.max(8, columns - 5);
+  commands.push(0x1b, 0x61, 0x01);
+  commands.push(0x1d, 0x21, 0x11);
+  commands.push(0x1b, 0x45, 0x01);
+  commands.push(...Buffer.from(`${centerLine('KITCHEN TICKET', Math.floor(columns / 2))}\n`, 'ascii'));
+  commands.push(0x1b, 0x45, 0x00);
+  commands.push(0x1d, 0x21, 0x00);
+  commands.push(0x1b, 0x61, 0x00);
+
+  const quantityWidth = 5;
+  const nameWidth = columns - quantityWidth;
+  commands.push(0x1b, 0x45, 0x01);
+  commands.push(...Buffer.from(`${'ITEMS'.padEnd(nameWidth, ' ')}QTY\n`, 'ascii'));
+  commands.push(0x1b, 0x45, 0x00);
   for (const item of order.items) {
-    const qtyStr = `${item.quantity}x`.padEnd(5, ' ');
-    const nameStr = ascii(item.name).padEnd(nameWidth, ' ').slice(0, nameWidth);
-    commands.push(...Buffer.from(`${qtyStr}${nameStr}\n`, 'ascii'));
+    const nameLines = wrapLine(item.name, nameWidth);
+    commands.push(...Buffer.from(`${(nameLines[0] || '').padEnd(nameWidth, ' ')}${`${item.quantity}`.padStart(quantityWidth, ' ')}\n`, 'ascii'));
+    for (const line of nameLines.slice(1)) {
+      commands.push(...Buffer.from(`${line}\n`, 'ascii'));
+    }
     if (item.notes && item.notes.trim()) {
       for (const line of wrapLine(`  -> Note: ${item.notes}`, columns)) {
         commands.push(...Buffer.from(`${line}\n`, 'ascii'));
@@ -222,6 +217,114 @@ export function buildEscPosKitchenTicket(
   commands.push(0x0a);
   commands.push(0x1d, 0x56, 0x42, 0x00); // cut
 
+  return Buffer.from(commands);
+}
+
+/** Concatenate complete, cut-terminated copies for a single local print call. */
+export function repeatEscPosCopies(payload: Buffer, copies: number): Buffer {
+  const count = Math.max(1, Math.min(3, Math.round(copies) || 1));
+  return Buffer.concat(Array.from({ length: count }, () => payload));
+}
+
+function receiptMoney(amount: number): string {
+  const formatted = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(amount));
+  return `${formatted} ETB`;
+}
+
+function printDateTime(value: Date | string): string {
+  const date = new Date(value);
+  const datePart = date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+  const timePart = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return `${datePart} ${timePart}`;
+}
+
+/** Build the customer receipt from the customer-receipt settings preview. */
+export function buildEscPosCustomerReceipt(
+  order: {
+    clientOrderId: string;
+    createdAt: Date | string;
+    items: Array<{ name: string; quantity: number; unitPrice: number }>;
+    totalAmount: number;
+  },
+  payment: { method: string; amountPaid: number; cashierName: string; paidAt: Date | string },
+  settings: PrintLayoutSettings = DEFAULT_PRINT_LAYOUT_SETTINGS,
+): Buffer {
+  const columns = ticketColumns(settings);
+  const divider = '-'.repeat(columns);
+  const commands: number[] = [0x1b, 0x40, 0x1b, 0x61, 0x01];
+  const centered = (value: string) => {
+    for (const line of wrapLine(value, columns)) commands.push(...Buffer.from(`${centerLine(line, columns)}\n`, 'ascii'));
+  };
+
+  if (settings.showBusinessName && settings.businessName.trim()) {
+    commands.push(0x1b, 0x45, 0x01);
+    centered(settings.businessName.toUpperCase());
+    commands.push(0x1b, 0x45, 0x00);
+  }
+  if (settings.showEmail && settings.businessEmail.trim()) centered(settings.businessEmail);
+  if (settings.showBusinessPhone && settings.businessPhone.trim()) centered(settings.businessPhone);
+  if (settings.showBusinessAddress && settings.businessAddress.trim()) centered(settings.businessAddress);
+  if (
+    (settings.showBusinessName && settings.businessName.trim()) ||
+    (settings.showEmail && settings.businessEmail.trim()) ||
+    (settings.showBusinessPhone && settings.businessPhone.trim()) ||
+    (settings.showBusinessAddress && settings.businessAddress.trim())
+  ) commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
+
+  commands.push(0x1b, 0x61, 0x00);
+  if (settings.showReceiptNumber) commands.push(...Buffer.from(`Receipt #: ${order.clientOrderId.slice(0, 8)}\n`, 'ascii'));
+  if (settings.showCashierName) commands.push(...Buffer.from(`Cashier: ${ascii(payment.cashierName)}\n`, 'ascii'));
+  if (settings.showDateTime) {
+    const date = printDateTime(payment.paidAt);
+    commands.push(...Buffer.from(`Date: ${date}\n`, 'ascii'));
+  }
+  commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
+
+  const qtyWidth = 4;
+  const priceWidth = settings.paperSize === '58mm' ? 12 : 15;
+  const nameWidth = columns - qtyWidth - priceWidth;
+  commands.push(0x1b, 0x45, 0x01);
+  commands.push(...Buffer.from(`${'ITEMS'.padEnd(nameWidth)}${'QTY'.padStart(qtyWidth)}${'PRICE'.padStart(priceWidth)}\n`, 'ascii'));
+  commands.push(0x1b, 0x45, 0x00);
+  for (const item of order.items) {
+    const nameLines = wrapLine(item.name, nameWidth);
+    const quantity = String(item.quantity).padStart(qtyWidth);
+    const price = receiptMoney(item.unitPrice).padStart(priceWidth).slice(-priceWidth);
+    commands.push(...Buffer.from(`${(nameLines[0] || '').padEnd(nameWidth)}${quantity}${price}\n`, 'ascii'));
+    for (const line of nameLines.slice(1)) commands.push(...Buffer.from(`${line}\n`, 'ascii'));
+  }
+
+  const subtotal = order.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  const tax = order.totalAmount - subtotal;
+  const row = (label: string, value: string) => {
+    const left = ascii(label).slice(0, Math.max(1, columns - value.length - 1));
+    commands.push(...Buffer.from(`${left}${' '.repeat(Math.max(1, columns - left.length - value.length))}${value}\n`, 'ascii'));
+  };
+  commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
+  if (settings.taxDisplay === 'show') {
+    row('Subtotal', receiptMoney(subtotal));
+    row('Tax', receiptMoney(tax));
+  } else if (settings.taxDisplay === 'included') {
+    row('Tax included', receiptMoney(tax));
+  }
+  commands.push(0x1b, 0x45, 0x01);
+  row('Total', receiptMoney(order.totalAmount));
+  commands.push(0x1b, 0x45, 0x00);
+  if (settings.showPaymentMethod || settings.showAmountPaid || settings.showChange) {
+    commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
+    if (settings.showPaymentMethod) {
+      const methods: Record<string, string> = { CASH: 'Cash', CARD: 'Card', MOBILE: 'Mobile' };
+      row('Payment', methods[payment.method] || ascii(payment.method));
+    }
+    if (settings.showAmountPaid) row('Amount Paid', receiptMoney(payment.amountPaid));
+    if (settings.showChange) row('Change', receiptMoney(Math.max(0, payment.amountPaid - order.totalAmount)));
+  }
+  if (settings.bottomMessage.trim() || settings.secondaryBottomMessage.trim()) {
+    commands.push(...Buffer.from(`${divider}\n`, 'ascii'));
+  }
+  if (settings.bottomMessage.trim()) centered(settings.bottomMessage);
+  if (settings.secondaryBottomMessage.trim()) centered(settings.secondaryBottomMessage);
+  commands.push(...Buffer.from('\n', 'ascii'), 0x1d, 0x56, 0x42, 0x00);
   return Buffer.from(commands);
 }
 
