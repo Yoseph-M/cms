@@ -159,7 +159,9 @@
     "itemsCount": "{{count}} ዕቃዎች",
     "itemsMore": "+{{count}} ተጨማሪ — ሁሉንም ለማየት ወደ ታች ያልቅ",
     "printerFailure": {
-      "detected": "የአታሚ ችግር ተገኝቷል — {{count}} ደረሰኝ(ዎች) አልተተከሉም።",
+      "detected_one": "አንድ ደረሰኝ አልታተመም።",
+      "detected_other": "{{count}} ደረሰኞች አልታተሙም።",
+      "action": "የኩሽናው አታሚ እንደበራ እና እንደተገናኘ ያረጋግጡ፣ ከዚያ እንደገና ይሞክሩ።",
       "more": "፣ +{{count}} ተጨማሪ"
     },
     "pad": {
@@ -192,10 +194,10 @@
     },
     "endOfDay": "የቀን መጨረሻ",
     "cancelModal": {
-      "reasonWalkedOut": "ደንበኛው ተንቀሳቅሶ ሄደ",
-      "reasonWrongOrder": "የተሳሳተ ትዕዛዝ",
-      "reasonDuplicate": "ብዝብ ቲኬት",
-      "reasonOutOfItem": "ኩሽናው ዕቃው አልቋል",
+      "reasonWalkedOut": "ደንበኛው ከመክፈሉ በፊት ሄደ",
+      "reasonWrongOrder": "ትዕዛዙ በስህተት ተመዘገበ",
+      "reasonDuplicate": "ተደጋጋሚ ትዕዛዝ",
+      "reasonOutOfItem": "ዕቃው የለም",
       "completedTitle": "ትዕዛዙ ተሰርዟል",
       "completedMsg": "{{order}} ተሰርዟል እና ከንቁ ወረፋ ውስጥ ተወግዷል።",
       "done": "ተከናወነ",
@@ -1524,6 +1526,7 @@
     "customerReceipt": "የደንበኛ ደረሰኝ",
     "orderReference": "የትዕዛዝ ማጣቀሻ",
     "waiter": "አስተናጋጅ",
+    "tableNumber": "ጠረጴዛ",
     "showEmail": "ኢሜይል አሳይ",
     "showBusinessName": "የንግድ ስም አሳይ",
     "showBusinessPhone": "የንግድ ስልክ አሳይ",
