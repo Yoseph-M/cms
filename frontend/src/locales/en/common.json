@@ -159,7 +159,9 @@
     "itemsCount": "{{count}} items",
     "itemsMore": "+{{count}} more — scroll to see all",
     "printerFailure": {
-      "detected": "Printer problem detected — {{count}} receipt(s) didn't print.",
+      "detected_one": "A receipt didn't print.",
+      "detected_other": "{{count}} receipts didn't print.",
+      "action": "Check that the kitchen printer is on and connected, then try again.",
       "more": ", +{{count}} more"
     },
     "pad": {
@@ -192,10 +194,10 @@
     },
     "endOfDay": "End of Day",
     "cancelModal": {
-      "reasonWalkedOut": "Customer walked out",
-      "reasonWrongOrder": "Wrong order",
-      "reasonDuplicate": "Duplicate ticket",
-      "reasonOutOfItem": "Kitchen out of item",
+      "reasonWalkedOut": "Customer left before paying",
+      "reasonWrongOrder": "Order entered incorrectly",
+      "reasonDuplicate": "Duplicate order",
+      "reasonOutOfItem": "Item unavailable",
       "completedTitle": "Order cancelled",
       "completedMsg": "{{order}} has been cancelled and removed from the active queue.",
       "done": "Done",
@@ -1524,6 +1526,7 @@
     "customerReceipt": "Customer receipt",
     "orderReference": "Order Ref",
     "waiter": "Waiter",
+    "tableNumber": "Table",
     "showEmail": "Show Email",
     "showBusinessName": "Show Business Name",
     "showBusinessPhone": "Show Business Phone",
