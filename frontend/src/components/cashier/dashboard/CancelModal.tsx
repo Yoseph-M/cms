@@ -85,7 +85,7 @@ export const CancelModal: React.FC<CancelModalProps> = ({
 
   // Merge defaults + custom reasons (de-duped)
   const allReasons = useMemo(() => {
-    const defaults = quickReasons ?? QUICK_REASON_KEYS.map((k) => t(k));
+    const defaults = quickReasons ?? QUICK_REASON_KEYS.map((k) => t(`cashier.${k}`));
     const seen = new Set(defaults.map((r) => r.toLowerCase()));
     const extra = customReasons.filter((r) => !seen.has(r.toLowerCase()));
     return [...defaults, ...extra];
