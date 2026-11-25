@@ -792,7 +792,7 @@ export const CashierTicketsPage: React.FC = () => {
           printerMacAddress: kitchenPrinter.macAddress ?? null,
           printerVendorId: kitchenPrinter.vendorId ?? null,
           printerProductId: kitchenPrinter.productId ?? null,
-        });
+        }, { allowDevicePicker: false });
         if (!window.confirm(t('tickets.confirmPrinter', { printer: printerName }))) return;
       }
 
