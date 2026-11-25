@@ -248,11 +248,11 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
             printerMacAddress: kitchenPrinter.macAddress ?? null,
             printerVendorId: kitchenPrinter.vendorId ?? null,
             printerProductId: kitchenPrinter.productId ?? null,
-          });
+          }, { allowDevicePicker: false });
           printerPrepared = true;
         } catch (err) {
-          // Save the order even if the cashier cancels printer access. The
-          // warning below keeps the missing ticket visible.
+          // Save the order even if this device cannot access its configured
+          // printer. The warning below keeps the missing ticket visible.
           prepareFailure = err;
         }
       }
@@ -270,15 +270,6 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           notes: l.notes || '',
         })),
       });
-      addToast({
-        type: 'success',
-        title: t('ordering.toasts.orderPlaced'),
-        message: t(totalQty === 1 ? 'ordering.toasts.orderPlacedMsg' : 'ordering.toasts.orderPlacedMsg_other', {
-          table: tableNumber,
-          count: totalQty,
-        }),
-      });
-
       const printSlip = res.data?.printSlip as (Partial<TestSlip> & { printJobId?: string }) | undefined;
       let localPrintWarning: string | null = prepareFailure
         ? (prepareFailure instanceof Error ? describePrinterFailure(prepareFailure).message : 'The printer could not be selected.')
@@ -288,7 +279,9 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
           try {
             // The printer registry may still be loading on a fast first order;
             // in that case use the ticket's own target as a fallback.
-            if (!printerPrepared) await prepareKitchenTicketPrinter(printSlip as TestSlip);
+            if (!printerPrepared) {
+              await prepareKitchenTicketPrinter(printSlip as TestSlip, { allowDevicePicker: false });
+            }
             await printKitchenTicket(printSlip as TestSlip, printSlip.printJobId);
           } catch (printErr: any) {
             const failure = printErr instanceof Error ? describePrinterFailure(printErr) : null;
@@ -308,8 +301,20 @@ export const CashierOrderingPanel: React.FC<CashierOrderingPanelProps> = ({ onOr
       if (printWarning) {
         addToast({
           type: 'warning',
-          title: 'Ticket not printed',
-          message: `${printWarning} The order is on the Tickets page — reprint it from there once the printer is back.`,
+          title: t('ordering.toasts.orderPlacedPrintFailed'),
+          message: t('ordering.toasts.orderPlacedPrintFailedMsg', {
+            table: tableNumber,
+            reason: printWarning,
+          }),
+        });
+      } else {
+        addToast({
+          type: 'success',
+          title: t('ordering.toasts.orderPlaced'),
+          message: t(totalQty === 1 ? 'ordering.toasts.orderPlacedMsg' : 'ordering.toasts.orderPlacedMsg_other', {
+            table: tableNumber,
+            count: totalQty,
+          }),
         });
       }
       setCart([]);
