@@ -140,6 +140,22 @@ describe('USB ticket printer', () => {
     expect(device.transfers).toEqual(['NEW ORDER', 'REPRINT']);
   });
 
+  it('does not open the device picker when a reprint cannot access its configured printer', async () => {
+    Object.defineProperty(navigator, 'usb', {
+      configurable: true,
+      value: { requestDevice: vi.fn(), getDevices: vi.fn().mockResolvedValue([]) },
+    });
+
+    await expect(prepareKitchenTicketPrinter({
+      transport: 'USB',
+      printerMacAddress: null,
+      printerVendorId: VENDOR_ID.toString(16),
+      printerProductId: PRODUCT_ID.toString(16),
+    }, { allowDevicePicker: false })).rejects.toMatchObject({ code: 'USB_NOT_PAIRED' });
+
+    expect((navigator as any).usb.requestDevice).not.toHaveBeenCalled();
+  });
+
   it('retries a claim another window is holding instead of losing the ticket', async () => {
     const device = makeUsbDevice({ claim: (call) => {
       if (call === 1) throw claimBusyError();
