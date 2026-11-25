@@ -496,7 +496,11 @@ function rememberKitchenDevice(device: any, transport: KitchenPrinterTarget['tra
  * activation. Existing browser permission is reused; a single permitted device
  * is accepted even if saved USB ids drifted from the physical printer.
  */
-export async function prepareKitchenTicketPrinter(target: KitchenPrinterTarget): Promise<string> {
+export async function prepareKitchenTicketPrinter(
+  target: KitchenPrinterTarget,
+  options: { allowDevicePicker?: boolean } = {},
+): Promise<string> {
+  const allowDevicePicker = options.allowDevicePicker ?? true;
   const targetKey = kitchenTargetKey(target);
   const alreadyResolved =
     (preparedKitchenDevice?.targetKey === targetKey && preparedKitchenDevice) ||
@@ -517,12 +521,17 @@ export async function prepareKitchenTicketPrinter(target: KitchenPrinterTarget):
     let device = devices.find((d: any) => d.vendorId === vendorId && d.productId === productId);
     if (!device) device = devices.find((d: any) => matchesRememberedKitchenDevice(d, 'USB'));
     if (!device && devices.length === 1) device = devices[0];
-    if (!device) {
+    if (!device && allowDevicePicker) {
       // One browser chooser per pairing attempt; show available printers so an
       // out-of-date saved vendor/product id cannot hide the actual device.
       device = await usb.requestDevice({ filters: [] }).catch(() => null);
     }
-    if (!device) throw printError('USB_SELECTION_CANCELLED', i18n.t('printers.noUsbSelected'));
+    if (!device) {
+      throw printError(
+        allowDevicePicker ? 'USB_SELECTION_CANCELLED' : 'USB_NOT_PAIRED',
+        allowDevicePicker ? i18n.t('printers.noUsbSelected') : i18n.t('printers.usbNotPaired'),
+      );
+    }
     rememberKitchenDevice(device, 'USB');
     preparedKitchenDevice = { transport: 'USB', device, targetKey };
     cachedKitchenDevice = preparedKitchenDevice;
@@ -542,13 +551,18 @@ export async function prepareKitchenTicketPrinter(target: KitchenPrinterTarget):
   }
   if (!device) device = devices.find((d: any) => matchesRememberedKitchenDevice(d, 'BLUETOOTH'));
   if (!device && devices.length === 1) device = devices[0];
-  if (!device) {
+  if (!device && allowDevicePicker) {
     device = await bt.requestDevice({
       acceptAllDevices: true,
       optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455'],
     }).catch(() => null);
   }
-  if (!device) throw printError('BLUETOOTH_SELECTION_CANCELLED', i18n.t('printers.noBluetoothSelected'));
+  if (!device) {
+    throw printError(
+      allowDevicePicker ? 'BLUETOOTH_SELECTION_CANCELLED' : 'BLUETOOTH_NOT_PAIRED',
+      allowDevicePicker ? i18n.t('printers.noBluetoothSelected') : i18n.t('printers.bluetoothNotPaired'),
+    );
+  }
   rememberKitchenDevice(device, 'BLUETOOTH');
   preparedKitchenDevice = { transport: 'BLUETOOTH', device, targetKey };
   cachedKitchenDevice = preparedKitchenDevice;
