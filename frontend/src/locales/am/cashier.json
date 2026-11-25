@@ -199,6 +199,8 @@
       "orderPlaced": "ትዕዛዝ ተልኳል",
       "orderPlacedMsg": "ጠረጴዛ {{table}} — {{count}} ዕቃ ወደ ወጥ ቤት ተልኳል።",
       "orderPlacedMsg_other": "ጠረጴዛ {{table}} — {{count}} ዕቃዎች ወደ ወጥ ቤት ተልከዋል።",
+      "orderPlacedPrintFailed": "ትዕዛዙ ተመዝግቧል፣ ግን ቲኬቱ አልታተመም",
+      "orderPlacedPrintFailedMsg": "ጠረጴዛ {{table}} — ትዕዛዙ በቲኬቶች ገጽ ላይ ተቀምጧል። {{reason}} አታሚው ሲገኝ እንደገና ያትሙ።",
       "orderFailed": "ትዕዛዝ አልተሳካም",
       "orderFailedMsg": "ትዕዛዙን መላክ አልተቻለም። እንደገና ሞክር።"
     }
