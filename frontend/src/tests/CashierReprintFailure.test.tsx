@@ -173,7 +173,7 @@ describe('cashier reprint failures', () => {
       printerMacAddress: null,
       printerVendorId: '04b8',
       printerProductId: '0e15',
-    }));
+    }, { allowDevicePicker: false }));
     expect(printKitchenTicket).toHaveBeenCalledWith(expect.objectContaining(slip), 'job-2');
     expect(axiosClient.post).toHaveBeenCalledWith('/print-jobs/reprint/o1', {});
   });
