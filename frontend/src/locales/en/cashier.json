@@ -209,6 +209,8 @@
       "orderPlaced": "Order placed",
       "orderPlacedMsg": "Table {{table}} — {{count}} item sent to kitchen.",
       "orderPlacedMsg_other": "Table {{table}} — {{count}} items sent to kitchen.",
+      "orderPlacedPrintFailed": "Order placed, but ticket not printed",
+      "orderPlacedPrintFailedMsg": "Table {{table}} — the order is saved on the Tickets page. {{reason}} Reprint it when the printer is available.",
       "orderFailed": "Order failed",
       "orderFailedMsg": "Could not place the order. Try again."
     }
