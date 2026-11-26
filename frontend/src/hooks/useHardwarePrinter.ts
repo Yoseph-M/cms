@@ -600,80 +600,42 @@ export async function printKitchenTicket(slip: TestSlip, printJobId?: string): P
 /**
  * Print a test slip from THIS terminal.
  *
- * Reached from a click, which is exactly the user gesture WebUSB/Web Bluetooth
- * need — so an unpaired printer is paired here instead of failing with "not
- * permitted". Returns nothing on success and throws a readable message on
- * failure, so the page can report the real outcome rather than a hopeful toast.
+ * Sends a test slip to the printer already configured for this station. Pairing
+ * happens in setup, not when the owner presses Test Print.
  */
-export const printTestSlip = async (slip: TestSlip): Promise<void> => {
-  const t = i18n.t.bind(i18n);
+export const printTestSlip = async (slip: TestSlip, deviceName?: string | null): Promise<void> => {
+  // A test slip must go to the printer already configured for this station.
+  // Pairing belongs in the setup flow; opening the browser chooser here can
+  // silently switch to another device or make every test print ask to pair.
   const payload = Uint8Array.from(atob(slip.payloadBase64), (c) => c.charCodeAt(0));
 
   if (slip.transport === 'USB') {
     const usb = (navigator as any).usb;
-    if (!usb?.requestDevice) {
-      throw printError('USB_UNSUPPORTED', t('printers.usbUnsupported'));
-    }
-
+    if (!usb?.getDevices) throw printError('USB_UNSUPPORTED', i18n.t('printers.usbUnsupported'));
+    const devices = await permittedUsbDevices();
     const vendorId = parseInt(slip.printerVendorId || '0', 16);
     const productId = parseInt(slip.printerProductId || '0', 16);
-
-    let device = (await permittedUsbDevices()).find(
-      (d: any) => d.vendorId === vendorId && d.productId === productId,
-    );
-
-    if (!device) {
-      // Offer the configured printer first; fall back to any device rather than
-      // dead-ending when the stored ids drifted from the hardware. A cancelled
-      // chooser rejects with NotFoundError, which must become the page's own
-      // "no printer selected" instead of Chromium's wording in a toast.
-      try {
-        device = await usb.requestDevice({ filters: [{ vendorId, productId }] });
-      } catch {
-        device = await (usb.requestDevice
-          ? usb.requestDevice({ filters: [] }).catch(() => null)
-          : null);
-      }
-    }
-
-    if (!device) throw printError('USB_SELECTION_CANCELLED', t('printers.noUsbSelected'));
+    const configuredName = deviceName?.trim().toLowerCase();
+    const device = devices.find((candidate: any) => candidate.vendorId === vendorId && candidate.productId === productId)
+      || devices.find((candidate: any) => matchesRememberedKitchenDevice(candidate, 'USB'))
+      || (configuredName && devices.find((candidate: any) => candidate.productName?.trim().toLowerCase() === configuredName))
+      || (devices.length === 1 ? devices[0] : undefined);
+    if (!device) throw printError('USB_NOT_PAIRED', i18n.t('printers.usbNotPaired'));
     await writeToUsbDevice(device, payload);
     return;
   }
 
   const bt = (navigator as any).bluetooth;
-  if (!bt?.requestDevice) {
-    throw printError('BLUETOOTH_UNSUPPORTED', t('printers.bluetoothUnsupported'));
+  if (typeof bt?.getDevices !== 'function') {
+    throw printError('BLUETOOTH_UNSUPPORTED', i18n.t('printers.bluetoothUnsupported'));
   }
-
-  const printerId = slip.printerMacAddress ?? '';
-  let device: any;
-
-  if (typeof bt.getDevices === 'function') {
-    const devices = await bt.getDevices();
-    if (printerId) {
-      device = devices.find((d: any) => d.id === printerId || d.name?.includes(printerId));
-      if (!device) {
-        const needle = printerId.toLowerCase();
-        device = devices.find(
-          (d: any) => d.id?.toLowerCase() === needle || d.name?.toLowerCase().includes(needle),
-        );
-      }
-    }
-    if (!device && devices.length === 1) device = devices[0];
-  }
-
-  if (!device) {
-    // A cancelled chooser rejects; report it as a cancellation, not as a raw
-    // NotFoundError from the browser.
-    device = await bt
-      .requestDevice({
-        acceptAllDevices: true,
-        optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', '49535343-fe7d-4ae5-8fa9-9fafd205e455'],
-      })
-      .catch(() => null);
-  }
-
-  if (!device) throw printError('BLUETOOTH_SELECTION_CANCELLED', t('printers.noBluetoothSelected'));
+  const devices = await bt.getDevices();
+  const printerId = slip.printerMacAddress || '';
+  const configuredName = deviceName?.trim().toLowerCase();
+  const device = devices.find((candidate: any) => candidate.id === printerId || candidate.name?.includes(printerId))
+    || (configuredName && devices.find((candidate: any) => candidate.name?.trim().toLowerCase() === configuredName))
+    || devices.find((candidate: any) => matchesRememberedKitchenDevice(candidate, 'BLUETOOTH'))
+    || (devices.length === 1 ? devices[0] : undefined);
+  if (!device) throw printError('BLUETOOTH_NOT_PAIRED', i18n.t('printers.bluetoothNotPaired'));
   await writeToBluetoothDevice(device, payload);
 }
