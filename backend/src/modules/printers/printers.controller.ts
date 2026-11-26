@@ -20,6 +20,7 @@ export async function getPrinters(req: AuthenticatedRequest, res: Response) {
 interface IncomingStation {
   station?: unknown;
   transport?: string;
+  deviceName?: string | null;
   macAddress?: string | null;
   vendorId?: string | null;
   productId?: string | null;
@@ -95,6 +96,7 @@ export async function updatePrinters(req: AuthenticatedRequest, res: Response) {
         data: {
           station: s.station,
           transport: (s.transport as any) ?? 'BLUETOOTH',
+          deviceName: s.deviceName ?? null,
           macAddress: s.macAddress ?? null,
           vendorId: s.vendorId ?? null,
           productId: s.productId ?? null,
@@ -138,6 +140,7 @@ export async function updatePrinter(req: AuthenticatedRequest, res: Response) {
   const updated = await prisma.printerStation.update({
     where: { id: existing.id },
     data: {
+      ...(updates.deviceName !== undefined && { deviceName: updates.deviceName }),
       ...(updates.macAddress !== undefined && { macAddress: updates.macAddress }),
       ...(updates.vendorId !== undefined && { vendorId: updates.vendorId }),
       ...(updates.productId !== undefined && { productId: updates.productId }),
@@ -164,6 +167,7 @@ export async function updatePrinter(req: AuthenticatedRequest, res: Response) {
     id: updated.id,
     station: updated.station,
     transport: updated.transport,
+    deviceName: updated.deviceName,
     macAddress: updated.macAddress,
     vendorId: updated.vendorId,
     productId: updated.productId,
