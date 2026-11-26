@@ -20,6 +20,7 @@ export interface PrinterStation {
    */
   station: string;
   transport: PrintTransport;
+  deviceName?: string | null;
   macAddress: string | null;
   vendorId: string | null;
   productId: string | null;
@@ -54,6 +55,7 @@ async function loadPrintersFromDb(): Promise<PrinterStation[]> {
     id: r.id,
     station: r.station,
     transport: r.transport,
+    deviceName: r.deviceName ?? null,
     macAddress: r.macAddress,
     vendorId: r.vendorId,
     productId: r.productId,
