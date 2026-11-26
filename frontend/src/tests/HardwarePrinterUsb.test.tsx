@@ -256,7 +256,7 @@ describe('USB ticket printer', () => {
     }
   });
 
-  it('reports a cancelled device chooser as a cancellation, not a raw NotFoundError', async () => {
+  it('does not open the device chooser when a configured USB printer is unavailable', async () => {
     Object.defineProperty(navigator, 'usb', {
       configurable: true,
       value: {
@@ -269,7 +269,34 @@ describe('USB ticket printer', () => {
 
     const error: any = await printTestSlip(slip()).catch((err) => err);
 
-    expect(error.message).toBe('No USB printer was selected.');
+    expect(error.code).toBe('USB_NOT_PAIRED');
+    expect(error.message).toContain('isn\'t available on this device');
+    expect((navigator as any).usb.requestDevice).not.toHaveBeenCalled();
+  });
+
+  it('prints the configured Bluetooth printer by its saved name without opening the chooser', async () => {
+    const characteristic = { writeValue: vi.fn().mockResolvedValue(undefined) };
+    const service = { getCharacteristic: vi.fn().mockResolvedValue(characteristic) };
+    const server = { getPrimaryService: vi.fn().mockResolvedValue(service) };
+    const device = { id: 'origin-scoped-id', name: 'HP27128', gatt: { connect: vi.fn().mockResolvedValue(server) } };
+    const requestDevice = vi.fn();
+    Object.defineProperty(navigator, 'bluetooth', {
+      configurable: true,
+      value: { requestDevice, getDevices: vi.fn().mockResolvedValue([device]) },
+    });
+
+    await printTestSlip({
+      transport: 'BLUETOOTH',
+      // Simulate an old configured identifier that doesn't match the browser's
+      // current privacy-scoped id; the saved hardware name still selects it.
+      printerMacAddress: 'old-device-id',
+      printerVendorId: null,
+      printerProductId: null,
+      payloadBase64: btoa('TEST'),
+    }, 'HP27128');
+
+    expect(requestDevice).not.toHaveBeenCalled();
+    expect(characteristic.writeValue).toHaveBeenCalledOnce();
   });
 
   it('never writes two tickets to one endpoint at the same time', async () => {
