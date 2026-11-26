@@ -28,6 +28,7 @@ interface PrinterStation {
   id?: string;
   station: string;
   transport: PrinterTransport;
+  deviceName?: string | null;
   macAddress: string | null;
   vendorId: string | null;
   productId: string | null;
@@ -40,9 +41,23 @@ interface PrinterStatus {
 }
 
 const DEFAULT_NETWORK_PORT = 9100;
+const BLUETOOTH_MAC_PATTERN = /(?:^|[^\w])((?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})(?:$|[^\w])/i;
+const BLUETOOTH_MAC_ONLY = /^(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i;
+
+function getBluetoothMac(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value.match(BLUETOOTH_MAC_PATTERN)?.[1]?.replace(/-/g, ':').toUpperCase() ?? null;
+}
+
+function getPrinterName(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const name = value.replace(BLUETOOTH_MAC_PATTERN, ' ').replace(/[()[\]]/g, ' ').replace(/\s+/g, ' ').trim();
+  return name || null;
+}
 
 const EMPTY_FORM = {
   transport: 'BLUETOOTH' as PrinterTransport,
+  deviceName: '',
   macAddress: '',
   vendorId: '',
   productId: '',
@@ -161,6 +176,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
   // Auto-discovery state — the browser finds real Bluetooth/USB devices.
   const [scanning, setScanning] = useState(false);
   const [scannedName, setScannedName] = useState<string | null>(null);
+  const [browserDeviceNames, setBrowserDeviceNames] = useState<Record<string, string>>({});
 
   const invalidatePrinters = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['printers'] });
@@ -177,6 +193,42 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         && Object.entries(next).every(([key, value]) => prev[key] === value);
       return unchanged ? prev : next;
     });
+  }, [printers]);
+
+  // Read names only from devices this origin has already been allowed to use.
+  // This never opens a chooser and lets older printer records show their real
+  // advertised name on the terminal that paired them.
+  useEffect(() => {
+    let cancelled = false;
+    const readPairedDeviceNames = async () => {
+      const bt = (navigator as any).bluetooth;
+      const usb = (navigator as any).usb;
+      const [bluetoothDevices, usbDevices] = await Promise.all([
+        typeof bt?.getDevices === 'function' ? bt.getDevices().catch(() => []) : Promise.resolve([]),
+        typeof usb?.getDevices === 'function' ? usb.getDevices().catch(() => []) : Promise.resolve([]),
+      ]);
+      const names: Record<string, string> = {};
+      printers.forEach((printer) => {
+        const key = printer.id || printer.station;
+        if (printer.deviceName) {
+          names[key] = printer.deviceName;
+          return;
+        }
+        const device = printer.transport === 'BLUETOOTH'
+          ? bluetoothDevices.find((candidate: any) =>
+              candidate.id === printer.macAddress
+              || Boolean(printer.macAddress && candidate.name?.toLowerCase().includes(printer.macAddress.toLowerCase())))
+          : printer.transport === 'USB'
+            ? usbDevices.find((candidate: any) =>
+                Number(candidate.vendorId).toString(16) === printer.vendorId?.toLowerCase()
+                && Number(candidate.productId).toString(16) === printer.productId?.toLowerCase())
+            : undefined;
+        if (device?.name || device?.productName) names[key] = device.name || device.productName;
+      });
+      if (!cancelled) setBrowserDeviceNames(names);
+    };
+    void readPairedDeviceNames();
+    return () => { cancelled = true; };
   }, [printers]);
 
   // Subscribe to printer:failed and printer:recovered socket events
@@ -207,6 +259,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
     setForm((f) => ({
       ...f,
       transport,
+      deviceName: '',
       macAddress: '',
       vendorId: '',
       productId: '',
@@ -227,6 +280,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
     setEditingPrinter(printer);
     setForm({
       transport: printer.transport,
+      deviceName: printer.deviceName || '',
       macAddress: printer.macAddress || '',
       vendorId: printer.vendorId || '',
       productId: printer.productId || '',
@@ -236,7 +290,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
     setScannedName(
       printer.transport === 'NETWORK'
         ? printer.ip
-        : printer.macAddress || (printer.vendorId ? `USB ${printer.vendorId}:${printer.productId}` : null),
+        : printer.deviceName || (printer.vendorId ? `USB ${printer.vendorId}:${printer.productId}` : null),
     );
     setSlideOverOpen(true);
   };
@@ -296,12 +350,13 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
           });
           return;
         }
-        setForm((f) => ({ ...f, macAddress: deviceId }));
-        setScannedName(device.name || t('printers.bluetoothPrinter'));
+        const deviceName = String(device.name || '');
+        setForm((f) => ({ ...f, macAddress: deviceId, deviceName }));
+        setScannedName(deviceName || t('printers.unnamedBluetoothPrinter'));
         addToast({
           type: 'success',
           title: t('printers.btFound'),
-          message: device.name || deviceId,
+          message: deviceName || t('printers.unnamedBluetoothPrinter'),
         });
       } else if (form.transport === 'USB') {
         const usb = (navigator as any).usb;
@@ -317,12 +372,13 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
         if (!device) return;
         const vendorId = Number(device.vendorId).toString(16).padStart(4, '0');
         const productId = Number(device.productId).toString(16).padStart(4, '0');
-        setForm((f) => ({ ...f, vendorId, productId }));
-        setScannedName(device.productName || `USB ${vendorId}:${productId}`);
+        const deviceName = String(device.productName || '');
+        setForm((f) => ({ ...f, vendorId, productId, deviceName }));
+        setScannedName(deviceName || `USB ${vendorId}:${productId}`);
         addToast({
           type: 'success',
           title: t('printers.usbFound'),
-          message: device.productName || `${vendorId}:${productId}`,
+          message: deviceName || `${vendorId}:${productId}`,
         });
       }
     } catch (err: any) {
@@ -359,6 +415,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
     try {
       const payload = {
         transport: form.transport,
+        deviceName: form.deviceName.trim() || null,
         macAddress: form.transport === 'BLUETOOTH' ? form.macAddress.trim() : null,
         vendorId: form.transport === 'USB' ? form.vendorId.trim() : null,
         productId: form.transport === 'USB' ? form.productId.trim() : null,
@@ -375,6 +432,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       } else {
         const all = printers.map((p) => ({
           transport: p.transport,
+          deviceName: p.deviceName ?? null,
           macAddress: p.macAddress,
           vendorId: p.vendorId,
           productId: p.productId,
@@ -411,25 +469,28 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
 
   const handleTestPrint = async (printer: PrinterStation) => {
     const stationId = printer.id || printer.station;
+    const printerName = getPrinterName(browserDeviceNames[stationId] || printer.deviceName)
+      || (printer.transport === 'NETWORK'
+        ? printer.ip
+        : printer.transport === 'BLUETOOTH'
+          ? t('printers.unnamedBluetoothPrinter')
+          : t('printers.usbPrinter'));
     setTestingId(stationId);
     try {
       const res = await axiosClient.post(`/settings/printers/${stationId}/test-print`);
       const slip = res.data as Partial<TestSlip> | undefined;
 
       if (slip?.payloadBase64 && (slip.transport === 'USB' || slip.transport === 'BLUETOOTH')) {
-        // USB and Bluetooth printers are attached to THIS browser, so the slip
-        // is printed from here, inside the same click that asked for it — that
-        // gesture is what lets the browser reach a printer it has not paired
-        // with yet. The server used to queue the job and report success, which
-        // is why the button looked like it worked while nothing came out.
-        await printTestSlip(slip as TestSlip);
+        // The slip is printed locally to the configured printer already
+        // permitted for this browser. Test Print never opens another pairing chooser.
+        await printTestSlip(slip as TestSlip, printer.deviceName || browserDeviceNames[stationId]);
         addToast({
           type: 'success',
-          title: t('printers.testSlipPrinted', { station: printer.station }),
+          title: t('printers.testSlipPrinted', { station: printerName }),
           message: t('printers.testSlipMsg'),
         });
       } else {
-        addToast({ type: 'success', title: t('printers.testSent', { station: printer.station }) });
+        addToast({ type: 'success', title: t('printers.testSent', { station: printerName }) });
       }
       setStatuses(prev => ({ ...prev, [printer.station]: 'online' }));
     } catch (err: any) {
@@ -441,7 +502,7 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
       const failure = isPrintFailure ? describePrinterFailure(err) : null;
       addToast({
         type: 'error',
-        title: failure?.title || t('printers.testFailedTitle', { station: printer.station }),
+        title: failure?.title || t('printers.testFailedTitle', { station: printerName }),
         message: failure?.message || extractErrorMessage(err) || t('printers.unreachable'),
       });
       setStatuses(prev => ({ ...prev, [printer.station]: 'offline' }));
@@ -524,6 +585,20 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
             const stationId = printer.id || printer.station;
             const isTesting = testingId === stationId;
             const isTicketPrinter = index === 0;
+            const deviceName = browserDeviceNames[stationId] || printer.deviceName || null;
+            const bluetoothMac = printer.transport === 'BLUETOOTH'
+              ? getBluetoothMac(deviceName)
+                || (printer.macAddress && BLUETOOTH_MAC_ONLY.test(printer.macAddress)
+                  ? printer.macAddress.replace(/-/g, ':').toUpperCase()
+                  : null)
+              : null;
+            const displayName = getPrinterName(deviceName)
+              || (printer.transport === 'NETWORK' ? printer.ip : null)
+              || (printer.transport === 'BLUETOOTH'
+                ? t('printers.unnamedBluetoothPrinter')
+                : printer.transport === 'USB'
+                  ? t('printers.usbPrinter')
+                  : (isTicketPrinter ? t('printers.ticketPrinter') : t('printers.printerN', { n: index + 1 })));
             return (
               <motion.div
                 key={stationId}
@@ -535,14 +610,14 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                       <div className="flex items-center gap-2">
                         {getStatusIcon(printer.station)}
                         <div>
-                          <p className="font-bold">
-                            {isTicketPrinter ? t('printers.ticketPrinter') : t('printers.printerN', { n: index + 1 })}
-                          </p>
-                          <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                          <p className="font-bold">{displayName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {printer.transport === 'BLUETOOTH'
-                              ? `Bluetooth ID: ${printer.macAddress}`
+                              ? bluetoothMac
+                                ? `${t('printers.macAddress')}: ${bluetoothMac}`
+                                : `${t('printers.macAddress')}: ${t('printers.macAddressUnavailable')}`
                               : printer.transport === 'USB'
-                                ? `USB: ${printer.vendorId}:${printer.productId}`
+                                ? t('printers.usbPrinter')
                                 : `Network: ${printer.ip}${printer.port ? `:${printer.port}` : ''}`}
                           </p>
                         </div>
@@ -655,11 +730,13 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--success))]" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-foreground">
-                          {scannedName ?? t('printers.networkPrinter')}
-                        </p>
-                        <p className="truncate font-mono text-xs text-muted-foreground">
                           {form.transport === 'BLUETOOTH'
-                            ? form.macAddress
+                            ? getPrinterName(scannedName || form.deviceName) || t('printers.unnamedBluetoothPrinter')
+                            : scannedName ?? t('printers.networkPrinter')}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {form.transport === 'BLUETOOTH'
+                            ? `${t('printers.macAddress')}: ${getBluetoothMac(scannedName || form.deviceName) || (BLUETOOTH_MAC_ONLY.test(form.macAddress) ? form.macAddress.replace(/-/g, ':').toUpperCase() : t('printers.macAddressUnavailable'))}`
                             : form.transport === 'USB'
                             ? `USB ${form.vendorId}:${form.productId}`
                             : `IP ${form.ip}:${form.port}`}
@@ -717,9 +794,10 @@ export const OwnerPrinters: React.FC<{ canManage?: boolean }> = ({ canManage = t
                 : ''}
               {t('printers.removeBody')}{' '}
               {deleteTarget.transport === 'BLUETOOTH'
-                ? deleteTarget.macAddress
+                ? getPrinterName(browserDeviceNames[deleteTarget.id || deleteTarget.station] || deleteTarget.deviceName)
+                  || t('printers.unnamedBluetoothPrinter')
                 : deleteTarget.transport === 'USB'
-                  ? `${deleteTarget.vendorId}:${deleteTarget.productId}`
+                  ? deleteTarget.deviceName || t('printers.usbPrinter')
                   : `${deleteTarget.ip}${deleteTarget.port ? `:${deleteTarget.port}` : ''}`}{' '}
               {t('printers.removeWillBeRemoved')}
             </>
