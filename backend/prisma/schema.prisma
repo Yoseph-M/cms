@@ -709,6 +709,7 @@ model PrinterStation {
   id          String         @id @default(auto()) @map("_id") @db.ObjectId
   station     String         @unique
   transport   PrintTransport @default(BLUETOOTH)
+  deviceName  String?
   macAddress  String?
   vendorId    String?
   productId   String?
