@@ -64,7 +64,7 @@ const stubBluetooth = (bluetooth: Record<string, unknown>) => {
 
 const openScanPanel = async () => {
   renderPage();
-  await screen.findByText('Ticket printer');
+  await screen.findByText('192.168.1.50');
   fireEvent.click(screen.getByRole('button', { name: /Add Printer/i }));
   await screen.findByText('Transport Type');
 };
@@ -100,8 +100,8 @@ describe('printer setup', () => {
     renderPage();
 
     // The first printer in the registry owns the kitchen tickets.
-    expect(await screen.findByText('Ticket printer')).toBeInTheDocument();
-    expect(screen.getByText('Printer 2')).toBeInTheDocument();
+    expect(await screen.findByText('192.168.1.50')).toBeInTheDocument();
+    expect(screen.getAllByText('USB printer').length).toBeGreaterThan(0);
     expect(screen.getByText('Kitchen tickets are sent here.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Add Printer/i }));
@@ -121,7 +121,7 @@ describe('printer setup', () => {
     Object.defineProperty(navigator, 'usb', { configurable: true, value: { requestDevice } });
 
     renderPage();
-    await screen.findByText('Ticket printer');
+    await screen.findByText('192.168.1.50');
 
     fireEvent.click(screen.getByRole('button', { name: /Add Printer/i }));
     await screen.findByText('Transport Type');
@@ -146,7 +146,7 @@ describe('printer setup', () => {
 
   it('offers only the transports a browser can actually discover', async () => {
     renderPage();
-    await screen.findByText('Ticket printer');
+    await screen.findByText('192.168.1.50');
 
     fireEvent.click(screen.getByRole('button', { name: /Add Printer/i }));
     await screen.findByText('Transport Type');
@@ -166,7 +166,7 @@ describe('printer setup', () => {
     expect(document.getElementById('pr-ip')).toBeNull();
   });
 
-  it('stores the opaque Web Bluetooth device id exactly as the browser returned it', async () => {
+  it('shows the Bluetooth printer name without exposing its opaque browser id', async () => {
     const requestDevice = vi.fn().mockResolvedValue({ id: 'aB3+/xYzQ0AbCdEfGhIj', name: 'XP-58' });
     stubBluetooth({ requestDevice });
     await openScanPanel();
@@ -174,10 +174,37 @@ describe('printer setup', () => {
     fireEvent.click(screen.getByRole('button', { name: /Scan for Bluetooth printers/i }));
     await waitFor(() => expect(requestDevice).toHaveBeenCalled());
 
-    // The id is case sensitive: uppercasing it broke the lookup at print time.
     const sheet = within(screen.getByRole('dialog'));
-    expect(await sheet.findByText('aB3+/xYzQ0AbCdEfGhIj')).toBeInTheDocument();
+    expect(await sheet.findByText('XP-58')).toBeInTheDocument();
+    expect(sheet.queryByText('aB3+/xYzQ0AbCdEfGhIj')).not.toBeInTheDocument();
+    expect(sheet.getByText('MAC: Address not available')).toBeInTheDocument();
     expect(addToast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Bluetooth printer found' }));
+
+    fireEvent.click(sheet.getByRole('button', { name: 'Add Printer' }));
+    await waitFor(() => expect(axiosClient.post).toHaveBeenCalledWith('/settings/printers', {
+      stations: expect.arrayContaining([expect.objectContaining({
+        deviceName: 'XP-58',
+        macAddress: 'aB3+/xYzQ0AbCdEfGhIj',
+      })]),
+    }));
+  });
+
+  it('uses a saved printer name instead of the station label or Bluetooth id', async () => {
+    (axiosClient.get as any).mockResolvedValue({
+      data: [printer({
+        id: 'bt1',
+        station: 'kitchen',
+        transport: 'BLUETOOTH',
+        macAddress: 'aB3+/xYzQ0AbCdEfGhIj',
+        deviceName: 'HP27128',
+      })],
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('HP27128')).toBeInTheDocument();
+    expect(screen.queryByText('Ticket printer')).not.toBeInTheDocument();
+    expect(screen.queryByText('aB3+/xYzQ0AbCdEfGhIj')).not.toBeInTheDocument();
   });
 
   it('tells the operator when the browser has Web Bluetooth blocked', async () => {
